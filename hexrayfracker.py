@@ -57,17 +57,29 @@ def rename_lvar(src, dst, ea):
 
 
 def set_lvar_type(src, t, ea):
+    if isinstance(t, str):
+        type_tuple = idaapi.get_named_type(None, t, 1) 
+        tif = idaapi.tinfo_t()
+        tif.deserialize(None, type_tuple[1], type_tuple[2])
+        if tif:
+            t = tif
+        else:
+            print("couldn't convert {} into tinfo_t".format(t))
+            return False
+
     func = idaapi.get_func(ea)
     if func:
         ea = func.start_ea
         vu = idaapi.open_pseudocode(ea, 0)
-        #  names = [n.name for n in vu.cfunc.lvars]
+        if not vu:
+            return False
         lvars = [n for n in vu.cfunc.lvars if n.name == src]
         if len(lvars) == 1:
             print("changing type of {} to {}".format(lvars[0].name, t))
-            vu.set_lvar_type(lvars[0], t)
+            return vu.set_lvar_type(lvars[0], t)
         else:
             print("couldn't find var {}".format(src))
+    return False
 
 
 def fix_arxan_checksum_worker(ea):
