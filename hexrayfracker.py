@@ -57,9 +57,6 @@ def rename_lvar(src, dst, ea):
 
 
 def set_lvar_type(src, t, ea):
-    #  t = ('', '\n=\x04#\x86U', '')
-    #  ti = idaapi.tinfo_t()
-    #  ti.deserialize(None, t[0], t[1])
     func = idaapi.get_func(ea)
     if func:
         ea = func.start_ea
@@ -71,6 +68,28 @@ def set_lvar_type(src, t, ea):
             vu.set_lvar_type(lvars[0], t)
         else:
             print("couldn't find var {}".format(src))
+
+
+def fix_arxan_checksum_worker(ea):
+    sid = idc.get_struc_id('int32_pair')
+    if sid == idc.BADADDR:
+        strucText = """
+            struct int32_pair
+            {
+              uint32_t start;
+              uint32_t end;
+            };
+        """
+        if idc.parse_decls(strucText, 0) != 0:
+            print("StrucInfo: Error re-parsing structure: {}\n{}".format(name, strucText))
+
+    idc.SetType(ea, "void __fastcall ArxanChecksumWorker(uint8_t **src, int32_pair *control);")
+    mapping = [ 'accum', 'v7', 'v4', 'shift', 'v5', 'v6', 'ptr', 'v2', 'v3' ]
+    for n, x, y in chunk_tuple(mapping, 3):
+        if map_lvar(x, y, ea) and              \
+           set_lvar_type(y, 'int32_t', ea) and \
+           rename_lvar(y, n, ea):
+                print("set {}".format(n))
 
 
 def get_func_rettype(ea):
