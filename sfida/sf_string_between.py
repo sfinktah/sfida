@@ -336,4 +336,3 @@ def _test_ce_pointer_parse():
     print("result: {}".format(ptr_parse_recursive(subject, initial=1)))
     print("resolve: {}".format(resolve))
 
-_test_ce_pointer_parse()
