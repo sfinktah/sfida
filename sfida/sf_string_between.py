@@ -1,5 +1,8 @@
 #!/usr/bin/env python
+import itertools
 import re, os
+# requires py > 3.6
+# from typing import Pattern
 
 try:
     from execfile import make_refresh
@@ -19,53 +22,40 @@ except:
     byte_type = bytes
     string_type = str
 
-
-def _A(o):
-    if o is None:
-        return []
-    elif isinstance(o, list):
-        return o
-    else:
-        return list([o])
-
 _re_pattern = re.compile(r'.')
-def isre(e):
+def _isre(e):
     return type(e) == type(_re_pattern)
 
-def sfind(s, *args):
-    return str.find(s, *args)
 
-def sfind_(haystack, needle, offset = 0, greedy = False, index = None):
-    if isinstance(needle, list):
-        if index is not None:
-            needle = needle[index]
+class AttrDict(dict):
+    def __init__(self, *args, **kwargs):
+        super(AttrDict, self).__init__(*args, **kwargs)
+        self.__dict__ = self
 
-    for i, needle in enumerate(_A(needle)):
-        start = -1
-        length = 0
-        if isre(needle):
-            while True:
-                m = re.search(needle, haystack[offset:])
-                if not m:
-                    break
-                
-                pos, end = m.span()
-                length = end - pos
-                start = pos + offset
-                offset = start + 1
+def _isIterable(o):
+    return hasattr(o, '__iter__') and not hasattr(o, 'ljust')
 
-                if not greedy:
-                    break
-        else:
-            if greedy:
-                start = haystack.rfind(needle, offset)
-            else:
-                start = haystack.find(needle, offset)
-            length = len(needle)
+def string_find(S, sub, start=0, end=None):
+    if isinstance(sub, str):
+        return len(sub), S.find(sub, start, end)
+    if _isre(sub):
+        for m in re.finditer(sub, S):
+            __start, __end = m.span()
+            if __start > start and (end is None or __end < end):
+                return __end - __start, __start
+        return -1, -1
 
-        if start > -1:
-            return start, length, i
-    return start, length, -1
+def string_rfind(S, sub, start=0, end=None):
+    if isinstance(sub, str):
+        return len(sub), S.rfind(sub, start, end)
+    # if isinstance(sub, Pattern):
+    if _isre(sub):
+        _start, _end = -1, -2
+        for m in re.finditer(sub, S):
+            __start, __end = m.span()
+            if __start > start and (end is None or __end < end):
+                _start, _end = __start, __end
+        return _end - _start, _start
 
 class String:
     """result of string_between operation"""
@@ -83,110 +73,145 @@ class String:
             self.start = l
         if r is not None:
             self.end = r
+        # on failure return empty string but store None
+        if result is None:
+            result = ''
         return self if self.retn_class else result
 
-def string_between(left, right, subject, start=0, end=None, inclusive=False, greedy=False, rightmost=False, repl=None, retn_all_on_fail=False, retn_class=False, repeat="TODO"):
+    def found(self):
+        if self.result is not None and \
+                self.start is not None and self.start != -1 and \
+                self.end is not None and self.end != -1:
+                    return True
+        return False
+
+def string_between(left, right, subject, *args, **kwargs):
     """
+    string_between(left, right, subject, [,start [,end]] [,greedy=False] [,inclusive=False] [,repl=None] [,retn_all_on_fail=False] [,retn_class=False] [,rightmost=False]) -> str
+
+
     Return the substring sub delineated by being between the
     strings `left` and `right`, and such that sub is contained
-    within subject[start:end].  Optional arguments start and
+    within subject[start:end].  Optional default_arguments start and
     end are interpreted as in slice notation.
     
     Return the string between `left` and `right` or empty string on failure
 
-    :param left [str|re|list]: left anchor, or '' for start of subject; lists are shoddy; TODO: regex
-    :param right [str|re|list]: right anchor, or '' for end of subject; lists are shoddy; TODO: regex
-    :param subject: string to be searched
-    :param start: start index for search
-    :param end: start and end are interpreted as in slice notation.
-    :param inclusive: include anchors in result
-    :param greedy: match biggest span possible
-    :param rightmost: match rightmost span possible by greedily searching for `left`; implies `greedy`
-    :param repl [str|callable]: replace span with string (or callable)
-    :param retn_all_on_fail: return original string if match not made
-    :param retn_class: return result as String object
-    :return: str: matched span | modified string | original string | String object
+    @param left str|re|list: left anchor, or '' for start of subject; regex must be compiled
+    @param right str|re|list: right anchor, or '' for end of subject; regex must be compiled
+    @param subject: string to be searched
+    @param start: start index for search
+    @param end: start and end are interpreted as in slice notation.
+    @param greedy: match biggest span possible
+    @param inclusive: include anchors in result
+    @param repl [str|callable]: replace span with string (or callable)
+    @param retn_all_on_fail: return original string if match not made
+    @param retn_class: return result as String object
+    @param rightmost: match rightmost span possible by greedily searching for `left`; implies `greedy`
+    @return matched span | modified string | original string | empty String object
     
     Note: regular expressions must be compiled
 
     If left and right are lists, then string_between() takes a value from
     each list and uses them as left and right on subject. If right has
     fewer values than left, then an empty string is used for the rest of
-    replacement values. If left is a list and right is a string, then
-    this replacement string is used for every value of left. The converse
-    would not make sense, though.
+    replacement values. The converse applies. If left is a list and right 
+    is a string, then this replacement string is used for every value of left. 
+    The converse also applies.
 
     """
-    if isinstance(left, list):
-        if isinstance(right, list):
-            if len(right) < len(left):
-                right.extend([''] * len(left) - len(right))
+    # get kwargs into variables
+    default_arguments = [
+            ('start',            0),
+            ('end',              None),
+            ('repl',             None),
+            ('inclusive',        False),
+            ('greedy',           False),
+            ('rightmost',        False),
+            ('retn_all_on_fail', False),
+            ('retn_class',       False)]
+    # regex for manipulating named variables
+    # start|end|inclusive|greedy|rightmost|repl|retn_all_on_fail|retn_class|
+    # left, right, subject, start=0, end=None, inclusive=False, greedy=False, rightmost=False, repl=None, retn_all_on_fail=False, retn_class=False
+    # vim regex for above: s/\(\w\+\)=\([^ ,]\+\)/.../g
+    v = AttrDict(kwargs)
+    for _key, _value in zip(['start', 'end'], args):
+        v[_key] = _value
+    for _key, _value in default_arguments:
+        if _key not in v:
+            v[_key] = _value
+
+    # Handle `left` or `right` being a list
+    _list = None
+    if _isIterable(left):
+        _list = []
+        if not _isIterable(right):
+            _list = [(x, right) for x in left]
         else:
-            right = [right] * len(left)
-        for l, r in zip(left, right):
-            result = string_between(l, r, subject=subject, inclusive=inclusive, greedy=greedy, repl=repl, retn_all_on_fail=retn_all_on_fail, retn_class=retn_class, repeat=repeat)
-            if result:
-                return result
-        return ''
+            for x, y in itertools.zip_longest(left, right, fillvalue=''):
+                _list.append((x, y))
+    elif _isIterable(right):
+        _list = [(left, x) for x in right]
 
-        
-    #  Maybe it will work on lists, who knows
-    #  if not isinstance(subject, string_types):
-        #  return None
-    llen = len(left)
-    rlen = len(right)
-    r = len(subject) - start
-    #  rlen = 0
-    #  if isre(left):
-        #  m = re.search(left, match)
-        #  if m:
-            #  l, llen = m.span()
-            #  llen -= l
-        #  else:
-            #  l = -1
-    #  else:
-    if rightmost:
-        greedy = True
-        if not right:
-            l = subject.rfind(left, start, end)
+    if _list:
+        _old_retn_class = v.retn_class
+        v.retn_class = True
+        _result = []
+        for _l, _r in _list:
+            _rv = string_between(_l, _r, subject, **v)
+            if _rv.found():
+                _result.append(_rv if _old_retn_class else _rv.result)
+        v.retn_class = _old_retn_class 
+        if v.retn_class:
+            return _result
+        return _result[0] if _result else ''
 
-    l = subject.find(left, start, end)
+
+    # regular processing starts here
     
-    #  l, llen, i = sfind(subject, left)
-    result = String(l, r, subject, retn_class)
-    if not ~l:
-        if repl is not None or retn_all_on_fail: return result.ret(subject)
-        return result.ret('')
+    r = len(subject) - v.start
 
-        #  if not greedy:
-            #  r = subject.find(right, l + llen)
+    if v.rightmost:
+        v.greedy = True
+        if not right:
+            l = string_rfind(subject, left, v.start, v.end)
+
+    llen, l = string_find(subject, left, v.start, v.end)
+    
+    result = String(l, None, subject, v.retn_class)
+    if not ~l:
+        if v.repl is not None or v.retn_all_on_fail: return result.ret(subject, l)
+        return result.ret(None, l)
+
+    #  llen = string_len(left) 
+    #  rlen = string_len(right) 
     if right:
-        # TODO: this will fuck up if there is an empty elemnt in list, and greedy is not True
-        #  r, rlen, i = sfind(subject, right, l + llen, greedy, i)
-        #  else:
-        if greedy:
-            r = subject.rfind(right, start, end)
-            if rightmost and ~r:
-                l = subject.rfind(left, start, r)
+        if v.greedy:
+            rlen, r = string_rfind(subject, right, v.start, v.end)
+            if v.rightmost and ~r:
+                l = string_rfind(subject, left, v.start, r)
         else:
-            r = subject.find(right, l + llen, end)
+            rlen, r = string_find(subject, right, l + llen, v.end)
+    else:
+        rlen = 0
+
     if not ~r or r < l + llen:
-        if repl is not None or retn_all_on_fail: return result.ret(subject, r=r)
-        return result.ret('', r=r)
-    if inclusive and r:
+        if v.repl is not None or v.retn_all_on_fail: return result.ret(subject, l, r)
+        return result.ret('', l, r)
+    if v.inclusive and r:
         r += rlen
     else:
         l += llen
-    if repl is None:
-        return result.ret(subject[l:r], l=l, r=r)
-    if callable(repl):
-        return result.ret(subject[0:l] + repl(subject[l:r]) + subject[r:], l=l, r=r)
-    return result.ret(subject[0:l] + repl + subject[r:], l=l, r=r)
+    if v.repl is None:
+        return result.ret(subject[l:r], l, r)
+    if callable(v.repl):
+        return result.ret(subject[0:l] + v.repl(subject[l:r]) + subject[r:], l, r)
+    return result.ret(subject[0:l] + v.repl + subject[r:], l, r)
 
 
 string_between_repl = string_between
 
-def without(o, *values):
+def _without(o, *values):
     """
     Return a version of the array that does not contain the specified
     value(s), or object that doesn't contain the specified key(s)
@@ -209,14 +234,12 @@ def string_between_all(left, right, subject, start=0, limit=512, **kwargs):
     s = subject
     while limit > 0:
         limit -= 0
-        result = string_between(left, right, s, start, retn_class=1, **(without(kwargs, 'start', 'retn_class')))
+        result = string_between(left, right, s, start, retn_class=1, **(_without(kwargs, 'start', 'retn_class')))
 
         # result.start == result.end should be ok if it was an empty match
         # result.end == 0 **might** be okay, but not sure, leaving it as end-of-results for now, as it will cause looping issues
         if result.start < 0 or result.end < 1 or result.end < result.start:
             break
-
-        # print("[debug] result:{}".format(pf(read_everything(result))))
 
         results.append(result)
 
@@ -246,7 +269,7 @@ def string_between_splice(left, right, subject, inclusive=False, greedy=False, r
     return '', subject
 
 
-def string_between_test():
+def _test_string_between_1():
     def recurse(s, debt=0):
         s = s[1:-1].strip()
         if s:
@@ -269,19 +292,7 @@ def string_between_test():
     s = '((bulletProof | (fireProof | (collisionProof | (meleeProof | (explosionProof | (steamProof | (drownProof << 1)) << 4) << 4) << 1) << 1) << 1) << 4)'
     print(string_between('(', ')', s, inclusive=1, greedy=1, repl=recurse))
 
-class escape_lut(object):
-    data = """
-        (:close=),esc=\\
-        [:close=],esc=\\
-        {:close=},esc=\\
-        \"\"\":close=\"\"\"),esc=\\
-        ''':close=''',esc=\\
-        ':close=',esc=\\
-        ":close=",esc=\\
-    """
-
-
-def test_string_between():
+def _test_string_between():
     def test_assert(stmt):
         if not stmt:
             raise RuntimeError('test_assert failed')
@@ -292,7 +303,7 @@ def test_string_between():
     test_assert(lhs == '')
     test_assert(rhs == '...')
 
-def test_ce_pointer_parse():
+def _test_ce_pointer_parse():
     subject = "[[[[5+5]+10]+20]+2]+1"
     resolve = []
 
@@ -307,8 +318,6 @@ def test_ce_pointer_parse():
     def ptr_parse_recursive(subject, initial=False):
         string = string_between("[", "]", subject, greedy=1, inclusive=1, repl='')
         needle = ''
-        # dprint("[debug] needle, string")
-        print("[debug] needle:{}, string:{}".format(needle, string))
         
         subject = string_between("[", "]", subject, greedy=1, inclusive=0, retn_all_on_fail=0)
         print("subject: {}".format(subject))
@@ -327,6 +336,4 @@ def test_ce_pointer_parse():
     print("result: {}".format(ptr_parse_recursive(subject, initial=1)))
     print("resolve: {}".format(resolve))
 
-#  test_ce_pointer_parse()
-
-# string_between_test()
+_test_ce_pointer_parse()
