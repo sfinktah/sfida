@@ -29,7 +29,7 @@ def _find(filenames, test=os.path.isfile):
                     return fn
     raise ExecFileError("Can't _find file {}".format(filename))
 
-def extend(obj, *args):
+def _extend(obj, *args):
     """
     adapted from underscore-py
     Extend a given object with all the properties in
@@ -49,62 +49,134 @@ def unload(pattern):
         print("unloading {}".format(x))
         del sys.modules[x]
 
-def isflattenable(iterable):
+def module_match(pattern):
+    return [x for x in sys.modules.keys() if re.match(pattern, x)]
+
+def find_in_modules(pattern):
+    return [x[1] for x in [(hasattr(sys.modules[m], pattern), m) for m in sys.modules] if x[0]]
+
+def unload_from_all_modules(pattern, module_regex=None):
+    for x in [x for x in sys.modules.keys() if not module_regex or re.match(module_regex, x)]:
+        m = sys.modules[x]
+        for sub in dir(m):
+            if re.match(pattern, sub):
+                print("{}::{}".format(x, sub))
+                if sys.version_info.major >= 3:
+                    import importlib
+                    importlib.reload(m)
+
+def _isflattenable(iterable):
     return hasattr(iterable,'__iter__') and not hasattr(iterable,'isalnum')
 
-def _make_execfile():
-    def _execfile(filename, _globals=None, args=[]):
-        if isflattenable(filename):
-            return [_execfile(x, _globals, args) for x in filename]
+# def _make_execfile():
+#     def _execfile(filename, _globals=None, args=[]):
+#         if _isflattenable(filename):
+#             return [_execfile(x, _globals, args) for x in filename]
+# 
+#         filenames = [filename]
+#         fn, ext = os.path.splitext(filename)
+#         if not ext:
+#             filenames.append(os.path.extsep.join([fn, 'py']))
+# 
+#         full_path = _find(filenames)
+# 
+#         # ensure consistency
+#         full_path = os.path.abspath(full_path)
+# 
+#         #  if getattr(builtins, 'execfile', 0):
+#             #  if _globals:
+#                 #  return builtins.execfile(full_path, _globals)
+#             #  return builtins.execfile(full_path)
+# 
+#         argv = sys.argv
+#         sys.argv = [ full_path ]
+#         sys.argv.extend(args)
+# 
+#         if _globals is None:
+#             _globals = dict(inspect.getmembers(
+#                 inspect.stack()[1][0]))["f_globals"]
+#         _ori_globals = {k: _globals.get(k, None) for k in ('__file__', '__name')}
+# 
+#         
+#         if hasattr(builtins, 'execfile'):
+#             return builtins.execfile(full_path, _extend(_globals, {  "__file__": full_path }))
+#         try:
+#             with open(full_path, "rb") as file:
+#                 raw = file.read()
+#             encoding = "UTF-8" # UTF-8 by default: https://www.python.org/dev/peps/pep-3120/
+# 
+#             encoding_pat = re.compile(r'\s*#.*coding[:=]\s*([-\w.]+).*')
+#             for line in raw.decode("ASCII", errors='replace').split("\n"):
+#                 match = encoding_pat.match(line)
+#                 if match:
+#                     encoding = match.group(1)
+#                     break
+# 
+#             code = compile(raw.decode(encoding), full_path, 'exec')
+#             exec(code, _extend(_globals, {  "__file__": full_path,
+#                                            "__name__": "__main__" }))
+# 
+#         except Exception as e:
+#             print("%s\n%s" % (str(e), traceback.format_exc()))
+#         finally:
+#             sys.argv = argv
+#             _extend(_globals, _ori_globals)
+#     return _execfile
+# 
+# execfile = _make_execfile()
 
-        filenames = [filename]
-        fn, ext = os.path.splitext(filename)
-        if not ext:
-            filenames.append(os.path.extsep.join([fn, 'py']))
+def execfile(filename, _globals=None, args=[]):
+    if _isflattenable(filename):
+        return [_execfile(x, _globals, args) for x in filename]
 
-        full_path = _find(filenames)
+    filenames = [filename]
+    fn, ext = os.path.splitext(filename)
+    if not ext:
+        filenames.append(os.path.extsep.join([fn, 'py']))
 
-        # ensure consistency
-        full_path = os.path.abspath(full_path)
+    full_path = _find(filenames)
 
-        #  if getattr(builtins, 'execfile', 0):
-            #  if _globals:
-                #  return builtins.execfile(full_path, _globals)
-            #  return builtins.execfile(full_path)
+    # ensure consistency
+    full_path = os.path.abspath(full_path)
 
-        argv = sys.argv
-        sys.argv = [ full_path ]
-        sys.argv.extend(args)
+    #  if getattr(builtins, 'execfile', 0):
+        #  if _globals:
+            #  return builtins.execfile(full_path, _globals)
+        #  return builtins.execfile(full_path)
 
-        if _globals is None:
-            _globals = dict(inspect.getmembers(
-                inspect.stack()[1][0]))["f_globals"]
-        _ori_globals = {k: _globals.get(k, None) for k in ('__file__', '__name')}
+    argv = sys.argv
+    sys.argv = [ full_path ]
+    sys.argv.extend(args)
 
-        try:
-            with open(full_path, "rb") as file:
-                raw = file.read()
-            encoding = "UTF-8" # UTF-8 by default: https://www.python.org/dev/peps/pep-3120/
+    if _globals is None:
+        _globals = dict(inspect.getmembers(
+            inspect.stack()[1][0]))["f_globals"]
+    _ori_globals = {k: _globals.get(k, None) for k in ('__file__', '__name')}
 
-            encoding_pat = re.compile(r'\s*#.*coding[:=]\s*([-\w.]+).*')
-            for line in raw.decode("ASCII", errors='replace').split("\n"):
-                match = encoding_pat.match(line)
-                if match:
-                    encoding = match.group(1)
-                    break
+    
+    if hasattr(builtins, 'execfile'):
+        return builtins.execfile(full_path, _extend(_globals, {  "__file__": full_path }))
+    try:
+        with open(full_path, "rb") as file:
+            raw = file.read()
+        encoding = "UTF-8" # UTF-8 by default: https://www.python.org/dev/peps/pep-3120/
 
-            code = compile(raw.decode(encoding), full_path, 'exec')
-            exec(code, extend(_globals, {  "__file__": full_path,
-                                           "__name__": "__main__" }))
+        encoding_pat = re.compile(r'\s*#.*coding[:=]\s*([-\w.]+).*')
+        for line in raw.decode("ASCII", errors='replace').split("\n"):
+            match = encoding_pat.match(line)
+            if match:
+                encoding = match.group(1)
+                break
 
-        except Exception as e:
-            print("%s\n%s" % (str(e), traceback.format_exc()))
-        finally:
-            sys.argv = argv
-            extend(_globals, _ori_globals)
-    return _execfile
+        code = compile(raw.decode(encoding), full_path, 'exec')
+        exec(code, _extend(_globals, {  "__file__": full_path,
+                                       "__name__": "__main__" }))
 
-execfile = _make_execfile()
+    except Exception as e:
+        print("%s\n%s" % (str(e), traceback.format_exc()))
+    finally:
+        sys.argv = argv
+        _extend(_globals, _ori_globals)
 
 def make_refresh(_file, _globals = None):
     if _globals is None:
@@ -186,8 +258,10 @@ def _require(modulename, package=None):
     # setattr(parent_module, modulename, m)
     return m
 
+def _funcname():
+    return inspect.currentframe(1).f_code.co_name
 
-def _import(import_stmt, default_cmd='import'):
+def _import(import_stmt, default_cmd='import', global_depth=0):
     """
     import_stmt     ::= "import" module ["as" name] ( "," module ["as" name] )*
                     | "from" relative_module "import"     identifier ["as" name] ( "," identifier ["as" name] )*
@@ -198,8 +272,16 @@ def _import(import_stmt, default_cmd='import'):
     name            ::= identifier
 
     TODO: relative_modules or just things with '.' in them
+          (though this generally seems to work, though not exhaustively tested)
+          see: https://docs.python.org/3/tutorial/modules.html#packages
     """
+    debug = 1
+    if debug: print("*** {} ***".format(import_stmt))
     debug = 0
+    if default_cmd not in import_stmt:
+        # lazy invocation: `_import('module')`
+        if debug: print("inserting '{}' prefix".format(default_cmd))
+        import_stmt = default_cmd + ' ' + import_stmt
     rflags = 0
     re_list = [
         # testing: import multiple, modules [as name]
@@ -223,8 +305,7 @@ def _import(import_stmt, default_cmd='import'):
 
     # allow custom global space, else default to callee's
     _globals = dict(inspect.getmembers(
-        inspect.stack()[1][0]))["f_globals"]
-
+                inspect.stack()[global_depth + 1][0]))["f_globals"]
     result = {}
     # check each pattern (order is important!) to find correct parser
     for pattern in re_list:
@@ -238,14 +319,14 @@ def _import(import_stmt, default_cmd='import'):
                 for module, _as, name in [x.partition(' as ') for x in d['fromcsv'].split(', ')]:
                     if debug: print("importing " + str(module) + " as " + str(name or module))
                     result[name or module] = _require(module)
-                extend(_globals, result)
+                _extend(_globals, result)
                 return result
             elif 'fromcsv' in k:
                 # from x import foo, bar as baz
                 o = _require(d['module'])
                 for identifier, _as, name in [x.partition(' as ') for x in d['fromcsv'].split(', ')]:
                     result[name or identifier] = getattr(o, identifier)
-                extend(_globals, result)
+                _extend(_globals, result)
                 return result
             elif 'asterisk' in k:
                 # from x import *
@@ -254,7 +335,7 @@ def _import(import_stmt, default_cmd='import'):
                 members = inspect.getmembers(o)
                 for key in [x[0] for x in members if not x[0].startswith('__')]:
                     result[key] = getattr(o, key)
-                extend(_globals, result)
+                _extend(_globals, result)
                 return result
             elif 'identifier' in k:
                 # from x import y [as z]
@@ -273,7 +354,7 @@ def _import(import_stmt, default_cmd='import'):
                     pass
                     # #  if debug: print(f"imported {d['module']}.{d['identifier']} as {d['identifier']}")
                 result[id] = o
-                extend(_globals, result)
+                _extend(_globals, result)
                 return result
             elif 'as' in k:
                 # simple import x as y
@@ -285,21 +366,18 @@ def _import(import_stmt, default_cmd='import'):
                     # no need to write to _globals, _require will do this by default
                     result[d['module']] = o
                     # if debug: print(f"imported {d['module']} as itself")
-                extend(_globals, result)
+                _extend(_globals, result)
                 return result
             elif 'module' in k:
                 # vanila import
                 # if debug: print(f"imported {d['module']} (vanilla)")
                 result[d['module']] = _require(d['module'])
-                extend(_globals, result)
+                _extend(_globals, result)
                 return result
-        elif default_cmd not in import_stmt:
-            # lazy invocation: `_import('module')`
-            if debug: print("re-invoking with 'import ' prefixed")
-            return _import(default_cmd + ' ' + import_stmt)
 
     raise ImportError("Couldn't interpret '{}'".format(import_stmt))
 
-def _from(import_stmt, default_cmd='from'):
-    return _import(import_stmt, default_cmd=default_cmd)
+def _from(import_stmt):
+    # inspect.currentframe().f_code.co_name
+    return _import(import_stmt, default_cmd="from", global_depth=1)
 

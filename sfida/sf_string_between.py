@@ -1,6 +1,11 @@
 #!/usr/bin/env python
+""" python3 -m doctest -v doctest_hashed_values_tests.py """
 import itertools
 import re, os
+try:
+    from attrdict import AttrDict
+except:
+    pass
 # requires py > 3.6
 # from typing import Pattern
 
@@ -26,16 +31,10 @@ _re_pattern = re.compile(r'.')
 def _isre(e):
     return type(e) == type(_re_pattern)
 
-
-class AttrDict(dict):
-    def __init__(self, *args, **kwargs):
-        super(AttrDict, self).__init__(*args, **kwargs)
-        self.__dict__ = self
-
 def _isIterable(o):
     return hasattr(o, '__iter__') and not hasattr(o, 'ljust')
 
-def string_find(S, sub, start=0, end=None):
+def _string_find(S, sub, start=0, end=None):
     if isinstance(sub, str):
         return len(sub), S.find(sub, start, end)
     if _isre(sub):
@@ -45,7 +44,7 @@ def string_find(S, sub, start=0, end=None):
                 return __end - __start, __start
         return -1, -1
 
-def string_rfind(S, sub, start=0, end=None):
+def _string_rfind(S, sub, start=0, end=None):
     if isinstance(sub, str):
         return len(sub), S.rfind(sub, start, end)
     # if isinstance(sub, Pattern):
@@ -57,7 +56,7 @@ def string_rfind(S, sub, start=0, end=None):
                 _start, _end = __start, __end
         return _end - _start, _start
 
-class String:
+class StringBetweenResult:
     """result of string_between operation"""
 
     def __init__(self, start, end, subject, retn_class, result = None):
@@ -106,9 +105,9 @@ def string_between(left, right, subject, *args, **kwargs):
     @param inclusive: include anchors in result
     @param repl [str|callable]: replace span with string (or callable)
     @param retn_all_on_fail: return original string if match not made
-    @param retn_class: return result as String object
+    @param retn_class: return result as StringBetweenResult object
     @param rightmost: match rightmost span possible by greedily searching for `left`; implies `greedy`
-    @return matched span | modified string | original string | empty String object
+    @return matched span | modified string | original string | empty StringBetweenResult object
     
     Note: regular expressions must be compiled
 
@@ -118,6 +117,22 @@ def string_between(left, right, subject, *args, **kwargs):
     replacement values. The converse applies. If left is a list and right 
     is a string, then this replacement string is used for every value of left. 
     The converse also applies.
+
+    Examples:
+    ---------
+
+    >>> s = 'The *quick* brown [fox] jumps _over_ the **lazy** [dog]'
+    >>> string_between('[', ']', s)
+    'fox'
+
+    >>> string_between('[', ']', s, inclusive=True)
+    '[fox]'
+
+    >>> string_between('[', ']', s, rightmost=True)
+    'dog'
+
+    >>> string_between('[', ']', s, inclusive=True, greedy=True)
+    '[fox] jumps _over_ the **lazy** [dog]'
 
     """
     # get kwargs into variables
@@ -171,14 +186,16 @@ def string_between(left, right, subject, *args, **kwargs):
     
     r = len(subject) - v.start
 
+    l = -2
     if v.rightmost:
         v.greedy = True
         if not right:
-            l = string_rfind(subject, left, v.start, v.end)
+            llen, l = _string_rfind(subject, left, v.start, v.end)
 
-    llen, l = string_find(subject, left, v.start, v.end)
+    if l == -2:
+        llen, l = _string_find(subject, left, v.start, v.end)
     
-    result = String(l, None, subject, v.retn_class)
+    result = StringBetweenResult(l, None, subject, v.retn_class)
     if not ~l:
         if v.repl is not None or v.retn_all_on_fail: return result.ret(subject, l)
         return result.ret(None, l)
@@ -187,14 +204,15 @@ def string_between(left, right, subject, *args, **kwargs):
     #  rlen = string_len(right) 
     if right:
         if v.greedy:
-            rlen, r = string_rfind(subject, right, v.start, v.end)
+            rlen, r = _string_rfind(subject, right, v.start, v.end)
             if v.rightmost and ~r:
-                l = string_rfind(subject, left, v.start, r)
+                llen, l = _string_rfind(subject, left, v.start, r)
         else:
-            rlen, r = string_find(subject, right, l + llen, v.end)
+            rlen, r = _string_find(subject, right, l + llen, v.end)
     else:
         rlen = 0
 
+    
     if not ~r or r < l + llen:
         if v.repl is not None or v.retn_all_on_fail: return result.ret(subject, l, r)
         return result.ret('', l, r)
@@ -207,9 +225,6 @@ def string_between(left, right, subject, *args, **kwargs):
     if callable(v.repl):
         return result.ret(subject[0:l] + v.repl(subject[l:r]) + subject[r:], l, r)
     return result.ret(subject[0:l] + v.repl + subject[r:], l, r)
-
-
-string_between_repl = string_between
 
 def _without(o, *values):
     """
@@ -258,14 +273,27 @@ def string_between_splice(left, right, subject, inclusive=False, greedy=False, r
     Since Python does not support passing strings by reference, both
     the removed section and the new string are returned in a tuple.
 
-    Example Usage:
-    (needle, str) = string_between_splice('[', ']', str, repl = 'replaced')
+    @param left str|re|list: left anchor, or '' for start of subject; regex must be compiled
+    @param right str|re|list: right anchor, or '' for end of subject; regex must be compiled
+    @param subject: string to be searched
+    @param greedy: match biggest span possible
+    @param inclusive: include anchors in result
+    @param repl [str|callable]: replace span with string (or callable)
 
     :return: tuple(matched, modifed_string)
+
+    Example Usage:
+    --------------
+
+    >>> s = "mov lea, [rbp+10h]"
+    >>> needle, s = string_between_splice('[', ']', s, repl='rsp')
+    >>> needle, s
+    ('rbp+10h', 'mov lea, [rsp]')
+
     """
-    needle = string_between_repl(left, right, subject, inclusive, greedy)
+    needle = string_between(left, right, subject, inclusive=inclusive, greedy=greedy)
     if needle:
-        return needle, string_between_repl(left, right, subject, inclusive, greedy, repl)
+        return needle, string_between(left, right, subject, inclusive=inclusive, greedy=greedy, repl=repl)
     return '', subject
 
 
