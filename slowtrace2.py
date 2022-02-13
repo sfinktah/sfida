@@ -977,7 +977,7 @@ def slowtrace2(ea=None,
     slvars.rspMarks = dict()
     slvars.rspHist = RunLengthList()
     slvars.insnCount = 0
-    # if debug: sprint("Start of slowtrace, type rspHist: {}".format(type(slvars.rspHist)))
+    if debug: print("Start of slowtrace, type rspHist: {}".format(type(slvars.rspHist)))
 
     slvars2.appendLines = []
     slvars2.outputLines = []
@@ -1061,13 +1061,19 @@ def slowtrace2(ea=None,
 
         os.chdir(dir)
 
+        path = None
         if os.path.exists('C:/Users/sfink/Downloads/cyg-packages/bin'):
             path = 'C:/Users/sfink/Downloads/cyg-packages/bin'
         elif os.path.exists('C:/cygwin64/bin'):
             path = 'C:/cygwin64/bin'
 
         vim_filename = 'cmdvim.bat'
-        vim_executable_filepath = os.path.join(path, vim_filename)
+        if path is None:
+            vim_executable_filepath = r'C:\Program Files (x86)\Vim\vim82\gvim.exe'
+            if not os.path.exists(dot_executable_filepath):
+                raise Exception("Please install gvim from https://www.vim.org/download.php")
+        else:
+            vim_executable_filepath = os.path.join(path, vim_filename)
 
         args = list()
         args.append("%s.lst" % asmName)

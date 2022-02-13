@@ -1111,7 +1111,7 @@ def xenprocess(s):
 def infamous():
     keys = []
     result = []
-    for i, v in enumerate(get_seperated_lines(process_cygwin_symlinks('/tmp/infamouscheats.sfinktah.posts.processed.txt'), '\t')):
+    for i, v in enumerate(get_seperated_lines(process_cygwin_symlinks('/tmp/.sfinktah.posts.processed.txt'), '\t')):
         if i == 0:
             keys = v
         else:

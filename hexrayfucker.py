@@ -72,7 +72,8 @@ class FuncArg(object):
         lhs = lhs.strip()
         rhs = rhs.strip()
 
-        for x, y in zip(["type", "indirection", "name"], [lhs, stars, rhs]):
+        # still working on it
+        # for x, y in zip(["type", "indirection", "name"], [lhs, stars, rhs]):
 
         self._type = lhs
         self._indirections = stars

@@ -3137,7 +3137,10 @@ def RecurseCallers(ea=None, width=512, data=0, makeChart=0, exe='dot', depth=5, 
     })
 
 
-def RecurseCallersChart(ea, width=512, includeSubs=0, depth=5, exe='dot'):
+def RecurseCallersChart(ea, width=512, includeSubs=0, depth=5, exe='dot', new=False):
+    if new:
+        chart2.clear()
+        colors.clear()
     par = locals()
     chart = RecurseCallers(makeChart=1, data=1, **par)
     for left, right in chart:
@@ -3982,6 +3985,9 @@ def dot_draw(string, name="default", exe="dot"):
     path = r'c:\Program Files\Graphviz\bin'
     dot_filename = exe + ".exe"
     dot_executable_filepath = os.path.join(path, dot_filename)
+
+    if not os.path.exists(dot_executable_filepath):
+        raise Exception("Please install graphviz from https://graphviz.org/download/")
 
     args = list()
     args.append("-Tsvg")
