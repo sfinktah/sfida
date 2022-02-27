@@ -969,4 +969,56 @@ def diStrip(ea1=None, ea2=None):
     return 0
 
 
+def shr(dest, count=1, bits=64):
+    return (dest & (1 << bits) - 1) >> count
 
+def sar(dest, count=1, bits=64):
+    return (dest >> count) & (1 << bits) - 1
+
+def rol(value, count=1, nbits=64):
+    offset = 0
+    return idc.rotate_left(value & (1 << bits) - 1, count, nbits, offset) & (1 << bits) - 1
+
+def ror(dest, count=1, bits=64):
+    return rol(dest, -count)
+
+def imul(subject, by, bits=64):
+    r = (subject & (1 << bits) - 1) * by
+    return ( r >> bits, r & (1 << bits) - 1 )
+
+def shv86():
+    shvScriptSize = 0x68
+    shvScripts_first = 0x180164FF8
+    shvScripts_size = 31
+    shvScripts_last = shvScripts_first + shvScripts_size * shvScriptSize
+    #  inc     ebx
+    #  mov     rcx, cs:shvScripts.last
+    rcx = shvScripts_last
+    #  mov     r8, cs:shvScripts.first
+    r8 = shvScripts_first
+    #  sub     rcx, r8
+    rcx -= r8
+    #  mov     rax, rdi        ; 0x4EC4EC4EC4EC4EC5
+    rax = 0x4EC4EC4EC4EC4EC5
+    #  imul    rcx             ; RDX:RAX ← RAX ∗ r/m64.
+                            #  ; rcx /= 13
+    print("imul input:  {:x}, {:x}".format(rcx, rax))
+    rdx, rax = imul(rcx, rax)
+    print("imul result: {:x}, {:x}".format(rdx, rax))
+    #  sar     rdx, 5          ; 0x220 -> 17
+    rdx = sar(rdx, 5)
+    #  mov     rax, rdx
+    rax = rdx
+    #  shr     rax, 3Fh
+    #  dealing with carry? neg number?
+    rax = shr(rax, 0x3f)
+    #  add     rdx, rax
+    rdx += rax
+    #  mov     eax, ebx
+    # ???
+    #  cmp     rdx, rax
+    return dict({
+        'rax': rax,
+        'rcx': rcx,
+        'rdx': rdx,
+    })

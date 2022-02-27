@@ -3,7 +3,7 @@
 import itertools
 import re, os
 try:
-    from attrdict import AttrDict
+    from attrdict1 import AttrDict
 except:
     pass
 # requires py > 3.6

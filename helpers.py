@@ -7,7 +7,7 @@ import json
 import os
 import idc
 import circularlist
-from attrdict import AttrDict
+from attrdict1 import AttrDict
 #  import pydot.src.pydot
 
 from execfile import make_refresh

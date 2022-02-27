@@ -7,7 +7,7 @@ import traceback
 import inspect
 import subprocess
 from superglobals import *
-from attrdict import AttrDict
+from attrdict1 import AttrDict
 _import("progress")
 # _import("from rle import RunLengthList")
 from rle import RunLengthList

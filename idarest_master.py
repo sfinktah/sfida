@@ -1,4 +1,5 @@
 import socket
+from underscore3 import _
 try:
     from .idarest_mixins import IdaRestConfiguration
 except:
@@ -161,6 +162,26 @@ def idarest_master():
         def show(self, args):
             return self.get_json(self.hosts, {'ping': time.time()}, readonly=True)
 
+        def fail(self, args):
+            if 'idb' not in args:
+                raise HTTPRequestError("idb param not specified", 400)
+            key = _.find(self.host, lambda x, *a: x['idb'] == args['idb'])
+            if key in self.hosts:
+                if idarest_master_plugin_t.config['master_debug']: print("[idarest_master::Handler::unregister] removing existing host {}".format(key))
+                value = self.hosts.pop(key)
+            else:
+                value = dict({
+                    'host': args['host'],
+                    'port': args['port'],
+                    'error': 'not registered',
+                })
+                    
+
+            return value
+
+
+            return self.get_json(self.hosts, {'ping': time.time()}, readonly=True)
+
         def _extract_query_map(self):
             query = urlparse.urlparse(self.path).query
             qd = urlparse.parse_qs(query)
@@ -193,6 +214,8 @@ def idarest_master():
                 message = self.unregister(args)
             elif path == 'show':
                 message = self.show(args)
+            elif path == 'fail':
+                message = self.fail(args)
             elif path == 'term':
                 globals()['instance'].term()
             else:

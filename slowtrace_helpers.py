@@ -127,7 +127,7 @@ def RebuildFuncAndSubs(ea):
     idc.auto_wait()
 
 
-def RecurseCalled(ea=None, width=512, data=0, makeChart=0, exe='dot', includeSubs=0, fixVtables=False):
+def RecurseCalled(ea=None, width=512, depth=5, data=0, makeChart=0, exe='dot', includeSubs=0, fixVtables=False):
     def all_xrefs_from(funcea, iteratee=None):
         if iteratee is None:
             iteratee = lambda x: x
@@ -139,6 +139,20 @@ def RecurseCalled(ea=None, width=512, data=0, makeChart=0, exe='dot', includeSub
                         if x.type in (ida_xref.fl_CF, ida_xref.fl_CN, ida_xref.fl_JF, ida_xref.fl_JN) \
                         and not ida_funcs.is_same_func(funcea, x.to) \
                         and IsFunc_(x.to)])
+
+        xrefs = list(set(xrefs))
+
+        return xrefs
+
+    def vtables_from(funcea, iteratee=None):
+        if iteratee is None:
+            iteratee = lambda x: x
+
+        xrefs = []
+        for (startea, endea) in Chunks(funcea):
+            for head in Heads(startea, endea):
+                xrefs.extend([x.to for x in idautils.XrefsFrom(head) \
+                        if Name(x.to).startswith('??_7')])
 
         xrefs = list(set(xrefs))
 
@@ -156,20 +170,20 @@ def RecurseCalled(ea=None, width=512, data=0, makeChart=0, exe='dot', includeSub
     else:
         pending = set([ea])
         initial = set([GetFuncStart(ea)])
-    depth = 0
     count = 0
     added = [1]
     functionCalls = collections.defaultdict(set)
     namedFunctionCalls = collections.defaultdict(set)
     fwd = dict()
     rev = dict()
+    vtables = set()
 
-    while pending and len(pending) < width:
+    while pending and depth and len(pending) < width:
         target = pending.pop()
         count += 1
         added[0] -= 1
         if added[0] < 1:
-            depth += 1
+            depth -= 1
             added.pop()
 
         visited.add(target)
@@ -184,6 +198,7 @@ def RecurseCalled(ea=None, width=512, data=0, makeChart=0, exe='dot', includeSub
                 calledNames.append(fnName)
                 calledLocs.append(fnStart)
 
+        vtables |= set(vtables_from(fnStart))
         refs = all_xrefs_from(fnStart)
         refs = set(refs)
         refs -= visited
@@ -194,7 +209,35 @@ def RecurseCalled(ea=None, width=512, data=0, makeChart=0, exe='dot', includeSub
 
     return {'calledName': calledNames,
             'calledLocs': calledLocs,
+            'vtables': list(vtables),
            }
+
+def func_rename_vtable_xref(ea=None, **kwargs):
+    """
+    func_rename_vtable_xref
+
+    @param ea: linear address
+    """
+    if isinstance(ea, list):
+        return [func_rename_vtable_xref(x) for x in ea]
+
+    ea = eax(ea)
+
+    o = RecurseCalled(ea, **kwargs)
+    vtables = _.filter(o['vtables'], lambda x, *a: 'HttpTask' in idc.get_name(x, ida_name.GN_DEMANGLED))
+    if len(vtables) == 1:
+        vtables = list(vtables)
+        name = re.findall(r'\w+HttpTask\w*', idc.get_name(vtables[0], ida_name.GN_DEMANGLED))
+        if len(name) == 1:
+            name = name[0]
+            print("{:x} renaming to: {}".format(ea, name))
+            LabelAddressPlus(ea, 'uses_' + name)
+        else:
+            print("{:x} couldn't find matching vtable name".format(ea))
+    else:
+        print("{:x} vtables: {}".format(ea, len(vtables)))
+
+    
 
 def isListOf(o, t):
     if isinstance(o, list):
@@ -2404,7 +2447,8 @@ def hexf16(n):
 def h16list(l):
     return " ".join([hexf16(x) for x in l])
 
-def FindStackMutators(ea):
+def FindStackMutators(ea=None):
+    ea = eax(ea)
     b = asBytes(GetFuncCodeNoJunk(ea))
     i = GetFuncCodeIndexNoJunk(ea)
 
@@ -2887,10 +2931,13 @@ chart2 = list()
 colors = list()
 
 
-def RecurseCallers(ea=None, width=512, data=0, makeChart=0, exe='dot', depth=5, includeSubs=0, fixVtables=False):
+def RecurseCallers(ea=None, width=512, data=0, makeChart=0, exe='dot', depth=5, includeSubs=0, fixVtables=False, new=False):
     global chart2
     global colors
 
+    if new:
+        chart2.clear()
+        colors.clear()
     if ea is None:
         ea = idc.get_screen_ea()
     fnName = idc.get_func_name(ea)
@@ -3081,7 +3128,7 @@ def RecurseCallers(ea=None, width=512, data=0, makeChart=0, exe='dot', depth=5, 
     colors = colorSubs(subs, colors, [fnName])
     if makeChart:
         dot = __DOT.replace('%%MEAT%%', '\n'.join(colors + call_list))
-        chartName = idc.get_name(ea, ida_name.GN_VISIBLE)
+        chartName = idc.get_name(ea, ida_name.GN_VISIBLE) or 'default'
         r = dot_draw(dot, name=chartName, exe=exe)
         print("dot_draw returned: {}".format(r))
         if isinstance(r, tuple):
@@ -3138,9 +3185,6 @@ def RecurseCallers(ea=None, width=512, data=0, makeChart=0, exe='dot', depth=5, 
 
 
 def RecurseCallersChart(ea, width=512, includeSubs=0, depth=5, exe='dot', new=False):
-    if new:
-        chart2.clear()
-        colors.clear()
     par = locals()
     chart = RecurseCallers(makeChart=1, data=1, **par)
     for left, right in chart:
@@ -3501,8 +3545,8 @@ def xrefs_to(ea, iteratee=None):
         return [iteratee(x.frm) for x in idautils.XrefsTo(ea)]
     return [x.frm for x in idautils.XrefsTo(ea)]
 
-def func_xrefs_to(ea=None):
-    return xrefs_to(ea, iteratee=GetFuncStart)
+def func_refs_to(ea=None):
+    return [x for x in xrefs_to(ea, iteratee=GetFuncStart) if x != idc.BADADDR]
 
 def shared_xrefs_to(list_ea, iteratee = None):
     # The first chunk will be the start of the function, from there -- they're sorted in 
@@ -3725,7 +3769,7 @@ def camelCase(st, upper=False, split=None, repl='', splitUpper=True):
 
 
 def camel_case_to_snake_case(s):
-    return ''.join(['_' + c.lower() if c.isupper() else c for c in s]).lstrip('_')
+    return ''.join(['_' + c.lower() if c.isupper() else c for c in str(s)]).lstrip('_')
 
 def camelcase(st, upper=False, split='_', repl='_', splitUpper=False):
     if type(st) is str:
@@ -7247,6 +7291,14 @@ def MakeUniqueLabel(name, ea = BADADDR):
             return tmpName
     return ""
 
+def LabelAddressPlus(ea=None):
+    """
+    LabelAddressPlus
+
+    @param ea: linear address
+    """
+
+
 def LabelAddressPlus(ea, name, force=False, append_once=False, unnamed=False, nousername=False, named=False, throw=False):
     """
     Label an address with name (forced) or an alternative_01
@@ -7262,6 +7314,12 @@ def LabelAddressPlus(ea, name, force=False, append_once=False, unnamed=False, no
         if not result and throw:
             raise RuntimeError("Couldn't label address {:x} with \"{}\"".format(ea, name))
         return result
+
+    if isinstance(ea, list):
+        return [LabelAddressPlus(x, name, force, append_once, unnamed, nousername, named, throw) for x in ea]
+
+    ea = eax(ea)
+    
 
     if nousername:
         unnamed = nousername

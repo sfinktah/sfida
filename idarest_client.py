@@ -2,7 +2,8 @@ import urllib.request, urllib.error, urllib.parse
 import requests
 import json
 from superglobals import *
-from underscore3 import _
+from underscoretest import _
+execfile('underscoretest')
 
 try:
     from .idarest_mixins import IdaRestConfiguration
@@ -42,6 +43,16 @@ class IdaRestClient(IdaRestConfiguration, object):
         self.connect_timeout = IdaRestClient.config['client_connect_timeout']
         self.read_timeout = IdaRestClient.config['client_read_timeout']
         self.update_hosts_timeout = IdaRestClient.config['client_update_hosts_timeout']
+
+    def host_failed(self, url):
+        # http://127.0.0.1:2012/ida/api/v1.0/get_type
+        idb = _.findKey(self.hosts, lambda x, *a: x.startswith(url))
+        if idb:
+            request_url = 'http://{}:{}{}/fail?idb={}'.format(self.master_host, self.master_port, IdaRestClient.config['api_prefix'], urllib.parse.quote(idb))
+            r = requests.get(request_url, timeout=self.update_hosts_timeout)
+            if r.status_code != 200:
+                print("HttpResponseError attempting to inform host about slow client: {}".format(r.status_code))
+                #  raise HttpResponseError(r.status_code)
 
     def update_hosts(self):
         request_url = 'http://{}:{}{}/show'.format(self.master_host, self.master_port, IdaRestClient.config['api_prefix'])
@@ -88,6 +99,11 @@ class IdaRestClient(IdaRestConfiguration, object):
             try:
                 request = requests.get(url + route, params=kwargs, timeout=(self.connect_timeout, self.read_timeout))
             except requests.exceptions.ReadTimeout:
+                print("ReadTimeout: {}".format(url + route))
+                self.host_failed(url)
+                continue
+            except requests.exceptions.ConnectTimeout:
+                print("ConnectTimeout: {}".format(url + route))
                 continue
             if request.status_code != 200:
                 raise HttpResponseError(request.status_code)
@@ -211,3 +227,6 @@ class IdaRestClient(IdaRestConfiguration, object):
         return count
 
 IdaRestClient.load_configuration()
+irc = IdaRestClient()
+irc.read_timeout = 2
+irc.update_hosts_timeout = 2

@@ -911,8 +911,8 @@ def my_print_decls(name, flags = PDF_INCL_DEPS | PDF_DEF_FWD):
     if not ordinals:
         print("[warn] couldn't get ordinals for types '{}'".format(name))
         return ''
-    else:
-        print("[info] ordinals: {}".format(ordinals))
+    #  else:
+        #  print("[info] ordinals: {}".format(ordinals))
 
 
     # dprint("[debug] ordinals")
@@ -2381,11 +2381,77 @@ def add_enum(enum, value, name, toupper=False):
         name = name.upper()
     
     id = idc.get_enum(enum)
-    if id == BADADDR and toupper:
-        id = idc.get_enum(enum.upper())
+    print("get_enum({}): {:x}".format(enum, id))
     if id == BADADDR:
+        for x, y in get_struc_ordinal_re(enum, re.I):
+            name = y
+            id = idc.get_enum(id)
+            print("Found enum {} (#{})".format(name, id))
+    if id == BADADDR:
+        print("id: {}, Adding new enum: {}".format(id, enum))
         id = idc.add_enum(-1, enum, idaapi.hex_flag())
-    return idc.add_enum_member(id, name, value, -1)
+    r = idc.add_enum_member(id, name, value, -1)
+    if r:
+        s = "unknown error adding enum"
+        if r == ida_enum.ENUM_MEMBER_ERROR_NAME:
+            s = """ already have member with this name (bad name) """
+        if r == ida_enum.ENUM_MEMBER_ERROR_VALUE:
+            s = """ already have 256 members with this value """
+        if r == ida_enum.ENUM_MEMBER_ERROR_ENUM:
+            s = """ bad enum id """
+        if r == ida_enum.ENUM_MEMBER_ERROR_MASK:
+            s = """ bad bmask """
+        if r == ida_enum.ENUM_MEMBER_ERROR_ILLV:
+            s = """ bad bmask and value combination (~bmask & value != 0) """
+        print("add_enum: error: {}".format(s))
+    return r
+
+def rage_map(name, T):
+    s = """
+        #define NAME {}
+        #define BUCKET Bucket
+        #define ENTRY Entry
+        #define T {}
+
+        #define KEY_TYPE uint32_t
+        #define SIZE_TYPE uint16_t
+
+        #define VALUE_TYPE T
+        #define ENTRY_STRUCT NAME::ENTRY
+        #define BUCKET_STRUCT NAME::BUCKET
+        #define MAP_STRUCT NAME
+
+        struct ENTRY_STRUCT {{
+            KEY_TYPE key;
+            VALUE_TYPE value;
+            ENTRY_STRUCT* next;
+        }};
+
+        struct BUCKET_STRUCT {{
+            ENTRY_STRUCT* first;
+        }};
+
+        struct MAP_STRUCT {{
+            BUCKET_STRUCT* Buckets;
+            SIZE_TYPE BucketCount;
+            SIZE_TYPE Size;
+            char gapC[3];
+            bool DynamicSize;
+        }};
+    """.format(name, T)
+    return idc.parse_decls(s)
+
+def rage_vector(name, T):
+    s = """
+        struct {}
+        {{
+            {}* elements;
+            uint16_t size;
+            uint16_t reserved;
+        }};
+    """.format(name, T)
+    return idc.parse_decls(s)
+
 
 def add_enum_upper(enum, value, name):
     return add_enum(enum, value, name, toupper=True)

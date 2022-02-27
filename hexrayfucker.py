@@ -998,13 +998,38 @@ def decompile_function(ea):
     # print("decompiled_function_type: line_split", type(f))
     return f
 
-def decompile_function_search(regex, ea, flags = 0):
-    cfunc = str(idaapi.decompile(GetFuncStart(ea)))
-    if isinstance(cfunc, str):
-        return re.search(regex, cfunc, flags)
-    else:
-        print("Couldn't decompile function: %s" % cfunc)
-        return False
+def decompile_function_search(ea, regex, flags = 0):
+    if not isinstance(ea, list):
+        ea = [ea]
+    for addr in ea:
+        try:
+            cfunc = str(idaapi.decompile(GetFuncStart(addr)))
+            if isinstance(cfunc, str):
+                m = re.findall(regex, cfunc)
+                for x in m:
+                    yield x
+        except ida_hexrays.DecompilationFailure:
+            pass
+
+def decompile_SetRandHash():
+    r = []
+    for n in decompile_function_search(
+            xrefs_to('SetRandHash'), 
+            r'SetRandHash\(.*\);'): 
+        r.extend( 
+                [x[6:] for x in paren_multisplit(
+                    string_between('(', ')', n, greedy=1), ',') 
+                    if x.startswith('(Hash)')] 
+        )
+    print(' '.join(
+        _.uniq(
+            _.flatten(
+                [x for x in r if x[0] in ('0 1 2 3 4 5 6 7 8 9 -'.split(' '))
+            ])
+        )
+    ))
+    return [mega.Lookup(int(x)) for x in _.uniq( _.flatten( [x for x in r if x[0] in ('0 1 2 3 4 5 6 7 8 9 -'.split(' ')) ]))]
+
 
 def decompile_hashes(ea=None):
     """
@@ -1020,7 +1045,7 @@ def decompile_hashes(ea=None):
         execfile('e:/git/gta5utilities/megahash.py')
     return [mega.Lookup(int(x, 16)) for x in re.findall(r'\b0x[0-9A-F]{5,8}', str(decompile(ea)))]
 
-def decompile_regex(ea=None, regex=None):
+def decompile_hashes_regex(ea=None, regex=None):
     """
     decompile_hashes
 

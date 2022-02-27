@@ -693,18 +693,21 @@ def sig_globals(ea=None, sig='', sig_offset=0):
                             #  print(" %% Found reference at offset(%i).rip(%i) of instruction offset(%i) of %s" % (offset, instruction_length - offset, instruction_offset, idc.get_func_name(ea)))
                             _offset = sig_offset + instruction_offset + offset
                             _rip = instruction_length - offset
+                            _type = str(idc.get_type(global_address))
+                            if isinstance(_type, str):
+                                _type = _type.replace("__fastcall", "(*)").replace("__stdcall", "(*)").replace("None", "void*")
 
                             sent.add(global_address)
                             print(
                                 sig_protectscan(sig, _offset, _rip,
-                                                idc.get_type(global_address), idc.get_name(global_address), func=IsFuncHead(global_address)))
+                                                _type, idc.get_name(global_address), func=IsFuncHead(global_address)))
                             found += 1
                             results.append( \
                                     { 'ea': global_address,
                                       'name': global_name,
                                       'path': [('offset', _offset), ('is_mnem', idc.print_insn_mnem(instruction_start)), ('rip', _rip), ('name', global_name), ('type', idc.get_type(global_address))],
                                       'sub' : False,
-                                      'type': idc.get_type(global_address) })
+                                      'type': _type })
                             #  pattern = sig_maker_ex(GetFuncStart(global_address), GetFuncEnd(global_address), offset = global_offset + offset, rip = instruction_length - offset, quick = 1) #, type = idc.get_type(global_address))
 
                     if not found:

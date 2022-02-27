@@ -4,7 +4,7 @@ from pprint import PrettyPrinter
 from mypprint import MyPrettyPrinter
 from collections import defaultdict
 from execfile import execfile, _import
-from attrdict import AttrDict
+from attrdict1 import AttrDict
 #  _import('from sfida.sf_string_between import *')
 #  _import('from hotkey_utils import stutter_chunk')
 # execfile('hotkey_utils')

@@ -25,6 +25,18 @@ def recursive_map(seq, func):
         else:
             yield func(item)
 
+def recursive_obj_map(seq, func):
+    for key, item in _.items(seq):
+        if isinstance(item, Sequence):
+            yield key, type(item)(recursive_map(item, func))
+        elif isinstance(item, Collection):
+            yield key, type(item)(recursive_map(item, func))
+        else:
+            yield func(item)
+
+def recursive_obj_map_wrapper(seq, func):
+    return type(seq)(next(recursive_obj_map(seq, func)))
+
 
 def _makeSequenceMapper(f):
     def fmap(seq, iteratee):
@@ -328,6 +340,12 @@ class underscore(object):
         self._clean.any(test)
         return self._wrap(self.ftmp)
     detect = find
+
+    def findKey(self, predicate):
+        keys = self._clean.keys()
+        for key in keys:
+            if predicate(self.obj[key], key, self.obj):
+                return self._wrap(key)
 
     def filterObject(self, func):
         """ Return all the items that pass a truth test

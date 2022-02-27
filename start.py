@@ -116,7 +116,7 @@ refresh = make_refresh(os.path.abspath(__file__))
 debug = 0
 
 filenames = [
-            "attrdict.py",
+            "attrdict1.py",
             "sfida/sf_string_between.py",
             "sfida/sf_is_flags.py",
             "circularlist.py",
@@ -125,7 +125,6 @@ filenames = [
             "sfida/sf_common.py",
             "perftimer.py",
             "braceexpand.py",
-            "Kolor/__init__.py",
             "JsonStoredList.py",
             "keypatch.py",
             "slowtrace_helpers.py",
@@ -157,7 +156,7 @@ filenames = [
             "progress.py",
             "DebugMode.py",
             "idarest.py",
-            "../GTA5Utilities/MegaHash.py",
+            "MegaHash.py",
             #  "tmp.py",
             #  "m.py",
             #  "emu.py"
