@@ -241,7 +241,10 @@ def do_start():
         else:
             raise Exception("No such file: %s" % fnfull)
 
-    ir = get_ir()
+    try:
+        ir = get_ir()
+    except NameError:
+        print("couldn't load get_ir")
 
 # this didn't seem to stick, might need to be entered manually into ida console
 debug = 0
