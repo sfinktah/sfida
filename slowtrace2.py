@@ -97,21 +97,31 @@ class SlowtraceSingleStep(Exception):
 
 sprint = print
 g_depth = 0
-def indent(n, s, stripEmpty=True):
+def indent(n, s, skipEmpty=True, splitWith='\n', joinWith='\n', n2plus=None, skipFirst=False, stripLeft=False):
+    
     if isString(s):
-        s = s.replace('\r', '').split('\n')
+        s = s.replace('\r', '').split(splitWith)
 
     result = []
-    for line in s:
+    for i, line in enumerate(s):
+        if i == 1 and n2plus is not None:
+            n = n2plus
         if isinstance(line, list):
             print("[indent] line: {}".format(line))
-        if not stripEmpty or line.rstrip():
+            continue
+        
+        if stripLeft:
+            line = line.lstrip()
+        if skipFirst and not i:
+            result.append(line)
+            continue
+        if not skipEmpty or line.rstrip():
             if isinstance(n, str):
                 result.append(n + line)
             elif isinstance(n, int):
-                result.append("  " * n + line)
+                result.append(" " * n + line)
 
-    return "\n".join(result)
+    return joinWith.join(result)
 
 def printi(value, *args, **kwargs):
     global g_depth

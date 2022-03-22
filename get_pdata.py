@@ -484,11 +484,18 @@ def cut(filename, sep=' ', min=0):
 
 
 def get_latest_native_names():
+    nn = {}
+    with JsonStoredDict('e:/git/give-two.github.io/storage/scripts/alloc8or.json') as natives:
+        for namespace, d1 in natives.items():
+            #  print("namespace: {}".format(namespace))
+            for hash, d2 in d1.items():
+                d2['namespace'] = namespace
+                nn[int(hash, 16)] = d2
+
     with JsonStoredDict("https://raw.githubusercontent.com/alloc8or/gta5-nativedb-data/master/natives.json") as natives:
         # json_save_safe(f"/e/git/gta5-nativedb-data/natives.json", natives)
-        nn = {}
         for namespace, d1 in natives.items():
-            print("namespace: {}".format(namespace))
+            #  print("namespace: {}".format(namespace))
             for hash, d2 in d1.items():
                 d2['namespace'] = namespace
                 nn[int(hash, 16)] = d2
@@ -618,7 +625,10 @@ def make_latest_json():
                     "return_type": _vrtype
             }
 
-        native_hashes = {}
+        native_hashes = []
+        native_hash_to_offset = {}
+        offset_to_native_hashes = defaultdict(list)
+
         json_result = {}
         crossmap = {}
         if crossmap_file:
@@ -627,6 +637,12 @@ def make_latest_json():
 
         alloc8 = get_latest_native_names()
         if natives_file:
+            for _hash, _offset in cut(natives_file, min= 2):
+                _hash = int(_hash, 16)
+                _offset = int(_offset, 16)
+                native_hashes.append(_hash)
+                native_hash_to_offset[_hash] = _offset
+                offset_to_native_hashes[_offset].append(_hash)
             native_hashes = [int(x[0], 16) for x in cut(natives_file, min= 2)]
         else:
             native_hashes = [x for x in alloc8.keys()]
@@ -637,11 +653,17 @@ def make_latest_json():
             if crossmap:
                 old_hash = crossmap[int(new_hash)]
             else:
+                print("nocrossmap")
                 old_hash = new_hash
             if old_hash in vtypes:
                 vtype = vtypes[old_hash]
             else:
                 vtype = None
+            if not old_hash in alloc8:
+                for _hash in offset_to_native_hashes[native_hash_to_offset[new_hash]]:
+                    if crossmap[_hash] in alloc8:
+                        print("# Found alternate hash")
+                        old_hash = crossmap[_hash]
             if old_hash in alloc8:
                 if old_hash in used:
                     print("# HASH RE-USED: 0x{:016X}".format(old_hash))
@@ -683,14 +705,17 @@ def make_latest_json():
                         # alloc8or params
                         # vtype params
                         best, second = get_best_type(infms, alloc)
-                        print("best: \n{}\n{}".format(best, second))
+                        #  print("best: \n{}\n{}".format(best, second))
                         params.append(best)
-                        if best['size'] > 1:
-                            print("1kipping: {}".format(best, "None"))
-                            for _r in range(best['size'] - 1):
-                                print("skipping: {}".format(next(alloc_iter, "None")))
-                                #  next(alloc_iter, None)
-                                print("skippin2: {}".format(next(infms_iter, "None")))
+                        if True:
+                            if best['size'] > 1:
+                                # print("1kipping: {}".format(best, "None"))
+                                for _r in range(best['size'] - 1):
+                                    # print("skipping: {}".format(next(alloc_iter, "None")))
+                                    next(alloc_iter, "None")
+                                    next(infms_iter, "None")
+                                    #  next(alloc_iter, None)
+                                    #  print("skippin2: {}".format(next(infms_iter, "None")))
                             
 
                     _rtype1 = {
@@ -716,7 +741,7 @@ def make_latest_json():
                 print("# UNKNOWN HASH: ori: 0x{0:016X} new: 0x{0:016X}".format(old_hash, new_hash))
 
         json_save_safe("test_natives_" + str(VERSION) + ".json", json_result)
-        json_save_safe("e:/git/GTA5Utilities/ScriptDiffer/YSCDisassembler/bin/Release/natives.json", json_result)
+        json_save_safe("e:/git/GTA5Utilities/ScriptDiffer/YSCDisassembler/bin/Release/natives-{}.json".format(_build), json_result)
         # json_save_safe(f"/e/git/gta5-nativedb-data/nsalloc8or.json", json_result)
         return json_result
 
@@ -785,8 +810,9 @@ def make_decompiler_dat():
 
             alloc8 = {}
             # /e/git/give-two.github.io/storage/scripts/natives.json
-            with JsonStoredDict('e:/git/give-two.github.io/storage/scripts/nsalloc8or.json') as tmp:
-                alloc8 = tmp.copy()
+            alloc8 = get_latest_native_names()
+            #  with JsonStoredDict('e:/git/give-two.github.io/storage/scripts/nsalloc8or.json') as tmp:
+                #  alloc8 = tmp.copy()
             for row in natives:
                 if len(row) == 4:
                     oname, new_hash, handler_offset, impl_offset = row

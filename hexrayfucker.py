@@ -1054,11 +1054,10 @@ def decompile_hashes_regex(ea=None, regex=None):
     if regex is None and isString(ea):
         ea, regex = regex, ea
     elif isinstance(ea, list):
-        return [decompile_hashes(x) for x in ea]
+        return [decompile_hashes_regex(x) for x in ea]
 
     ea = eax(ea)
-    return re.findall(regex, str(decompile(ea)))
-
+    return [mega.Lookup(int(x, 16)) for x in re.findall(regex, str(decompile(ea)))]
 
 
 
@@ -1359,22 +1358,29 @@ def rename_lvar_factory(*args, **kwargs):
         ea = kwargs['ea']
         vu = kwargs['vu']
         if len(args) > len(names):
-            skip_first = 1
-            print("[args1] args:{}".format(args))
-            for r in range(1, len(args)):
-                if not args[r] in args[0]:
-                    skip_first = 0
-            if skip_first:
+            if args[1] in args[0] and len(args) - len(names) == 1:
                 args = args[1:]
+            else:
+                skip_first = 1
+                print("args:   {}".format(indent(8, args,  skipFirst=1, stripLeft=1)))
+                print("names:  {}".format(indent(8, names, skipFirst=1, stripLeft=1)))
+                for r in range(1, len(args)):
+                    if not args[r] in args[0]:
+                        skip_first = 0
+                if skip_first:
+                    args = args[1:]
 
         for index, name, _type in zip(indexes, names, types):
-            print('i,n,t: {}, {}, {}'.format(index, name, _type))
+
+            # dprint("[fn_rename_lvar] index, name, _type")
+            print("[fn_rename_lvar] index:{}, name:{}, _type:{}".format(index, name, _type))
+            
             if _type:
                 set_lvar_type(args[index], _type, ea, vu=vu)
             if _type is None and isinstance(name, str):
                 old_name = args[index]
                 fnLoc = get_ea_by_any(old_name)
-                LabelAddressPlus(fnLoc, new_name)
+                LabelAddressPlus(fnLoc, name)
 
             if isinstance(name, int):
                 old_name = args[index]
@@ -1436,7 +1442,7 @@ def decompile_native(ea = None):
                         matches = re.findall(rule[0], line)
                         if matches: print("\nline", line)
                     if matches:
-                        print("matched {}, groups: {}, fnargs: {}".format(rule[0], matches[0], rule[1]))
+                        print("match:  {}\ngroups: {}\nfnargs: {}".format(string_between('re.compile(\'', '\')', str(rule[0]), greedy=1), matches[0], rule[1]))
                     if matches and rule[2] and callable(rule[2]):
                         if rule[1]:
                             for g in reby_simple(rule[1], matches):
@@ -1535,7 +1541,7 @@ def decompile_arxan(ea = None):
             def fn_rename_lvar(*args):
                 if len(args) > len(names):
                     skip_first = 1
-                    print("[args1] args:{}".format(args))
+                    print("args:   {}".format(args))
 
                     for r in range(1, len(args)):
                         if not args[r] in args[0]:
@@ -1676,7 +1682,7 @@ def decompile_arxan(ea = None):
                         matches = re.findall(psub[0], line)
                         if matches: print("\nline", line)
                     if matches:
-                        print("matched {}, groups: {}, fnargs: {}".format(psub[0], matches[0], psub[1]))
+                        print("match:  {}\ngroups: {}\nfnargs: {}".format(string_between('re.compile(\'', '\')', str(psub[0]), greedy=1), matches[0], psub[1]))
                     if matches and psub[2] and callable(psub[2]):
                         if psub[1]:
                             for g in reby_simple(psub[1], matches):

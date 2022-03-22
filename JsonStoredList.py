@@ -24,13 +24,15 @@ refresh_JsonStoredList = make_refresh(os.path.abspath(__file__))
 refresh = make_refresh(os.path.abspath(__file__))
 
 
-def json_load(_fn, _default=[]):
+def json_load(_fn, _default=None):
     if _fn.startswith("http"):
         return json.loads(requests.get(_fn).text)
     try:
         with open(_fn, 'r') as f:
             return json.load(f)
     except IOError:
+        if not _default:
+            raise IOError
         print("file not found '{}' or some such, making empty object".format(os.path.realpath(_fn)))
         return _default
 
@@ -48,7 +50,7 @@ def json_save_safe(dst, json_object):
     #  except IOError:
         #  print("file not writable or some such")
     except Exception as e:
-        print("**EXCEPTION** {}".format(e))
+        print("**EXCEPTION** {}: {}".format(e.__class__.__name__, str(e)))
 
 
 class JsonStoredList(object):

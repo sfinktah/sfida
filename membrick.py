@@ -1098,6 +1098,33 @@ def ProtectPattern(pattern):
 def ProtectScan(*args, **kwargs):
     return mb(*args, **kwargs)
 
+def pattern(*args, **kwargs):
+    return mb(*args, **kwargs)
+
+def get_pattern(pattern, offset=0):
+    return mb(pattern).add(offset)
+
+def get_call(ptr):
+    return ptr.get_call()
+
+def hook__get_call(*args, **kwargs):
+    return get_call(*args, **kwargs)
+
+def hook__jump(ptr, label=None):
+    return ptr.label('fivem_' + label.replace('fivem_', ''))
+
+def hook__get_address(address, offsetTo4ByteAddr=None, numBytesInLine=None):
+    if offsetTo4ByteAddr or numBytesInLine:
+        raise RuntimeError('unsupported: 3 parameter hook::get_address')
+    return address.rip(4)
+
+hook__call = hook__jump
+
+def hook__get_pattern(*args, **kwargs):
+    return get_pattern(*args, **kwargs)
+
+def hook__pattern(*args, **kwargs):
+    return pattern(*args, **kwargs)
 
 class membrick_memo(object):
     """
@@ -1157,6 +1184,12 @@ class membrick_memo(object):
 
     def __bool__(self):
         return self.valid()
+
+    def __add__(self, offset):
+        return self.add(offset)
+
+    def __sub__(self, offset):
+        return self.add(-offset)
 
     def __str__(self):
         if self.obj is None:
@@ -1266,6 +1299,13 @@ class membrick_memo(object):
             self.errored = True;
             return self.error_return_chained()
 
+    def get_call(self):
+        """ fivem_compat: add(1).rip(4) """
+        return self.add(1).rip(4)
+
+    def get_jump(self):
+        return self._wrap(GetJumpTarget(self.obj))
+
     def get_autorips(self):
         if self.in_error(): return self.error_return()
         pos = 0
@@ -1308,7 +1348,7 @@ class membrick_memo(object):
         print(".add({}).rip(4)".format(pos // 3))
         return self.add(pos // 3).rip(4)
 
-    def count(self, num, name):
+    def count(self, num, name=''):
         return self
         results = FindInSegments(self.original_object)
         if len(results) != num:
@@ -1319,7 +1359,7 @@ class membrick_memo(object):
         return self
 
     def get(self, num):
-        return self
+        return self.add(num)
         if self.in_error(): return self.error_return_chained()
         if num < len(self.results):
             return self._wrap(self.results[num])
@@ -1400,7 +1440,9 @@ class membrick_memo(object):
                                                                                   GetTrueName(self.val())))
         return self
 
-    def label(self, name):
+    def label(self, name=None):
+        if name is None:
+            return get_name_by_any(self.val())
         if self.in_error(): return self.error_return_chained()
         MemLabelAddressPlus(self.val(), name)
         return self

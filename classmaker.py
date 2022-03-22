@@ -1038,7 +1038,6 @@ def ClassMaker(ea, memberType = None, className = None, famList = [], parentType
             # print("Already has function name: %s" % idc.Name(fnLoc))
             pass
 
-        print("line 973")
         if memberType is not None:
             newName = idc.get_name(fnLoc)
             if newName:
@@ -1054,8 +1053,8 @@ def ClassMaker(ea, memberType = None, className = None, famList = [], parentType
                 member_type = member_type.replace('(', ' %s(' % idc.get_func_name(fnLoc), 1)
             # print("member_type", member_type, must_decompile)
 
-            print("must_decompile: {}".format(must_decompile))
-            print("vtableOnly: {}".format(vtableOnly))
+            #  print("must_decompile: {}".format(must_decompile))
+            #  print("vtableOnly: {}".format(vtableOnly))
             if must_decompile:
                 # print("// Couldn't get member type from {} at {}... decompiling".format(fnName, hex(fnLoc)))
                 funcSig = decompile_member(fnLoc, memberType, fnName, offset=offset)
@@ -1101,8 +1100,25 @@ def ClassMakerFamily(family = None, ea = None, redo = False, redoParents = False
         family = LineA(ea - ptrsize(), 1) or idc.get_extra_cmt(ea, E_PREV + (0))
         if isinstance(family, str):
             family = family[2:]
+            prev_vtbl = string_between(' ', ': ', family, rightmost=1)
+            name = Name(ea)
+            vtbl = string_between('', "::`vftable'", Demangle(name, DEMNAM_FIRST))
             print("family", family)
-            ClassMakerFamily(family = family, ea=ea, redo=redo, redoParents=redoParents, vtableOnly=vtableOnly)
+            print("prev_vtbl", prev_vtbl)
+            print("vtbl", vtbl)
+            if isinstance(vtbl, str) and prev_vtbl and vtbl:
+                if vtbl != prev_vtbl and not '_i_' in vtbl and not name.endswith('@') and '<' not in vtbl and '<' not in prev_vtbl and ':' not in (vtbl + prev_vtbl):
+                    LabelAddressPlus(ea, name.replace(vtbl, '{}_i_{}'.format(prev_vtbl, vtbl)))
+                    return ClassMakerFamily(ea=ea, redo=redo, redoParents=redoParents, vtableOnly=vtableOnly)
+            else:
+                print("missing vtbl or prev_vtbl, aborting")
+                print("family", family)
+                print("prev_vtbl", prev_vtbl)
+                print("vtbl", vtbl)
+                return
+
+            
+            ClassMakerFamily(family=family, ea=ea, redo=redo, redoParents=redoParents, vtableOnly=vtableOnly)
             # else:
 
         family = Demangle(Name(ea), DEMNAM_FIRST).replace("::`vftable'", '')

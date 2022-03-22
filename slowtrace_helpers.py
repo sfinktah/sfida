@@ -8572,6 +8572,59 @@ def fix_sub_args_unknown():
         else:
             SetType(ea, '__int64 sub(__int64 a1t);')
 
+def bin32(n):
+    n = n & 0xffffffff
+    return (('0' * 32) + bin(n)[2:])[-32:]
+
+
+prngSeed = (0x214013 * 2531011) & 0xffffffff
+
+def prngSeedNext():
+    global prngSeed
+    prngSeed          = ((0xffffffff & (214013 * prngSeed)) + 2531011) & 0xffffffff;
+    return prngSeed
+
+def prngNextCalc(prngSeed):
+    return ((0xffffffff & (214013 * prngSeed)) + 2531011) & 0xffffffff;
+
+def rng_init(data = 0x12345678):
+    global prngSeed
+    a1     = [0] * 45;
+    a1[43] = prngSeedNext()
+    a1[44] = prngSeedNext()
+    a1[41] = data & prngSeed
+    a1[42] = data & ~prngSeed
+    return a1
+
+def HIWORD(das):
+    return (das >> 16) & 0xffff
+
+def rng_twirl(a1):
+    global prngSeed
+    seed              = a1[44];
+    das               = a1[41];
+    dans              = a1[42];
+    data              = das & seed | dans & ~seed;
+    # unused
+    a1[41]            = das & seed | ((das & ~seed) << 16) | HIWORD(das) & (~seed >> 16);
+    # unused
+    a1[42]            = rol(dans & seed, 16, 32) | a1[42] & ~a1[44];
+    a1[43]            = prngSeedNext();
+    a1[44]            = prngSeedNext();
+    data_and_not_seed = data & ~prngSeed;
+    a1[41]            = data & prngSeed;
+    a1[42]            = data_and_not_seed;
+    return data;
+
+def rng_test():
+    a1 = rng_init(0x12345678)
+    for r in range(31337):
+        rng_twirl(a1)
+    print("test1: {}\ntest2: {}".format(
+        a1[41] ^ a1[42] == a1[41] & a1[44] | a1[42] & ~a1[44],
+        prngNextCalc(a1[43]) == a1[44]
+    ))
+
 def codeguard():
         #  loc_143AAB03D:                          ; CODE XREF: ArxanCheckFunction_115-D2506Fvj
         #  .text:0000000143AAB03D                                                                           ; ArxanCheckFunction_115-43DE14vj
@@ -8646,4 +8699,97 @@ def codeguard():
         if valid:
             nassemble(target, 'nop; jmp 0x{:x}'.format(GetTarget(target)), apply=True)
         PatchNops(jmp, 6)
+
+
+"""
+// [PATTERN;REMOTE:gtasc-2372] '48 89 5c 24 08 48 89 74 24 10 48 89 7c 24 18 8b 05 ?? ?? ?? ?? 48 8b f9 48 8b da be c3 9e 26 00 69 c0 fd 43 03 00 03 c6 89 05 ?? ?? ?? ?? 89 41 08 8b 05 ?? ?? ?? ?? 69 c0 fd 43 03 00 03 c6 89 '
+void __fastcall Rand4DwordMap::GetValueAndTwirl(dw4* dst, dw4* src) {
+    int das_and_seed;       // er11                          int src_dans; // eax
+    int dans;               // eax                           int data; // er9 MAPDST
+    unsigned int not_seed;  // er8                           int seed; // ecx MAPDST
+    int v6;                 // er9
+    int data;               // eax
+    int data_and_not_seed;  // edx MAPDST
+
+    prngSeed = 214013 * prngSeed + 2531011;             src_dans = src->dans;
+    dst->seed1 = prngSeed;                              data = src_dans ^ src->das;
+    prngSeed = 214013 * prngSeed + 2531011;             seed = 2851891209 * prngSeed + 505908858;
+    dst->seed2 = prngSeed;                              dst->seed2 = seed;
+    das_and_seed = src->seed2 & src->das;               data = src_dans ^ src->seed2 & data;
+    dans = src->dans;                                   seed = 214013 * seed + 2531011;
+    not_seed = ~src->seed2;                             src->seed1 = seed;
+    v6 = __ROL4__(src->seed2 & dans, 16);               seed = 214013 * seed + 2531011;
+    data = das_and_seed | not_seed & dans;              src->seed2 = seed;
+    src->das = das_and_seed | ((not_seed & src->das) << 16)
+             | HIWORD(not_seed) & HIWORD(src->das);
+    src->dans = v6 | src->dans & ~src->seed2;           src->das = seed & data;
+    prngSeed = 214013 * prngSeed + 2531011;             seed = 214013 * seed + 2531011;
+    src->seed1 = prngSeed;                              src->dans = data & ~seed;
+    prngSeed = 214013 * prngSeed + 2531011;             dst->seed1 = seed;
+    src->seed2 = prngSeed;                              seed *= 214013;
+    data_and_not_seed = data & ~prngSeed;               prngSeed = seed + 2531011;
+    src->das = data & prngSeed;                         dst->seed2 = seed + 2531011;
+    src->dans = data_and_not_seed;                      dst->das = (seed + 2531011) & data;
+    prngSeed = 214013 * prngSeed + 2531011;             dst->dans = data & ~(seed + 2531011);
+    dst->seed1 = prngSeed;
+    prngSeed = 214013 * prngSeed + 2531011;
+    dst->seed2 = prngSeed;
+    data_and_not_seed = data & ~prngSeed;
+    dst->das = data & prngSeed;
+    dst->dans = data_and_not_seed;
+
+
+network___network_has_game_been_altered_actual:
+    push rbx
+    sub rsp, 0x30
+    mov rdx, [rel gp_SessionManager]
+
+        mov     eax, DWORD [rdx+4]
+        mov     ecx, DWORD [rdx]
+        xor     ecx, eax
+        and     ecx, DWORD [rdx+12]
+        xor     ecx, eax
+        imul    eax, DWORD [rel prngSeed], 1170746341
+        mov     r8d, ecx
+        sub     eax, 755606699
+        mov     DWORD [rdx+8], eax
+        imul    eax, eax, 214013
+        add     eax, 2531011
+        and     r8d, eax
+        mov     DWORD [rdx+12], eax
+        mov     DWORD [rdx], r8d
+        mov     r8d, eax
+        imul    eax, eax, -570470319
+        not     r8d
+        and     r8d, ecx
+        add     eax, 159719620
+        mov     DWORD [rdx+4], r8d
+        mov     DWORD [rel prngSeed], eax
+        xor     eax, eax
+        cmp     ecx, 1
+        setg    al
+
+    add rsp, 0x30
+    pop rbx
+    retn
+
+
+}
+
+# hash1
+# hash2
+# data1_and_seed2
+# data1_and_not_seed2
+# seed1
+# seed2
+# data2_and_seed4
+# data2_and_not_seed4
+# seed3
+# seed4
+# data3_and_seed6
+# data3_and_not_seed6
+# seed5
+# seed6
+
+"""
 # vim: set ts=8 sts=4 sw=4 et:

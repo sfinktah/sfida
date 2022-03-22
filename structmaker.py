@@ -792,7 +792,7 @@ def resolveTypeDefModifiers(type):
     for mod in mods:
         if mod in modCount:
             if mod != "long" or mod == "long" and modCount["long"] == 2:
-                print(("too many %s's in type modifier" % mod))
+                print("too many %s's in type modifier" % mod)
                 return None
             modCount[mod] += 1
         else:
@@ -858,7 +858,7 @@ def resolveTypeDefs():
         resolved = resolveTypeDefModifiers(type)
         if resolved != type:
             path.append(resolved)
-        print((" => ".join(path) + " size: %s" % sizeTypeDef(type)))
+        print(" => ".join(path) + " size: %s" % sizeTypeDef(type))
 
 
 
@@ -931,7 +931,7 @@ def my_print_decls(name, flags = PDF_INCL_DEPS | PDF_DEF_FWD):
 def GetStructRequirements(name):
     sid = idc.get_struc_id(name)
     if sid == idc.BADADDR:
-        print(("Invalid Struct Name: %s" % name))
+        print("Invalid Struct Name: %s" % name)
         return []
 
     required = set()
@@ -1015,6 +1015,17 @@ def is_member_enum(sid, offset):
 
 def log2(v):
     return v.bit_length() - 1
+
+def struct_guess_elem_size(size, fudge=0):
+    from functools import reduce
+    def factors(n):    
+        return _.sort(set(reduce(list.__add__, 
+                    ([i, n//i] for i in range(1, int(n**0.5) + 1) if n % i == 0))))
+
+    results = []
+    for r in range(0, fudge): 
+        results.append([x//8 for x in _.sort(factors(1520+r)) if not x % 8])
+    return [(i,x[1:-1]) for i,x in enumerate(results) if len(x) > 2]
 
 def getVarType(size, unsigned = None, count = 1, is_ptr = False, is_float = False):
     # @static: unsigned_types
@@ -1123,7 +1134,7 @@ def VirtualVtable(name):
 def VirtualClass(name):
     sid = idc.get_struc_id(name)
     if sid == idc.BADADDR:
-        print(("Invalid Struct Name: %s" % name))
+        print("Invalid Struct Name: %s" % name)
         return
     ordinal = ida_struct.get_struc(sid).ordinal
     defn = idc.GetLocalType(ordinal, PRTYPE_TYPE | PRTYPE_MULTI | PRTYPE_PRAGMA | PRTYPE_SEMI)
@@ -1143,7 +1154,7 @@ def StackInfo(ea, pack = False, parent_offset = 0, rename = False, renameRel = T
     stkzero = idc.get_func_attr(ea, idc.FUNCATTR_FRSIZE)
     sid = idc.get_frame_id(ea)
     if sid == idc.BADADDR:
-        print(("Invalid Struct Name: %s" % name))
+        print("Invalid Struct Name: %s" % name)
         return
 
     this_name = name = 'stack'
@@ -1621,7 +1632,7 @@ def StrucClassCommenter(name, pack = False, parent_offset = 0, rename = False, r
     names = []
     sid = idc.get_struc_id(name)
     if sid == idc.BADADDR:
-        print(("Invalid Struct Name: %s" % name))
+        print("Invalid Struct Name: %s" % name)
         return
 
     this_name = name
@@ -1895,18 +1906,6 @@ def StrucClassCommenter(name, pack = False, parent_offset = 0, rename = False, r
 
 
 
-pattern_1   = re.compile(r'\*\(((?:_\w+|float)) \*\)&self->field_([0-9a-fA-F]+)')
-pattern_2   = re.compile(r'self->field_([0-9a-fA-F]+)')
-pattern_3   = re.compile(r'\*\(((?:_\w+|float)) \*\)\(self \+ (\d+)\)')
-pattern_3aa = re.compile(r'\*\(((?:_\w+|float)) \*\)\(self - (\d+)\)')
-pattern_3a  = re.compile(r'\(self \+ (\d+)\)')
-pattern_3b  = re.compile(r'\*\(((?:_\w+|float)) \*\)self[; ]')
-pattern_4   = re.compile(r'self->gap([0-9a-fA-F]+)\[(\d+)]')
-pattern_4a  = re.compile(r'(BYTE\d+|DWORD\d+|HIBYTE|HIDWORD|HIWORD|LOBYTE|LODWORD|LOWORD|SBYTE\d+|SHIBYTE|SHIDWORD|SHIWORD|SLOBYTE|SLODWORD|SLOWORD|SWORD\d+|WORD\d+)\(self->(\w+)\)')
-# *(_QWORD *)&pVehicle->unpad_c00
-# nothing catches: LODWORD(self->pad_1348[0]) = 0;
-pattern_4b  = re.compile(r'\*\(((?:_\w+|float)) \*\)&self->(\w+)')
-pattern_4c  = re.compile(r'\*\(((?:_\w+|float)) \*\)self->gap(\w+)')
 
 # *(_DWORD *)(self - 56)
 #  pattern_4a = re.compile(r'*(_DWORD *)&v1->gap0[8] = 16358695;
@@ -1926,7 +1925,7 @@ def decompile_function_for_funcdefs(ea):
             if ~decl.find("__usercall"):
                 decl = re.sub("__usercall", "__fastcall", decl)
                 decl = re.sub(r"@<[^>]+>", "", decl)
-                print(("// Attempting to alter __usercall member to: %s" % decl))
+                print("// Attempting to alter __usercall member to: %s" % decl)
                 idc.SetType(ea, decl)
                 Wait()
 
@@ -1936,7 +1935,7 @@ def decompile_function_for_funcdefs(ea):
         return func_def
 
     except DecompilationFailure:
-        print(("%s: DecompilationFailure: 0x0%0x" % (fnName, ea)))
+        print("%s: DecompilationFailure: 0x0%0x" % (fnName, ea))
         return "    %s (%s *%s)(%s);" % ("void", "__fastcall", "error_" + fnName, "")
 
 def parseStrucString(st):
@@ -1958,7 +1957,7 @@ def parseStrucString(st):
                 _type = " ".join([x for x in [x.strip() for x in _type.split(" ")] if len(x)])
                 if _type != "void" and not sizeTypeDef(_type) and not doesStrucExist(_type) and not sizeTypeDef(resolveTypeDef(_type)):
                     # we need to create a struct
-                    print(("Adding Empty Structure: %s" % _type))
+                    print("Adding Empty Structure: %s" % _type)
                     idc.add_struc(-1, _type, 0)
 
     idc.parse_decls(st)
@@ -2005,13 +2004,29 @@ def structAddMember(sid, name, offset, flag, typeid, nbytes, count = 1, target=-
     nbytes *= count
     result = idc.add_struc_member(sid, name,    offset, flag,     typeid, nbytes, target, tdelta, reftype)
     #  mid = add_struc_member(id,         "pad40", 0,      0x000400, -1,     40);
-    print(("result", result))
+    if result < 0:
+        error = "Unknown: {}".format(result)
+        if result == ida_struct.STRUC_ERROR_MEMBER_NAME: error="already has member with this name (bad name)"
+        if result == ida_struct.STRUC_ERROR_MEMBER_OFFSET: error="already has member at this offset"
+        if result == ida_struct.STRUC_ERROR_MEMBER_SIZE: error="bad number of bytes or bad sizeof(type)"
+        if result == ida_struct.STRUC_ERROR_MEMBER_TINFO: error="bad typeid parameter"
+        if result == ida_struct.STRUC_ERROR_MEMBER_STRUCT: error="bad struct id (the 1st argument)"
+        if result == ida_struct.STRUC_ERROR_MEMBER_UNIVAR: error="unions can't have variable sized members"
+        if result == ida_struct.STRUC_ERROR_MEMBER_VARLAST: error="variable sized member should be the last member in the structure"
+        if result == ida_struct.STRUC_ERROR_MEMBER_NESTED: error="STRUC_ERROR_MEMBER_NESTED"
+        print("[structAddMember] add_struc_member: {}".format(error))
+    elif result == 0:
+        print("[structAddMember] add_struc_member: OK")
+    else:
+        print("[structAddMember] error unknown: {}", result)
+
     count = 0
 
     if result == STRUC_ERROR_MEMBER_OFFSET:
         prev_size = idc.get_member_size(sid, offset)
         if idc.get_member_name(sid, offset) is None \
-                or re.match('(.*maybe|unknown|unused|unpad|pad|gap)', idc.get_member_name(sid, offset)) \
+                or name \
+                or re.match('(.*maybe|_[A-Z]+|[a-z]+word|byte_|unknown|unused|unpad|pad|gap)', idc.get_member_name(sid, offset)) \
                 or nbytes < prev_size:
             #  print("removing previous struc_member")
             for o in range(offset, offset + nbytes):
@@ -2021,13 +2036,13 @@ def structAddMember(sid, name, offset, flag, typeid, nbytes, count = 1, target=-
             if prev_size and prev_size > nbytes:
                 count = 1
                 remain = nbytes - prev_size
-                print(("remain", remain, type(remain)))
-                print(("nbytes", nbytes, type(nbytes)))
+                print("remain", remain, type(remain))
+                print("nbytes", nbytes, type(nbytes))
                 offset += nbytes
                 while remain >= 0:
                     idc.add_struc_member(sid, "{}_spare_{}".format(name, count), offset, flag, typeid, nbytes, target, tdelta, reftype)
-                    print(("remain", remain, type(remain)))
-                    print(("nbytes", nbytes, type(nbytes)))
+                    print("remain", remain, type(remain))
+                    print("nbytes", nbytes, type(nbytes))
                     remain -= nbytes
                     offset += nbytes
                     count += 1
@@ -2059,18 +2074,69 @@ def string_between_subject_first(subject, left, right, inclusive=False, greedy=F
 def structAdd(sid, offset, _type, name = None, count = 1, self_offset = 0):
     offset += self_offset
     if name is None or name == "maybe":
-        name1 = "%s_%03x" % (re.sub(r'^_', '', _type).lower(), offset)
+        tif = get_tinfo_by_parse(_type)
+        if tif.is_ptr():
+            name1 = "p%s_%03x" % (_type.lstrip('C').rstrip('*'), offset)
+        else:
+            name1 = "%s_%03x" % (re.sub(r'^_', '', _type).lower(), offset)
         if name == "maybe":
             name1 += "_maybe"
         name = name1
+    elif '{}' in name:
+        name = name.format("%03x" % offset)
 
+    _typeid = -1
     if _type == "_BYTE":    structAddMember(sid, name, offset, FF_DATA | FF_BYTE, -1, 1, count = count)
     elif _type == "_WORD":  structAddMember(sid, name, offset, FF_DATA | FF_WORD, -1, 2, count = count)
     elif _type == "_DWORD": structAddMember(sid, name, offset, FF_DATA | FF_DWRD, -1, 4, count = count)
     elif _type == "_QWORD": structAddMember(sid, name, offset, FF_DATA | FF_QWRD, -1, 8, count = count)
     elif _type == "_OWORD": structAddMember(sid, name, offset, FF_DATA | FF_OWRD, -1, 16, count = count)
     elif _type == "float":  structAddMember(sid, name, offset, FF_DATA | FF_FLOAT, -1, 4, count = count)
-    else: print(("Unknown type: %s" % _type))
+    elif _type == "double": structAddMember(sid, name, offset, FF_DATA | FF_DOUBLE, -1, 8, count = count)
+    else:
+        flags = 0
+        tif = get_tinfo_by_parse(_type)
+        _is_struct = False
+        _is_ptr = tif.is_ptr()
+        if _is_ptr:
+            if not tif.remove_ptr_or_array():
+                raise RuntimeError("Couldn't remove ptr from type {}".format(_type))
+        if tif.is_struct():
+            _is_struct = True
+
+        if _is_struct:
+            if not _is_ptr:
+                _typeid = idc.get_struc_id(tif.get_type_name())
+                #  @param flag:   type of the new member. Should be one of
+                               #  FF_BYTE..FF_PACKREAL (see above) combined with FF_DATA
+                #  @param typeid: if isStruc(flag) then typeid specifies the structure id for the member
+                               #  if idc.is_off0(flag) then typeid specifies the offset base.
+                               #  if idc.is_strlit(flag) then typeid specifies the string type (STRTYPE_...).
+                               #  if ida_bytes.is_stroff(flag) then typeid specifies the structure id
+                               #  if ida_bytes.is_enum(flag) then typeid specifies the enum id
+                               #  if ida_bytes.is_custom(flags) then typeid specifies the dtid and fid: dtid|(fid<<16)
+                               #  Otherwise typeid should be -1.
+                flags |= idc.FF_STRUCT
+            else:
+                flags |= FF_0OFF | FF_1OFF | FF_QWRD 
+        size = sizeTypeDef(_type)
+        if not flags:
+            if size == 1:
+                flags = FF_BYTE
+            elif size == 2:
+                flags = FF_WORD
+            elif size == 4:
+                flags = FF_DWORD
+            elif size == 8:
+                flags = FF_QWORD
+            elif size == 10:
+                flags = FF_OWORD
+            else: 
+                print(("Unknown type: %s" % _type))
+                return
+        structAddMember(sid, name, offset, FF_DATA | flags, _typeid, size, count=count)
+        idc.SetType(get_member_id(sid, offset), _type)
+
 
 def structReverse(filename, struct_name):
     """
@@ -2098,7 +2164,8 @@ def structReverse(filename, struct_name):
         structAddMember(sid, f[1], f[0], f[3], -1, f[2])
 
 
-def StructMaker(ea, struct_name, self_offset = 0, floor = 0):
+def StructMaker(ea, struct_name, var=None, self_offset = 0, floor = 0):
+    ea = eax(ea)
     sid = idc.get_struc_id(struct_name)
     if sid == idc.BADADDR:
         #  idc.add_struc(index, name, is_union)
@@ -2106,6 +2173,19 @@ def StructMaker(ea, struct_name, self_offset = 0, floor = 0):
 
     sid = idc.get_struc_id(struct_name)
     #  size = idc.get_struc_size(sid)
+
+    pattern_1   = re.compile(r'\*\(((?:_\w+|float)) \*\)&{}->field_([0-9a-fA-F]+)'.format(var))
+    pattern_2   = re.compile(r'{}->field_([0-9a-fA-F]+)'.format(var))
+    pattern_3   = re.compile(r'\*\(((?:_\w+|float)) \*\)\({} \+ (\d+)\)'.format(var))
+    pattern_3aa = re.compile(r'\*\(((?:_\w+|float)) \*\)\({} - (\d+)\)'.format(var))
+    pattern_3a  = re.compile(r'\({} \+ (\d+)\)'.format(var))
+    pattern_3b  = re.compile(r'\*\(((?:_\w+|float)) \*\){}[; ]'.format(var))
+    pattern_4   = re.compile(r'{}->gap([0-9a-fA-F]+)\[(\d+)]'.format(var))
+    pattern_4a  = re.compile(r'(BYTE\d+|DWORD\d+|HIBYTE|HIDWORD|HIWORD|LOBYTE|LODWORD|LOWORD|SBYTE\d+|SHIBYTE|SHIDWORD|SHIWORD|SLOBYTE|SLODWORD|SLOWORD|SWORD\d+|WORD\d+)\({}->(\w+)\)'.format(var))
+    # *(_QWORD *)&pVehicle->unpad_c00
+    # nothing catches: LODWORD({}->pad_1348[0]) = 0;
+    pattern_4b  = re.compile(r'\*\(((?:_\w+|float)) \*\)&{}->(\w+)'.format(var))
+    pattern_4c  = re.compile(r'\*\(((?:_\w+|float)) \*\){}->gap(\w+)'.format(var))
 
     def readlines(filename):
         for line in get_stripped_lines(filename):
@@ -2120,7 +2200,7 @@ def StructMaker(ea, struct_name, self_offset = 0, floor = 0):
         f = f.replace('pVehicle_3', 'self')
         f = f.replace('pVehicle_4', 'self')
         f = f.replace('pVehicle', 'self')
-        print(("line: %s" % f))
+        # print("line: %s" % f)
         for (_gap, _offset) in re.findall(pattern_4, f):
             offset = int(_gap, 16) + int(_offset, 10)
             if offset < floor: continue
@@ -2132,8 +2212,9 @@ def StructMaker(ea, struct_name, self_offset = 0, floor = 0):
                 _type = "_WORD"
             else:
                 _type = "_BYTE"
-            name="%s_%03x_maybe" % (_type[1:].lower(), offset)
-            print(("pattern 4: %s" % (name)))
+            name="%s_%03x_maybe" % (_type.lstrip('_').lower(), offset)
+            print("pattern 4: %s" % (name))
+            print("[readlines] structAdd(sid=0x{:x}, offset=0x{:x}, _type='{}', name='{}', self_offset=0x{:x})".format(sid, offset, _type, name, self_offset))
             structAdd(sid, offset, _type, "maybe", self_offset=self_offset)
         for (_offset) in re.findall(pattern_3a, f):
             offset = int(_offset, 10)
@@ -2146,56 +2227,70 @@ def StructMaker(ea, struct_name, self_offset = 0, floor = 0):
                 _type = "_WORD"
             else:
                 _type = "_BYTE"
-            name="%s_%03x_maybe" % (_type[1:].lower(), offset)
-            print(("pattern 3a: %s" % (name)))
+            name="%s_%03x_maybe" % (_type.lstrip('_').lower(), offset)
+            print("pattern 3a: %s" % (name))
             # idc.add_struc_member(sid, name, offset, flag, typeid, nbytes)
+            print("[readlines] structAdd(sid=0x{:x}, offset=0x{:x}, _type='{}', name='{}', self_offset=0x{:x})".format(sid, offset, _type, name, self_offset))
             structAdd(sid, offset, _type, "maybe", self_offset=self_offset)
         for (_type, _offset) in re.findall(pattern_1, f):
             # [('_DWORD', '1B8')]
             offset = int(_offset, 16)
             if offset < floor: continue
             name="%s_%03x" % (_type, offset)
-            print(("pattern 1: %s" % (name)))
+            print("pattern 1: %s" % (name))
+            print("[readlines] structAdd(sid=0x{:x}, offset=0x{:x}, _type='{}', count=1, self_offset=0x{:x})".format(sid, offset, _type, self_offset))
             structAdd(sid, offset, _type, self_offset=self_offset)
+        
+        # line:         if ( LODWORD(pCamera->field_2A8)
+        # pattern_2     re.compile(r'{}->field_([0-9a-fA-F]+)'.format(var))
         for (_offset) in re.findall(pattern_2, f):
             offset = int(_offset, 16)
             if offset < floor: continue
             _type = "_BYTE"
             name="%s_%03x" % (_type, offset)
-            print(("pattern 2: %s" % (name)))
+            print("pattern 2: %s" % (name))
+            print("[readlines] structAdd(sid=0x{:x}, offset=0x{:x}, _type='{}', count=1, self_offset=0x{:x})".format(sid, offset, _type, self_offset))
             structAdd(sid, offset, _type, self_offset=self_offset)
         for (_type, _offset) in re.findall(pattern_3, f):
             offset = int(_offset, 10)
             if offset < floor: continue
-            name="%s_%03x" % (_type[1:].lower(), offset)
-            print(("pattern 3: %s" % (name)))
+            name="%s_%03x" % (_type.lstrip('_').lower(), offset)
+            print("pattern 3: %s" % (name))
             structAdd(sid, offset, _type, self_offset=self_offset)
         for (_type, _offset) in re.findall(pattern_3aa, f):
             offset = 0 - int(_offset, 10)
             if offset < floor: continue
-            name="%s_%03x" % (_type[1:].lower(), offset)
-            print(("pattern 3: %s" % (name)))
+            name="%s_%03x" % (_type.lstrip('_').lower(), offset)
+            print("pattern 3: %s" % (name))
+            print("[readlines] structAdd(sid=0x{:x}, offset=0x{:x}, _type='{}', count=1, self_offset=0x{:x})".format(sid, offset, _type, self_offset))
             structAdd(sid, offset, _type, self_offset=self_offset)
 
         for (_type) in re.findall(pattern_3b, f):
             offset = 0
             if offset < floor: continue
-            name="%s_%03x" % (_type[1:].lower(), offset)
-            print(("pattern 3b: %s" % (name)))
+            name="%s_%03x" % (_type.lstrip('_').lower(), offset)
+            print("pattern 3b: %s" % (name))
+            print("[readlines] structAdd(sid=0x{:x}, offset=0x{:x}, _type='{}', count=1, self_offset=0x{:x})".format(sid, offset, _type, self_offset))
             structAdd(sid, offset, _type, self_offset=self_offset)
+
+        # line:         if ( *(_DWORD *)&pCamera->byte_2a8
+        # pattern_4b    re.compile(r'\*\(((?:_\w+|float)) \*\)&{}->(\w+)'.format(var))
+        # pattern 4b:   name: dword_2a8, offset: 0x2a8, _type: _DWORD
         for (_type, _field) in re.findall(pattern_4b, f):
             offset = idc.get_member_offset(sid, _field)
             if offset < floor: continue
             if offset != idc.BADADDR and offset > -1:
-                name="%s_%03x" % (_type[1:].lower(), offset)
-                print(("pattern 4b: %s, %s, %s" % (name, hex(offset), _type)))
+                name="%s_%03x" % (_type.lstrip('_').lower(), offset)
+                print("pattern 4b: %s, %s, %s" % (name, hex(offset), _type))
+                print("[readlines] structAdd(sid=0x{:x}, offset=0x{:x}, _type='{}', name='{}', self_offset=0x{:x})".format(sid, offset, _type, name, self_offset))
                 structAdd(sid, offset, _type, name, self_offset=self_offset)
         for (_type, offset) in re.findall(pattern_4c, f):
-            offset = int(offset, 16)
+            offset = int(offset.strip('_'), 16)
             if offset < floor: continue
             if offset != idc.BADADDR and offset > 0:
-                name="%s_%03x" % (_type[1:].lower(), offset)
-                print(("pattern 4c: %s, %s, %s" % (name, hex(offset), _type)))
+                name="%s_%03x" % (_type.lstrip('_').lower(), offset)
+                print("pattern 4c: %s, %s, %s" % (name, hex(offset), _type))
+                print("[readlines] structAdd(sid=0x{:x}, offset=0x{:x}, _type='{}', name='{}', self_offset=0x{:x})".format(sid, offset, _type, name, self_offset))
                 structAdd(sid, offset, _type, name, self_offset=self_offset)
         for (_macro, _field) in re.findall(pattern_4a, f):
             # pattern_4a  = re.compile(r'(BYTE\d+|DWORD\d+|HIBYTE|HIDWORD|HIWOR..etc...|SWORD\d+|WORD\d+)\(self->(\w+)\)')
@@ -2213,17 +2308,21 @@ def StructMaker(ea, struct_name, self_offset = 0, floor = 0):
                 elif "BYTE" in _macro:
                     _type = "_BYTE"
                 else:
-                    print(("Unknown macro: %s" % _macro))
+                    print("Unknown macro: %s" % _macro)
                     continue
             else:
-                print(("Couldn't find struct field: %s" % _field))
+                print("Couldn't find struct field: %s" % _field)
                 continue
 
             postfix_number = string_between_subject_first(_macro, _type.lstrip('_'), '')
             if postfix_number:
                 offset += int(postfix_number)
             name="%s_%03x" % (_type[1:].lower(), offset)
-            print(("pattern 4a: %s" % (name)))
+            print("pattern 4a: %s" % (name))
+            # dprint("[readlines] structAdd(sid, offset, _type, self_offset")
+            # def structAdd(sid, offset, _type, name = None, count = 1, self_offset = 0):
+            print("[readlines] structAdd(sid=0x{:x}, offset=0x{:x}, _type='{}', count=1, self_offset=0x{:x})".format(sid, offset, _type, self_offset))
+            
             structAdd(sid, offset, _type, self_offset=self_offset)
 
 def callable_m(obj, name):
