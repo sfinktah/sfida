@@ -871,7 +871,7 @@ def slowtrace2(ea=None,
                silent=True,
                single=False,
                skipJumps=True,
-               skipAllJumps=False,
+               applySkipJumps=False,
                skipNops=False,
                spdList=[],
                stop=BADADDR,
@@ -3038,7 +3038,7 @@ def slowtrace2(ea=None,
             isArxan = False
             # if isCall(mnem) and opType0 in (o_near, o_mem, o_reg):
             if debug: print("line 132")
-            if isCall(mnem) and opType0 in (o_near, o_mem):
+            if isCall(mnem) and opType0 in (o_near,): # o_mem
                 # if idc.get_spd(ea) and (idc.get_spd(ea) % 16) == 0:
                 # TODO: queue this to happen AFTER, because sometimes we need to de-obfu a (parent?) func into a call first
                 if not IsFuncHead(target):
@@ -3559,13 +3559,14 @@ def slowtrace2(ea=None,
 
             if debug: print("line 133")
             # if isCall(mnem) and opType0 in (o_mem, o_near, o_reg) and GetJumpTarget(ea):
-            if isCall(mnem) and opType0 in (o_mem, o_near) and GetJumpTarget(ea):
+            if isCall(mnem) and opType0 in (o_near,) and GetJumpTarget(ea): # o_mem
                 if False and ida_funcs.get_func(target) and not ida_funcs.func_does_return(target):
                     line = output("\nnon-returning call to 0x%x at 0x%x (2nd check)" % (target, ea))
                     slvars.rsp = 0
                     break
 
-                line = output("\t; Skipping o_mem/o_near call")
+                # line = output("\t; Skipping o_mem/o_near call")
+                line = output("\t; Skipping o_near call")
                 if opType0 == o_near:
 
                     if target not in later2 and not IsUnknown(target) and idc.get_func_attr(GetJumpTarget(ea), idc.FUNCATTR_FLAGS) & FUNC_LIB == 0:
@@ -3605,7 +3606,7 @@ def slowtrace2(ea=None,
                         if delsp:
                             SetSpDiffEx(ea, 0)
 
-            if skipAllJumps and isJmp(ea):
+            if applySkipJumps and isJmp(ea):
                 SkipJumps(ea, apply=1)
 
             if debug: print("line 136")
@@ -3642,7 +3643,7 @@ def slowtrace2(ea=None,
                     # ea = AdvanceHead(ea, FollowTarget(ea, target))
 
                 # if isUnconditionalJmp(mnem) and opType0 in (o_mem, o_near, o_reg): # and (removeFuncs or addFuncs):
-                if isUnconditionalJmp(mnem) and opType0 in (o_mem, o_near): # and (removeFuncs or addFuncs):
+                if isUnconditionalJmp(mnem) and opType0 in (o_near,): # o_mem, and (removeFuncs or addFuncs):
                     # This doesn't seem to get called when we need it, obfu::comb gets first hit
                     #  0x140cb33f1: slowtrace::mainloop
                     #  0x140cb33f1: obfu::_patch
@@ -3713,7 +3714,7 @@ def slowtrace2(ea=None,
                             sprint("0x%x: Jump target %x not recognised as code" % (ea, target))
 
                 # if opType0 not in (o_mem, o_near, o_reg):
-                if opType0 not in (o_mem, o_near):
+                if opType0 not in (o_near,): # o_mem
                     # line = output("\t; Can't follow opType0 " + (", ".join(opTypeAsName(opType0))))
                     # output("e: %s" % line)
                     if isCall(mnem):

@@ -54,6 +54,13 @@ class IdaRestClient(IdaRestConfiguration, object):
                 print("HttpResponseError attempting to inform host about slow client: {}".format(r.status_code))
                 #  raise HttpResponseError(r.status_code)
 
+    def terminate_master(self):
+        # http://127.0.0.1:2012/ida/api/v1.0/get_type
+        request_url = 'http://{}:{}{}/term'.format(self.master_host, self.master_port, IdaRestClient.config['api_prefix'])
+        r = requests.get(request_url, timeout=self.update_hosts_timeout)
+        if r.status_code != 200:
+            print("HttpResponseError attempting to inform host about slow client: {}".format(r.status_code))
+
     def update_hosts(self):
         request_url = 'http://{}:{}{}/show'.format(self.master_host, self.master_port, IdaRestClient.config['api_prefix'])
         r = requests.get(request_url, timeout=self.update_hosts_timeout)
@@ -154,8 +161,11 @@ class IdaRestClient(IdaRestConfiguration, object):
             print("Chose {}: {}".format(row, ": ".join(p[row])))
             LabelAddressPlus(EA(), p[row][1])
 
-    def GetTypes2(self, types='Hash'):
-        results = self.get_json('get_type', type=types)
+    def GetTypes2(self, types='Hash', ask=False, flags=None):
+        if flags is not None:
+            results = self.get_json('get_type', type=types, flags=flags)
+        else:
+            results = self.get_json('get_type', type=types)
         f = _.filterObject(results, lambda v, k, *a: v['msg'] == 'OK' and 'data' in v and v['data'] and 'data' in v['data'][0])
         # o = _.mapObject(f, lambda v, k, *a: (string_between('/', '', k, rightmost=1), _.pick(v, 'data')))
         o = _.mapObject(f, lambda v, k, *a: (
@@ -172,8 +182,13 @@ class IdaRestClient(IdaRestConfiguration, object):
         )
         row = variable_chooser.Show(modal=True)
         if row != -1:
-            print("Parsing decls {}: {}".format(row, p[row][1]))
-            idc.parse_decls(p[row][1])
+            cdecl_typedef = p[row][1]
+            if ask:
+                cdecl_typedef = idaapi.ask_text(0x10000, cdecl_typedef, "The following new type will be created")
+                if not cdecl_typedef:
+                    return
+            print("Parsing decls {}: {}".format(row, cdecl_typedef))
+            idc.parse_decls(cdecl_typedef)
 
 
     @staticmethod
@@ -228,5 +243,5 @@ class IdaRestClient(IdaRestConfiguration, object):
 
 IdaRestClient.load_configuration()
 irc = IdaRestClient()
-irc.read_timeout = 2
-irc.update_hosts_timeout = 2
+# irc.read_timeout = 2
+# irc.update_hosts_timeout = 2

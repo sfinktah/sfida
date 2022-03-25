@@ -17,6 +17,15 @@ except:
 class Namespace(object):
     pass
 
+class IdaRestLog:
+    PROJECT_LOG_FILE = os.path.join( os.path.dirname( idc.get_idb_path() ), "idarest.log" )
+
+    def log(msg):
+        with open(PROJECT_LOG_FILE, 'wa') as f:
+            f.write(msg + "\n")
+
+
+
 class IdaRestConfiguration:
 
     CFG_FILE = os.path.join(idaapi.get_user_idadir(), "idarest.cfg")
@@ -38,9 +47,9 @@ class IdaRestConfiguration:
        'client_debug': False,
        'client_info':  True,
 
-       'client_connect_timeout': 30,
-       'client_read_timeout': 30,
-       'client_update_hosts_timeout': 5,
+       'client_connect_timeout': 2,
+       'client_read_timeout': 2,
+       'client_update_hosts_timeout': 2,
 
        'api_queue_result_qget_timeout': 10,
     }

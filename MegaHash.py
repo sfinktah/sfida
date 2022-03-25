@@ -121,13 +121,14 @@ class MegaHash:
     # Reading
     def Lookup(self, hash):
         hash = hash & 0xffffffff
-        if self.Contains(hash):
-            offset = self.m_hashIndex.get(hash)
-            s = self.ReadString(self.m_filename_dat, offset)
-            if joaat(s) == hash:
-                self.AddHashToEnum(hash, s)
-                return s
-            raise ValueError("dehashed value '{}' did not pass forward lookup test".format(s))
+        if hash:
+            if self.Contains(hash):
+                offset = self.m_hashIndex.get(hash)
+                s = self.ReadString(self.m_filename_dat, offset)
+                if joaat(s) == hash:
+                    self.AddHashToEnum(hash, s)
+                    return s
+                raise ValueError("dehashed value '{}' did not pass forward lookup test".format(s))
 
         # log('DEBUG', "m_hashIndex doesn't contain {:x}".format(hash))
         return "0x{:08x}".format(hash)

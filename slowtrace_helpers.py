@@ -8577,7 +8577,7 @@ def bin32(n):
     return (('0' * 32) + bin(n)[2:])[-32:]
 
 
-prngSeed = (0x214013 * 2531011) & 0xffffffff
+prngSeed = 0x13C938FF # (0x214013 * 2531011) & 0xffffffff
 
 def prngSeedNext():
     global prngSeed
@@ -8617,6 +8617,7 @@ def rng_twirl(a1):
     return data;
 
 def rng_test():
+    # a1[0] & a1[3] | a1[1] & ~a1[3],
     a1 = rng_init(0x12345678)
     for r in range(31337):
         rng_twirl(a1)

@@ -89,7 +89,7 @@ Define an IDA Python plugin required class and function.
 # If used as a plugin everything just becomes harder, though it does clean-up used ports
 # properly. 
 MENU_PATH = 'Edit/Other'
-class idarest_plugin_t(IdaRestConfiguration, ida_idaapi.plugin_t):
+class idarest_plugin_t(IdaRestConfiguration, IdaRestLog, ida_idaapi.plugin_t):
     count = 0
     flags = ida_idaapi.PLUGIN_UNL
     comment = "Interface to IDA Rest API"
@@ -163,20 +163,20 @@ class idarest_plugin_t(IdaRestConfiguration, ida_idaapi.plugin_t):
         if idarest_plugin_t.config['api_info']: idc.msg("[idarest_plugin_t::start] timer started\n")
 
         def cleanup():
-            print("**atexit** cleanup")
+            self.log("**atexit** cleanup")
             if worker and worker.is_alive():
-                idc.msg("[idarest_plugin_t::start::cleanup] stopping..\n")
+                self.log("[idarest_plugin_t::start::cleanup] stopping..\n")
                 worker.stop()
-                idc.msg("[idarest_plugin_t::start::cleanup] joining..\n")
+                self.log("[idarest_plugin_t::start::cleanup] joining..\n")
                 worker.join()
-                idc.msg("[idarest_plugin_t::start::cleanup] stopped\n")
+                self.log("[idarest_plugin_t::start::cleanup] stopped\n")
 
             if timer and timer.is_alive() and not timer.stopped():
-                idc.msg("[idarest_plugin_t::start::cleanup] stopping..\n")
+                self.log("[idarest_plugin_t::start::cleanup] stopping..\n")
                 timer.stop()
-                idc.msg("[idarest_plugin_t::start::cleanup] joining..\n")
+                self.log("[idarest_plugin_t::start::cleanup] joining..\n")
                 timer.join()
-                idc.msg("[idarest_plugin_t::start::cleanup] stopped\n")
+                self.log("[idarest_plugin_t::start::cleanup] stopped\n")
 
         print('[idarest_plugin_t::start] registered atexit cleanup')
         atexit.register(cleanup)
@@ -1050,7 +1050,7 @@ class IDARequestHandler(HTTPRequestHandler):
             tinfo.deserialize(idaapi.cvar.idati, tp, fld, None)
             return tinfo
 
-        def my_print_decls(name, flags = PDF_INCL_DEPS | PDF_DEF_FWD):
+        def my_print_decls(name, flags=0):
             names = name if isinstance(name, list) else [name]
             ordinals = []
             for name in names:
@@ -1074,12 +1074,16 @@ class IDARequestHandler(HTTPRequestHandler):
             return result
 
         types = IDARequestHandler.paren_split(args['type'], ',')
+        #  flags = idc.PDF_INCL_DEPS | idc.PDF_DEF_FWD
+        flags = 3
+        if 'flags' in args:
+            flags = int(args['flags'], 0)
         if idarest_plugin_t.config['api_debug']: print("request for type definitions: {}".format(types))
         result = []
         if types:
             for t in set(types):
                 if t != 'void':
-                    et = my_print_decls(t)
+                    et = my_print_decls(t, flags=flags)
                     response = {
                         'name' : t,
                         'msg'  : 'OK',
@@ -1528,7 +1532,8 @@ def get_ir():
     return ir
 
 def get_ir_plugin():
-    return sys.modules['__plugins__idarest_plugin']
+    if '__plugins__idarest_plugin' in sys.modules:
+        return sys.modules['__plugins__idarest_plugin']
 
 def find_plugin(pattern):
     for name in sys.modules.copy():
@@ -1549,13 +1554,20 @@ def unload_plugin(pattern, reload=False):
         ida_loader.run_plugin(l, 0)
         unload_module(pattern)
         if reload:
-            l = ida_loader.load_plugin(get_ir_plugin().__file__)
+            plugin = get_ir_plugin()
+            if plugin:
+                l = ida_loader.load_plugin(plugin.__file__)
 
 def reload_idarest():
-    l = ida_loader.load_plugin(get_ir_plugin().__file__)
-    ida_loader.run_plugin(l, 0)
+    plugin = get_ir_plugin()
+    if plugin:
+        l = ida_loader.load_plugin(plugin.__file__)
+        ida_loader.run_plugin(l, 0)
     unload_module('idarest')
-    l = ida_loader.load_plugin(get_ir_plugin().__file__)
+    if plugin:
+        l = ida_loader.load_plugin(plugin.__file__)
+    else:
+        print("idarest was not loaded as a plugin, cannot reload")
 
 def test_eval(cmd):
     ir = getglobal('ir', None)
@@ -1563,9 +1575,14 @@ def test_eval(cmd):
         ir.term()
     # unload_module('idarest')
     # _from('idarest.idarest import *')
-    ida_idaapi.require('idarest.idarest')
-    ida_idaapi.require('idarest.idarest_mixins')
-    from idarest.idarest import get_ir
+    try:
+        ida_idaapi.require('idarest.idarest')
+        ida_idaapi.require('idarest.idarest_mixins')
+        from idarest.idarest import get_ir
+    except ModuleNotFoundError:
+        ida_idaapi.require('idarest')
+        ida_idaapi.require('idarest_mixins')
+        from idarest import get_ir
     setglobal('ir', get_ir())
     e = EvalInterpreter(superglobals())
     r = e.eval(cmd)
