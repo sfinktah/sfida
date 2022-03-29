@@ -49,10 +49,15 @@ class IdaRestClient(IdaRestConfiguration, object):
         idb = _.findKey(self.hosts, lambda x, *a: x.startswith(url))
         if idb:
             request_url = 'http://{}:{}{}/fail?idb={}'.format(self.master_host, self.master_port, IdaRestClient.config['api_prefix'], urllib.parse.quote(idb))
-            r = requests.get(request_url, timeout=self.update_hosts_timeout)
-            if r.status_code != 200:
-                print("HttpResponseError attempting to inform host about slow client: {}".format(r.status_code))
-                #  raise HttpResponseError(r.status_code)
+
+            try:
+                request = requests.get(request_url, timeout=self.update_hosts_timeout)
+            except requests.exceptions.ReadTimeout:
+                print("MasterReadTimeout: {}".format(url + route))
+            except requests.exceptions.ConnectTimeout:
+                print("MasterConnectTimeout: {}".format(url + route))
+            if request.status_code != 200:
+                print("MasterHttpResponseError attempting to inform host about slow client: {}".format(r.status_code))
 
     def terminate_master(self):
         # http://127.0.0.1:2012/ida/api/v1.0/get_type
@@ -139,6 +144,20 @@ class IdaRestClient(IdaRestConfiguration, object):
         if row != -1:
             print("Chose {}: {}".format(row, ": ".join(p[row])))
             SetType(EA(), p[row][1].replace('(', ' fn('))
+
+    def eval(self, cmd):
+        """ eval(cmd) eval a command on all clients """
+        results = self.get_json('eval', cmd=cmd)
+        f = _.filterObject(results, lambda v, k, *a: v['msg'] == 'OK' and v['data'] and not v['data'].startswith('False'))
+        # o = _.mapObject(f, lambda v, k, *a: (string_between('/', '', k, rightmost=1), _.pick(v, 'data')))
+        o = _.mapObject(f, lambda v, k, *a: (
+            # key
+            string_between('/', '', k, rightmost=1), 
+            # value
+            string_between("'", "'", v['data'], greedy=1)
+        ))
+        p = _.pairs(o)
+        return p
 
     def GetNames(self, memcmd='mem("8d 04 11 c3")'):
         results = self.get_json('eval', cmd=memcmd + ".name()")

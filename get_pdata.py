@@ -837,7 +837,7 @@ def make_decompiler_dat():
                     print("{}:{}".format(new_hash_str, oname.replace('::', ':')))
 
 def apply_native_renames():
-    with JsonStoredDict('e:/git/GTA5Utilities/ScriptDiffer/YSCDisassembler/bin/Release/natives.json') as natives:
+    with JsonStoredDict("e:/git/GTA5Utilities/ScriptDiffer/YSCDisassembler/bin/Release/natives-{}.json".format(_build)) as natives:
         for fnLoc in FunctionsMatching('.*_0x.*'):
             fnName = GetFuncName(fnLoc)
             hashString = string_between('0x', '', fnName, inclusive=1).split('_')[0]

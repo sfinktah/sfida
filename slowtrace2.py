@@ -366,7 +366,7 @@ def retrace_list(address, recolor=0, func=0, color="#280c01", spd=0, tails=0, du
                     #  yield msg
 
             if recolor or rv == 0:
-                printi("*** GOOD *** {:x}".format(sk))
+                # printi("*** GOOD *** {:x}".format(sk))
                 address.remove(ea)
                 good += 1
                 if recolor and skipped:

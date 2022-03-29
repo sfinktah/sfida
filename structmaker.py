@@ -1024,7 +1024,7 @@ def struct_guess_elem_size(size, fudge=0):
 
     results = []
     for r in range(0, fudge): 
-        results.append([x//8 for x in _.sort(factors(1520+r)) if not x % 8])
+        results.append([x//8 for x in _.sort(factors(size+r)) if not x % 8])
     return [(i,x[1:-1]) for i,x in enumerate(results) if len(x) > 2]
 
 def getVarType(size, unsigned = None, count = 1, is_ptr = False, is_float = False):
@@ -1452,7 +1452,7 @@ def StrucInfo(name, pack = False, parent_offset = 0, rename = False, renameRel =
                     print("// struct: {} (0x{:x})".format(strid_type, idc.get_struc_size(strid)))
                 if not header:
                     childPackString = (elem_count, StrucInfo(elem_type, parent_offset = getOffset(offset), parents = parents + [name], verbose = verbose, parent_tif = tif))
-                    oprint("cps", childPackString, childPackString)
+                    oprint("cps, {}, {}".format(childPackString, childPackString))
                     thisPackString = "%i(%s)" % childPackString
             elif name is None and size is None:
                 thisPackString = "."

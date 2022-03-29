@@ -5347,14 +5347,20 @@ def make_transpose_fn(sourceRange, targetRange):
     def transpose(value):
         if isIterable(value):
             result = list()
-            for i, val in enumerate(value):
-                result.append(transpose(val, sourceRange[i], targetRange[i]))
+            for val in value:
+                result.append(transpose(val)) # , sourceRange[i], targetRange[i]))
             return result
 
         return (value - sourceRange[0]) * (targetRange[1] - targetRange[0]) / (sourceRange[1] - sourceRange[0]) + targetRange[0];
     return transpose
 
 def transpose(value, sourceRange, targetRange):
+    if isIterable(value):
+        result = list()
+        for v, s, t in zip(value, sourceRange, targetRange):
+            result.append(make_transpose_fn(s, t)(v))
+        return result
+    
     return make_transpose_fn(sourceRange, targetRange)(value)
 
 def gradient(begin, end, steps):
@@ -8576,13 +8582,59 @@ def bin32(n):
     n = n & 0xffffffff
     return (('0' * 32) + bin(n)[2:])[-32:]
 
+def polymul(num_bits, num_from, num_to):
+    while (num_from & 1) == 0:
+        assert (num_to & 1) == 0
+        num_from >>= 1
+        num_to >>= 1
+
+    mask = (1 << num_bits) - 1
+    value = 0
+    result = 0
+
+    for i in range(num_bits):
+        if (value ^ num_to) & (1 << i):
+            result |= (1 << i)
+            value += num_from << i
+            value &= mask
+
+    assert value == num_to
+
+    return result
+
 
 prngSeed = 0x13C938FF # (0x214013 * 2531011) & 0xffffffff
 
+#  def prngSeedNext():
+    #  global prngSeed
+#  
+    #  # prngSeed        = 214013 * prngSeed + 2531011;
+    #  prngSeed          = ((0xffffffff & (214013 * prngSeed)) + 2531011) & 0xffffffff;
+    #  return prngSeed
+
 def prngSeedNext():
     global prngSeed
-    prngSeed          = ((0xffffffff & (214013 * prngSeed)) + 2531011) & 0xffffffff;
+
+    prngSeed = prngSeedNextCalc(prngSeed)
     return prngSeed
+
+def prngSeedPrev():
+    global prngSeed
+
+    prngSeed = prngSeedPrevCalc(prngSeed)
+    return prngSeed
+
+def prngSeedPrevCalc(prngSeed):
+
+    num_bits = 32
+    mask = (1 << num_bits) - 1
+    mul = 0xb9b33155
+    r = prngSeed
+    r -= 2531011
+    r &= mask
+    r *= mul
+    r &= mask
+    return r
 
 def prngNextCalc(prngSeed):
     return ((0xffffffff & (214013 * prngSeed)) + 2531011) & 0xffffffff;
@@ -8616,7 +8668,25 @@ def rng_twirl(a1):
     a1[42]            = data_and_not_seed;
     return data;
 
-def rng_test():
+def rngtest(ea=None):
+    """
+    rngtest - determine if RandEncrypted struct is present at ea
+
+    @param ea: linear address
+    """
+    if isinstance(ea, list):
+        return [rngtest(x) for x in ea]
+
+    ea = eax(ea)
+    das = idc.get_wide_dword(ea)
+    dans = idc.get_wide_dword(ea+4)
+    seed0 = idc.get_wide_dword(ea+8)
+    seed = idc.get_wide_dword(ea+12)
+    if das ^ dans == das & seed | dans & ~seed:
+        print("0x{:x} data: 0x{:08x}".format(ea, das ^ dans))
+
+
+def rng_test(ea = None):
     # a1[0] & a1[3] | a1[1] & ~a1[3],
     a1 = rng_init(0x12345678)
     for r in range(31337):
@@ -8626,6 +8696,171 @@ def rng_test():
         prngNextCalc(a1[43]) == a1[44]
     ))
 
+"""
+0 214013 2531011
+1 -1443076087 505908858
+2 1170746341 -755606699
+3 -570470319 159719620
+4 675975949 -1567142793
+5 257342169 773150046
+6 203977589 548247209
+7 -191841887 2115878600
+8 -1065380067 -1462599061
+9 1744563881 2006221698
+
+def s32(v):
+    m = 1 << 31
+    return (v & (m - 1)) - (v & m)
+
+x = 1
+y = 0
+for i in range(10):
+    x *= 214013
+    y *= 214013
+    y += 2531011
+    x &= 0xFFFFFFFF
+    y &= 0xFFFFFFFF
+    print(i, s32(x), s32(y))
+
+Advance an LCG in linear time:
+
+for (uint32_t n = 0; n < 100; ++n) {
+    uint32_t mul = 1;
+    uint32_t inc = 0;
+
+    for (uint32_t i = n, j = 214013, k = 2531011; i; i >>= 1, k += k * j, j *= j) {
+        if (i & 1) {
+            mul *= j;
+            inc *= j;
+            inc += k;
+        }
+    }
+
+    printf("%2u 0x%08X 0x%08X\n", n, mul, inc);
+}
+
+Skipping backwards is the same as skipping forwards, just using the reversed mul and inc constants I showed
+
+#include <cstdint>
+
+bool PolyMul(uint32_t from, uint32_t to, uint32_t& out_mul)
+{
+    for (; ~from & 1; from >>= 1, to >>= 1) {
+        if (to & 1)
+            return false;
+    }
+
+    uint32_t value = 0;
+    uint32_t result = 0;
+
+    for (uint32_t i = 0; i < 32; ++i) {
+        uint32_t m = UINT32_C(1) << i;
+
+        if ((value ^ to) & m) {
+            result |= m;
+            value += from << i;
+        }
+    }
+
+    out_mul = result;
+
+    return true;
+}
+
+// easier to understand version
+
+bool PolyMul(uint32_t from, uint32_t to, uint32_t& out_mul)
+{
+    for (; ~from & 1; from >>= 1, to >>= 1) {
+        if (to & 1)
+            return false;
+    }
+
+    uint32_t result = 0;
+
+    while (uint32_t v = (from * result) ^ to) {
+        result |= v & -int32_t(v);
+    }
+    
+    out_mul = result;
+
+    return true;
+}
+
+
+void SkippingLCG(uint32_t n, uint32_t& mul, uint32_t& inc)
+{
+    uint32_t out_mul = 1;
+    uint32_t out_inc = 0;
+
+    for (uint32_t i = n, j = mul, k = inc; i; i >>= 1, k += k * j, j *= j) {
+        if (i & 1) {
+            out_mul *= j;
+            out_inc *= j;
+            out_inc += k;
+        }
+    }
+
+    mul = out_mul;
+    inc = out_inc;
+}
+
+template <uint32_t Mul = 214013, uint32_t Inc = 2531011>
+struct LCG {
+    uint32_t state;
+
+    LCG(uint32_t seed)
+        : state(seed)
+    {
+    }
+
+    void skip(int32_t n = 1)
+    {
+        if (n == 0)
+            return;
+
+        uint32_t mul = Mul;
+        uint32_t inc = Inc;
+
+        if (n < 0) {
+            PolyMul(mul, 1, mul);
+            inc *= uint32_t(-int32_t(mul));
+            n = -n;
+        }
+
+        if (n > 1) {
+            SkippingLCG(n, mul, inc);
+        }
+
+        state = (state * mul) + inc;
+    }
+
+    uint32_t operator()(int32_t n = 1)
+    {
+        uint32_t result = state;
+        skip(n);
+        return result;
+    }
+};
+
+
+// Z3 version
+import z3
+
+solver = z3.Solver()
+
+x = z3.BitVecVal(0x55C180C3, 32)
+y = z3.BitVec('y', 32)
+
+solver.add(x * y == 1)
+
+if solver.check() == z3.sat:
+    m = solver.model()
+    print(hex(m[y].as_long()))
+
+
+
+"""
 def codeguard():
         #  loc_143AAB03D:                          ; CODE XREF: ArxanCheckFunction_115-D2506Fvj
         #  .text:0000000143AAB03D                                                                           ; ArxanCheckFunction_115-43DE14vj

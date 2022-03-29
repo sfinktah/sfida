@@ -24,9 +24,9 @@ from superglobals import setglobal, getglobal, superglobals
 from split_paren import paren_multisplit
 
 try:
-    from .idarest_mixins import IdaRestConfiguration, BorrowStdOut
+    from .idarest_mixins import IdaRestConfiguration, BorrowStdOut, IdaRestLog
 except:
-    from idarest_mixins import IdaRestConfiguration, BorrowStdOut
+    from idarest_mixins import IdaRestConfiguration, BorrowStdOut, IdaRestLog
 
 # for testing outside ida
 try:

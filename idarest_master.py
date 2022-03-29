@@ -1,9 +1,9 @@
 import socket
 from underscore3 import _
 try:
-    from .idarest_mixins import IdaRestConfiguration
+    from .idarest_mixins import IdaRestConfiguration, IdaRestLog
 except:
-    from idarest_mixins import IdaRestConfiguration
+    from idarest_mixins import IdaRestConfiguration, IdaRestLog
 
 #  idarest_master_plugin_t.config['master_debug'] = False
 #  idarest_master_plugin_t.config['master_info'] = False
@@ -29,7 +29,7 @@ except:
         plugin_t = object
         PLUGIN_SKIP = PLUGIN_UNL = PLUGIN_KEEP = 0
 
-class idarest_master_plugin_t(IdaRestConfiguration, IdaRestlog, ida_idaapi.plugin_t):
+class idarest_master_plugin_t(IdaRestConfiguration, IdaRestLog, ida_idaapi.plugin_t):
     flags = ida_idaapi.PLUGIN_UNL
     comment = "IDA Rest API Master Controller"
     help = "Keeps track of idarest75 clients"
@@ -186,8 +186,13 @@ def idarest_master():
         def fail(self, args):
             if 'idb' not in args:
                 raise HTTPRequestError("idb param not specified", 400)
-            key = _.find(self.hosts, lambda x, *a: x['idb'] == args['idb'])
-            if key in self.hosts:
+            found = _.find(self.hosts, lambda x, *a: x['idb'] == args['idb'])
+            # dprint("[fail] key, type(key)")
+            print("[fail] found:{}, type(found):{}".format(found, type(found)))
+            key = None
+            if found:
+                key = found['host'] + ':' + found['port']
+            if key:
                 if idarest_master_plugin_t.config['master_debug']: print("[idarest_master::Handler::unregister] removing existing host {}".format(key))
                 value = self.hosts.pop(key)
             else:
