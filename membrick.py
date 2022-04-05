@@ -27,6 +27,13 @@ def trim_paren(hooka):
         print("hooka: {}".format(hooka))
     return hooka
 
+# https://stackoverflow.com/questions/3749512/python-group-by
+from functools import reduce # import needed for python3; builtin in python2
+from collections import defaultdict
+
+def groupBy(seq, func):
+    return reduce(lambda grp, val: grp[func(val)].append(val) or grp, seq, defaultdict(list))
+
 
 def check_patterns(s=None):
     if s is None:
@@ -923,17 +930,24 @@ def FindInSegments(searchstr, segments=None, limit=None, predicate=None, iterate
 
     @eg: filter(IsFuncHead, FindInSegments("ba 10 00 00 00 e9 ?? ?? ?? ??"))
     """
+    if isinstance(searchstr, list):
+        results = []
+        for search in searchstr:
+            results.extend(FindInSegments(search, segments=segments, limit=limit, predicate=predicate, iteratee=iteratee))
+        return results
+
+    if isinstance(searchstr, int):
+        _len = math.ceil((len("{:x}".format(searchstr))) / 2)
+        _bytes = searchstr.to_bytes(_len, byteorder='little')
+        searchstr = ' '.join("{:02x}".format(x) for x in _bytes)
+
+
     if not segments:
         segments = ['.text']
 
     if not binary:
         searchstr = ' '.join(["%02x" % x for x in asByteArray(searchstr)])
 
-    if isinstance(searchstr, list):
-        results = []
-        for search in searchstr:
-            results.extend(FindInSegments(search, segments=segments, limit=limit, predicate=predicate, iteratee=iteratee))
-        return results
     
     searchstr = searchstr.lower().strip().replace('??', '?').replace('?', '??').rstrip(' ?')
     if not re.match(r'([0-9a-f][0-9a-f] |\?\? )+([0-9a-f][0-9a-f])$', searchstr):
@@ -953,18 +967,27 @@ def FindInSegments(searchstr, segments=None, limit=None, predicate=None, iterate
         #  with MemBatchMode(1):
         ea = ida_search.find_binary(ea, seg_end, searchstr, 16, idc.SEARCH_CASE | idc.SEARCH_DOWN | idc.SEARCH_NOSHOW)
         while ea < seg_end:
-            if not predicate or not callable(predicate):
-                results.append(ea)
-            else:
-                r = predicate(ea)
-                if r and r > 1:
-                    results.append(r)
-                    if callable(iteratee):
-                        iteratee(r)
-                elif r:
-                    results.append(ea)
-                    if callable(iteratee):
-                        iteratee(ea)
+            r = ea
+            if predicate and callable(predicate):
+                pr = predicate(r)
+                if not pr:
+                    continue
+            if iteratee and callable(iteratee):
+                r = iteratee(r)
+
+            results.append(r)
+            #  if not predicate or not callable(predicate):
+                #  results.append(ea)
+            #  else:
+                #  r = predicate(ea)
+                #  if r and r > 1:
+                    #  results.append(r)
+                    #  if callable(iteratee):
+                        #  iteratee(r)
+                #  elif r:
+                    #  results.append(ea)
+                    #  if callable(iteratee):
+                        #  iteratee(ea)
 
             if limit and len(results) > limit:
                 return results

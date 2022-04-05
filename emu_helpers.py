@@ -167,6 +167,11 @@ def match_emu(ea=None, size=None, path=None, retnAll=False):
 
     subdirs = ["written", "read", "memcpy"]
 
+    if path is None and match_emu._path is None:
+        guess = os.path.dirname(get_idb_path())
+        print("Guessing database path as {}".format(guess))
+        path = guess
+
     if path is not None:
         if match_emu._path != path:
             match_emu._files.clear()
@@ -299,6 +304,8 @@ def check_emu(ea=None, size=None, path=None):
                 print(line)
 
     pp(p)
+    if not p:
+        return
     variable_chooser = MyChoose(
         p,
         "Select Patch",

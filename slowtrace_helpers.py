@@ -7908,20 +7908,6 @@ def dinjasm(ea):
         i = re.sub(regex, lambda m: str(int(m.group(), 16)), i, 0, re.IGNORECASE)
     return i
 
-# An iterable object is an object that implements __iter__, which is expected
-# to return an iterator object.
-def isIterable(o):
-    return hasattr(o, '__iter__') and not hasattr(o, 'ljust')
-
-# An iterator is an object that implements __next__, which is expected to
-# return the next element of the iterable object that returned it, and raise
-# a StopIteration exception when no more elements are available.
-def isIterator(o):
-    return hasattr(o, '__next__')
-
-def isIterableNotIterator(o):
-    return isIterable(o) and not isIterator(o)
-
 def oget(obj, key, default=None):
     """Get attribute or dictionary value of object
     Parameters
@@ -8070,6 +8056,21 @@ def array_count(o):
     return 0
 
 IsArrayCount = array_count
+
+# An iterable object is an object that implements __iter__, which is expected
+# to return an iterator object.
+def isIterable(o):
+    return hasattr(o, '__iter__') and not hasattr(o, 'ljust')
+
+# An iterator is an object that implements __next__, which is expected to
+# return the next element of the iterable object that returned it, and raise
+# a StopIteration exception when no more elements are available.
+def isIterator(o):
+    return hasattr(o, '__next__')
+
+def isIterableNotIterator(o):
+    return isIterable(o) and not isIterator(o)
+
 
 def isByteArray(o):
     return isinstance(o, bytearray)
@@ -8682,8 +8683,12 @@ def rngtest(ea=None):
     dans = idc.get_wide_dword(ea+4)
     seed0 = idc.get_wide_dword(ea+8)
     seed = idc.get_wide_dword(ea+12)
-    if das ^ dans == das & seed | dans & ~seed:
-        print("0x{:x} data: 0x{:08x}".format(ea, das ^ dans))
+    if seed and seed0 and das ^ dans == das & seed | dans & ~seed:
+        if not seed == (seed0 * 0x343fd + 0x269ec3) & 0xffffffff:
+            pass
+            #  print("0x{:x} data: 0x{:08x} (seeds were not sequential) d:{:08x} dn:{:08x} s0:{:08x} s:{:08x}".format(ea, das ^ dans, das, dans, seed0, seed))
+        else:
+            print("0x{:x} data: 0x{:08x} d:{:08x} dn:{:08x} s0:{:08x} s:{:08x}".format(ea, das ^ dans, das, dans, seed0, seed))
 
 
 def rng_test(ea = None):

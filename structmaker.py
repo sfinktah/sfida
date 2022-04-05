@@ -2473,7 +2473,7 @@ class my_tinfo_visitor_t(idaapi.tinfo_visitor_t):
         #  """
         #  return _ida_typeinf.tinfo_visitor_t_apply_to(self, *args)
         #
-def add_enum(enum, value, name, toupper=False):
+def my_add_enum(enum, value, name, toupper=False):
     if isinstance(value, str) and isinstance(name, int):
         name, value = value, name
     if toupper:
@@ -2489,21 +2489,46 @@ def add_enum(enum, value, name, toupper=False):
     if id == BADADDR:
         print("id: {}, Adding new enum: {}".format(id, enum))
         id = idc.add_enum(-1, enum, idaapi.hex_flag())
+
     r = idc.add_enum_member(id, name, value, -1)
-    if r:
-        s = "unknown error adding enum"
-        if r == ida_enum.ENUM_MEMBER_ERROR_NAME:
-            s = """ already have member with this name (bad name) """
-        if r == ida_enum.ENUM_MEMBER_ERROR_VALUE:
-            s = """ already have 256 members with this value """
-        if r == ida_enum.ENUM_MEMBER_ERROR_ENUM:
-            s = """ bad enum id """
-        if r == ida_enum.ENUM_MEMBER_ERROR_MASK:
-            s = """ bad bmask """
-        if r == ida_enum.ENUM_MEMBER_ERROR_ILLV:
-            s = """ bad bmask and value combination (~bmask & value != 0) """
-        print("add_enum: error: {}".format(s))
+    repeat = 1
+    while repeat:
+        repeat = 0
+        if r:
+            s = "unknown error adding enum"
+            if r == ida_enum.ENUM_MEMBER_ERROR_NAME:
+                s = """ already have member with this name (bad name) """
+                """
+                Python>f = get_first_enum_member(e, -1)
+                Python>f
+                0x269eb
+                Python>f = get_next_enum_member(e, f, -1)
+                Python>f
+                0xe813dd
+                Python>f = get_next_enum_member(e, f, -1)
+                Python>f
+                e = get_enum('megahash')
+                del_enum_member(e, joaat('bonus_aukrgm'), 0, -1); brute_enum('report_hash2_', joaat('bonus_aukrgm'))
+
+                """
+            if r == ida_enum.ENUM_MEMBER_ERROR_VALUE:
+                s = """ already have 256 members with this value """
+            if r == ida_enum.ENUM_MEMBER_ERROR_ENUM:
+                s = """ bad enum id """
+            if r == ida_enum.ENUM_MEMBER_ERROR_MASK:
+                s = """ bad bmask """
+            if r == ida_enum.ENUM_MEMBER_ERROR_ILLV:
+                s = """ bad bmask and value combination (~bmask & value != 0) """
+            print("add_enum: error: {}".format(s))
     return r
+
+def brute_enum(prefix, hash):
+    if isinstance(hash, str):
+        hash = joaat(hash)
+    result = brute(prefix, hash)
+    e = get_enum('megahash')
+    del_enum_member(e, hash, 0, -1); 
+    my_add_enum('megahash', hash, result)
 
 def rage_map(name, T):
     s = """

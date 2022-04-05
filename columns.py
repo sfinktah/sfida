@@ -27,6 +27,11 @@ def ahex(item):
             return hex(item) # & ~0xff00000000000000)
     return str(item)
 
+def clamp(val, minval, maxval):
+    if val < minval: return minval
+    if val > maxval: return maxval
+    return val
+
 def genAsList(o):
   return [x for x in o]
 
@@ -81,17 +86,17 @@ class MakeColumns(object):
       self.data = defaultdict(list)
       self.numrows = dict()
       self.skiprows = 0
-      self.maxwidth = array()
+      self.widest = array()
 
-   def addSqlResult(self, _array):
+   def addSqlResult(self, _array, **kwargs):
       _data = array()
       for _rownum, _row in foreach(_array):
          for _key, _value in foreach(_row):
             _data[_key][_rownum] = _value
       for _key, _column in foreach(_data):
-         self.addColumn(_column, _key)
+         self.addColumn(_column, _key, **kwargs)
 
-   def addArray(self, _array):
+   def addArray(self, _array, **kwargs):
       _fields = array()
       for _record in _array:
          for _key, _value in foreach(_record):
@@ -102,27 +107,29 @@ class MakeColumns(object):
             _data[_key][_rownum] = _record[_key] or ''
 
       for _key, _column in foreach(_data):
-         self.addColumn(_column, _key)
+         self.addColumn(_column, _key, **kwargs)
 
-   def addRow(self, _row):
+   def addRow(self, _row, **kwargs):
       for _key, _value in foreach(_row):
-         self.addColumn(A(_value), _key)
+         self.addColumn(A(_value), _key, **kwargs)
 
-   def addRows(self, _rows):
+   def addRows(self, _rows, **kwargs):
       for _row in _rows:
          for _key, _value in foreach(_row):
-            self.addColumn(A(_value), _key)
+            self.addColumn(A(_value), _key, **kwargs)
 
-   def addColumn(self, _data, _name = ""):
+   def addColumn(self, _data, _name = "", **kwargs):
       _data = [ahex(x) for x in _data]
       self.data[_name].extend(_data)
-      self.maxwidth[_name] = self.maxwidth.get(_name, 0)
+      self.widest[_name] = self.widest.get(_name, 0)
       self.numrows[_name] = self.numrows.get(_name, 0)
       self.numrows[_name] += count(_data)
-      _widest = strwraplen(_name) if isinstance(_name, str) else 0
+      _width = strwraplen(_name) if isinstance(_name, str) else 0
       for _value in _data:
-         _widest = max(strwraplen(_value), _widest)
-      self.maxwidth[_name] = max(self.maxwidth[_name], _widest)
+         _width = max(strwraplen(_value), _width)
+      if 'max_width' in kwargs:
+         _width = clamp(_width, 0, kwargs['max_width'])
+      self.widest[_name] = max(self.widest[_name], _width)
       return _data
 
    def clearAll(self):
@@ -157,7 +164,7 @@ class MakeColumns(object):
       for _i in range(_skiprows - 1, _maxnumrows):
          _underline = _line = ""
          for _c in _columns:
-            _width = self.maxwidth[_c]
+            _width = self.widest[_c]
             if _i == _skiprows - 1:
                _datum = _c
             else:
