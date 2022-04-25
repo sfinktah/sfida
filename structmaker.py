@@ -1417,7 +1417,7 @@ def StrucInfo(name, pack = False, parent_offset = 0, rename = False, renameRel =
             new_name = name
             fix_name_size = False
             fix_name_offset = False
-            m = re.fullmatch(r'(qw|dw|b|c|qword|dword|float|double|word|byte|field|pad|unpad|ptr)_([0-9a-f]+)(_maybe)?$', name, re.IGNORECASE)
+            m = re.fullmatch(r'(qw|dw|b|c|qword|dword|float|double|word|byte|field|pad|unpad|ptr)_(?:0x)?([0-9a-f]+)(_maybe)?$', name, re.IGNORECASE)
             
             if m or re.match(r'(N[0-9A-F]+|f[0-9])+$', name):
                 if not m:
@@ -2578,7 +2578,7 @@ def rage_vector(name, T):
 
 
 def add_enum_upper(enum, value, name):
-    return add_enum(enum, value, name, toupper=True)
+    return my_add_enum(enum, value, name, toupper=True)
 
 
 def struct_udt(name):

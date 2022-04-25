@@ -323,7 +323,7 @@ def find_checksummers5():
         abso = idc.get_qword(mem(ea).add(o_abs).rip(4).val())
         base = idc.get_qword(mem(ea).add(o_base).rip(4).val())
         if rel == abso and base == __ImageBase:
-            mem(abso).label('ArxanChecksumActual')
+            mem(abso).label('ArxanChecksumActual5')
             if idc.get_wide_byte(ea + 81) == 0xe8:
                 mem(ea).add(82).rip(4).label('ArxanGetNextRange').type("void __fastcall f(uint8_t **guide, arxan_range *range);")
             mem(ea).add(o_abs).rip(4).label('pArxanChecksum_AbsAddressSelf')

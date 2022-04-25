@@ -81,7 +81,7 @@ def GenericRangerPretty(genericRange, sort = False):
     ranges = GenericRanger(genericRange, sort = sort)
     result = ""
     for r in ranges:
-        result += "0x%012x..0x%012x\n" % (r.start, r.end);
+        result += "0x%012x..0x%012x\n" % (r.start, r.last);
     return result
 
 
@@ -324,7 +324,11 @@ def PatchBytes(ea, patch=None, comment=None, code=False):
     if isinstance(patch, bytearray):
         # fast patch
         idaapi.patch_bytes(ea, byte_type(patch))
+        if comment:
+            Commenter(ea, 'line').add(comment)
     else:
+        if comment:
+            Commenter(ea, 'line').add(comment)
         # slower patch to allow for unset values
         [idaapi.patch_byte(ea+i, patch[i]) for i in range(length) if patch[i] != -1]
 
@@ -871,6 +875,11 @@ def iassemble(string, ea=None, arch=None, mode=None, syntax=None, apply=False):
 def ida_resolve(assembly):
     def rename_if_possible(match):
         name = match.group(1)
+        # dprint("[rename_if_possible] match.group(0), match.group(1)")
+        if debug: print("[rename_if_possible] match.group(0):{}, match.group(1):{}".format(match.group(0), match.group(1)))
+        if name.endswith(':'):
+            return name
+        
         ea = idc.get_name_ea_simple(name)
         if IsValidEA(ea):
             return hex(ea)
@@ -886,7 +895,7 @@ def ida_resolve(assembly):
     if not _mnem[1]:
         return assembly
     _operands = [x for x in _mnem[2].partition(', ') if x and x != ', ']
-    _operands = [_resolve(x) for x in _operands]
+    # _operands = [_resolve(x) for x in _operands]
     _mnem[2] = ", ".join(_operands)
     return "".join(_mnem)
 

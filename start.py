@@ -117,7 +117,7 @@ debug = 0
 
 filenames = [
             "attrdict1.py",
-            "sfida/sf_string_between.py",
+            "file_get_contents.py",
             "sfida/sf_is_flags.py",
             "circularlist.py",
             "di.py",
@@ -157,6 +157,7 @@ filenames = [
             "DebugMode.py",
             "idarest.py",
             "MegaHash.py",
+            "emu_helpers.py",
             #  "tmp.py",
             #  "m.py",
             #  "emu.py"
@@ -226,7 +227,7 @@ def do_start():
 
         home = scriptDir
         fnfull = os.path.abspath(os.path.join(home, fn))
-        if os.path.isfile(fnfull):
+        if os.path.exists(fnfull) and os.path.isfile(fnfull):
             print("start-load: {}...".format(fnfull))
             #  exec(open(fnfull).read())
 
@@ -239,7 +240,7 @@ def do_start():
             except TypeError as e:
                 raise TypeError("{} while executing {}".format(str(e), fnfull))
         else:
-            raise Exception("No such file: %s" % fnfull)
+            raise print("No such file: %s" % fnfull)
 
     try:
         ir = get_ir()

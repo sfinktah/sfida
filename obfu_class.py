@@ -120,10 +120,10 @@ class Pattern(BasicPattern):
         self.safe = safe
         self.group = group
         self.priority = 4
-        self.options = AttrDict(kwargs)
+        self.options = SimpleAttrDict(kwargs)
         for k, v in kwargs.items():
             if k not in ('resume', 'reflow', 'then', 'priority', 'label'):
-                print("set pattern.options.{} to {} in {}".format(k, v, brief))
+                printi("set pattern.options.{} to {} in {}".format(k, v, brief))
             
 
 class BitwisePattern(BasicPattern):
@@ -133,10 +133,10 @@ class BitwisePattern(BasicPattern):
         self.mask = mask
         self.replFunc = replFunc
         self.safe = safe
-        self.options = AttrDict(kwargs)
+        self.options = SimpleAttrDict(kwargs)
         for k, v in kwargs.items():
             if k not in ('resume', 'reflow', 'then', 'priority', 'label'):
-                print("set bitwisepattern.options.{} to {} in {}".format(k, v, brief))
+                printi("set bitwisepattern.options.{} to {} in {}".format(k, v, brief))
 
     def as_list(self):
         return [self.search, self.mask, self.replFunc, self.brief, self.safe, self.options]
@@ -173,7 +173,7 @@ def make_bitwise_patch(bm):
         # d = [idc.get_wide_byte(x) for x in a]
         r = bm.sub(b)
         # dprint("[make_bitwise_patch] b, r")
-        print("[make_bitwise_patch] a:{}\nb:{}\nc:{}\nr:{}".format(hex(a), binlist(b), c, hex(r)))
+        if obfu_debug: printi("[make_bitwise_patch] a:{}\nb:{}\nc:{}\nr:{}".format(listAsHex(a), binlist(b), c, listAsHex(r)))
         
         return len(search), r
     return patch
@@ -239,6 +239,7 @@ class Obfu(object):
         return flag
 
     def __init__(self):
+        self._depth = 0
         self.combed = []
         self.default_comb_len = 2048
         self.stage2 = True
@@ -269,11 +270,11 @@ class Obfu(object):
 
         pst = _to_string(pat.search)
         if pst in self.patternSet:
-            # print("type(self.patterns)", type(self.patterns))
+            # printi("type(self.patterns)", type(self.patterns))
 
             found = _.find(self.patterns, lambda v, k, l: _to_string(v.search) == pst)
             if found:
-                print("Obfu Duplicate Search Pattern:\n{}\n{}".format(pfh(pat), pfh(found)))
+                printi("Obfu Duplicate Search Pattern:\n{}\n{}".format(pfh(pat), pfh(found)))
                 return
                 raise ObfuFailure("Duplicate search pattern")
         setLen = len(self.searchSets)
@@ -289,19 +290,19 @@ class Obfu(object):
         if searchLen < setLen:
             self.searchSets = self.searchSets[0:searchLen]
             # for i in xrange(searchLen, setLen):
-            #    print("self.searchSets[i] del: %s" % i)
+            #    printi("self.searchSets[i] del: %s" % i)
             #    del self.searchSets[i]
         #  while len(repl) and repl[len(repl)-1] == 0xcc:
-        #  print("removed %02x from pattern %s" % (repl.pop(), brief))
-        #  print("%s: length: %d" % (_to_string(repl), len(repl)))
+        #  printi("removed %02x from pattern %s" % (repl.pop(), brief))
+        #  printi("%s: length: %d" % (_to_string(repl), len(repl)))
         self.patterns.append(pat)  # [search, repl, replFunc, searchIndex, brief, safe, notes])
         self.patternSet.add(_to_string(pat.search))
         # ' '.join([bin(x) for x in [x[0] for x in obfu.patterns][0]]).repl('0b', '')
         label = getattr(pat.options, 'label', None)
-        #  print("label: {}".format(label))
+        #  printi("label: {}".format(label))
         if label:
             if label not in self.labels:
-                if debug: print("[add] label: {}".format(label))
+                if debug: printi("[add] label: {}".format(label))
                 self.labels[label] = []
             self.labels[label].append(pat)
 
@@ -321,7 +322,7 @@ class Obfu(object):
 
     def dump(self):
         for x in self.patterns:
-            print("dump:", x)
+            printi("dump:", x)
 
     def range(self, start, end):
         self.start = start
@@ -331,7 +332,7 @@ class Obfu(object):
     def prep_groups(self):
         if not self.groups:
             self.groups = _.groupBy(self.patterns, lambda x, *a: x.group.firstn(6))
-            if obfu_debug: print("[Obfu::prep_groups] {} pattern groups: {}".format(len(self.groups), [type(x) for x in self.groups]))
+            if obfu_debug: printi("[Obfu::prep_groups] {} pattern groups: {}".format(len(self.groups), [type(x) for x in self.groups]))
 
     ##
     # @brief append obfu pattern to database
@@ -346,7 +347,7 @@ class Obfu(object):
     #
     # @return None
     def append(self, notes='', brief='', search=None, repl=[], replFunc=None, safe=False, group=None, **kwargs):
-        #  print("append: \"{}\", <<{}>>, <<{}>>, {}".format(brief, search, repl, replFunc))
+        #  printi("append: \"{}\", <<{}>>, <<{}>>, {}".format(brief, search, repl, replFunc))
         if isinstance(search, PatternGroup):
             for item in search:
                 self.append(notes=notes, brief=brief, search=item, repl=repl, replFunc=replFunc, safe=safe, group=group, **kwargs)
@@ -384,11 +385,11 @@ class Obfu(object):
         )
 
     def append_bitwise(self, search, mask, replFunc, brief='unlabeled', safe=False, group=None, **kwargs):
-        #  print("append: \"{}\", <<{}>>, <<{}>>, {}".format(brief, search, repl, replFunc))
+        #  printi("append: \"{}\", <<{}>>, <<{}>>, {}".format(brief, search, repl, replFunc))
         if str(search) in self.patternSet:
             found = _.find(self.patterns, lambda v, k, l: v.search == search)
             if found:
-                print(("Possible Obfu Duplicate Search Pattern (mask): {}\n{}".format(found.brief, search)))
+                printi(("Possible Obfu Duplicate Search Pattern (mask): {}\n{}".format(found.brief, search)))
                 raise ObfuFailure("Duplicate search pattern")
 
         searchLen = len(search)
@@ -400,9 +401,9 @@ class Obfu(object):
 
     def process_replacement(self, search, repl, addressList, patternComment, addressListWithNops, addressListFull, pat, length=None):
         assemble = nassemble
-        if obfu_debug: print("[process_replacement] repl:{}".format(hex(repl)))
+        if obfu_debug: printi("[process_replacement] repl:{}".format(listAsHex(repl)))
         if isinstance(repl, list):
-            #  print("addressList")
+            #  printi("addressList")
             #  pp(addressList)
             if isinstance(repl[0], str):
                 if False and repl[-1].lower().lstrip().startswith("ret"):
@@ -413,19 +414,35 @@ class Obfu(object):
                 repl = length, repl
             else:
                 repl = (length or len(repl), repl)
-                print("*** non-str repl: {}".format(repl))
+                printi("*** non-str repl: {}".format(repl))
 
-        if isinstance(repl, tuple):
-            _search, repl = repl
-            # dprint("[process_replacement] _search, repl")
-            if obfu_debug: print("[process_replacement] tuple: _search:{}, repl:{}".format(hex(_search), hex(repl)))
+        if isinstance(repl, tuple) and len(repl) == 2:
+            _search, _repl = repl
+            try:
+                _search = list(_search)
+            except TypeError as e:
+                pass
+                #  printi("[ignore] exception: {}: {} [_search:{}]".format(e.__class__.__name__, str(e), _search))
+                #  raise
 
-            if -1 in repl:
+            try:
+                _repl = list(_repl)
+            except TypeError as e:
+                printi("obfu exception: {}: {} [_repl:{}]".format(e.__class__.__name__, str(e), _repl))
+                raise
+
+            # dprint("[process_replacement] _search, _repl")
+            if obfu_debug: printi("[process_replacement] tuple: _search:{}, _repl:{}".format(listAsHex(_search), listAsHex(_repl)))
+
+            if -1 in _repl:
                 for i in range(len(search)):
+                    #  if _search[i] == -1 and _repl[i] == -1:
+                        #  _repl[i] = idc.get_wide_byte(addressList[i])
+
                     if _search[i] == -1:
                         _search[i] = idc.get_wide_byte(addressList[i])
-                    if repl[i] == -1:
-                        repl[i] = _search[i]
+                    if _repl[i] == -1:
+                        _repl[i] = _search[i]
 
             
 
@@ -448,15 +465,15 @@ class Obfu(object):
             if _end > len(addressList):
                 raise IndexError("_end is greater than the length of address list")
             #  elif _end == len(addressList):
-            #  print("shortening _end by 1")
+            #  printi("shortening _end by 1")
             #  _end -= 1
 
             try:
                 _end_value = addressList[_end - 1]
             except IndexError:
                 # dprint("[IndexError] _end, len(addressList)")
-                print("[IndexError] _end:{}, len(addressList):{}, _search:{}".format(_end, len(addressList), _search))
-                print("[hm] _end:{}, addressList:{}, addressListWithNops:{}".format(_end, addressList,
+                printi("[IndexError] _end:{}, len(addressList):{}, _search:{}".format(_end, len(addressList), _search))
+                printi("[hm] _end:{}, addressList:{}, addressListWithNops:{}".format(_end, addressList,
                                                                                     addressListWithNops))
                 raise IndexError("pfft")
 
@@ -473,33 +490,35 @@ class Obfu(object):
 
             # XXX
             targetRanges = GenericRanger(addressListWithNops[0:_nop_end], sort=0, outsort=0)
-            if isinstance(repl, list) and isinstance(repl[0], str) and repl[-1] == 'int3' \
+            if isinstance(_repl, list) and isinstance(_repl[0], str) and _repl[-1] == 'int3' \
                     or \
-                    isinstance(repl, list) and isinstance(repl[0], int) and repl[-1] == 'cc':
+                    isinstance(_repl, list) and isinstance(_repl[0], int) and _repl[-1] == 'cc':
                         is_int3 = True
-                        if obfu_debug: print("obfu_class: extending targetRanges... locating longest range...")
+                        if obfu_debug: printi("obfu_class: extending targetRanges... locating longest range...")
                         sortedRanges = _.sortBy(targetRanges, lambda x, *a: len(x))
                         sortedRanges.reverse()
 
                         for r in targetRanges:
                             if r.start == sortedRanges[0].start:
-                                if obfu_debug: print("r.end: {:x}".format(r.end))
-                                if isJmp(r.end + 1):
-                                    r.end += GetInsnLen(r.end + 1)
-                                    if obfu_debug: print("r.end (new): {:x}".format(r.end))
+                                if obfu_debug: printi("r.last: {:x}".format(r.last))
+                                if isJmp(r.last + 1):
+                                    r.last += GetInsnLen(r.last + 1)
+                                    if obfu_debug: printi("r.last (new): {:x}".format(r.last))
 
             _targetRanges = format(targetRanges)
-            if obfu_debug: print("targetRanges: {}".format(targetRanges))
+            if obfu_debug: printi("targetRanges: {}".format(targetRanges))
 
-            # if obfu_debug: print("targetRanges", targetRanges)
+            # if obfu_debug: printi("targetRanges", targetRanges)
 
-            if isinstance(repl, list):
-                if isinstance(repl[0], int):
-                    print("bytepatch")
-                    repl = [(bytearray().fromhex(x[3])) for x in diInsnsIter(repl)]
+            if isinstance(_repl, list):
+                if isinstance(_repl[0], int):
+                    # dprint("[process_replacement] _repl")
+                    if obfu_debug: printi("[process_replacement] _repl:{}".format(_repl))
+                    
+                    _repl = [(bytearray().fromhex(x[3])) for x in diInsnsIter(_repl)]
                     assemble = bytepatch
-                if isinstance(repl[0], (str, bytearray)):
-                    #  for asm in repl:
+                if isinstance(_repl[0], (str, bytearray)):
+                    #  for asm in _repl:
                     #  length = assemble(asm, address)
                     #  if not length:
                     #  raise ObfuFailure("assemble: " + asm)
@@ -509,15 +528,15 @@ class Obfu(object):
 
                     # assemble for length
                     address = targetRanges[0].start
-                    test_assembled = [assemble(x, address) for x in repl]
+                    test_assembled = [assemble(x, address) for x in _repl]
                     # this isn't a particualr good check
                     if not isinstance(test_assembled, (bytearray, list)):
-                        if obfu_debug: print("couldn't assemble (for length) '%s': %s" % ("; ".join(repl), test_assembled))
+                        if obfu_debug: printi("couldn't assemble (for length) '%s': %s" % ("; ".join(_repl), test_assembled))
                         raise ObfuFailure("assemble: {}".format(asm))
                     else:
-                        if obfu_debug: print("test_assembled (for length [{}]) '{}': {}".format(
+                        if obfu_debug: printi("test_assembled (for length [{}]) '{}': {}".format(
                                         [len(x) for x in test_assembled], 
-                                        "; ".join(repl) if isinstance(repl, str) else 'bytearray', 
+                                        "; ".join(_repl) if isinstance(_repl, str) else 'bytearray', 
                                         listAsHex(test_assembled))
                                   )
                     total_length = sum([len(x) for x in test_assembled])
@@ -528,7 +547,7 @@ class Obfu(object):
                     for raw, nxt in stutter_chunk(test_assembled, 2, 1):
                         length = len(raw)
                         if len(targetLengths) == 0:
-                            print("ran out of ranges to fill")
+                            printi("ran out of ranges to fill")
                             raise ObfuFailure("ran out of ranges to fill")
                             # get the [perhaps approximate] length of insn
                             found = _.find(lengths, lambda v, *a: v >= length)
@@ -536,16 +555,16 @@ class Obfu(object):
                                 raise ObfuFailure("ran out of room for {}".format(listAsHex(raw)))
                             idx = targetLengths.index(found)
                             targetLengths[idx] -= length
-                            #  r.true_length + 1 -= length;
+                            #  r.length -= length;
                             if idx > 0:
                                 targetLengths = targetLengths[idx:]
 
-                    #  print("test assembled with remaining lengths: {}".format(targetLengths))
+                    #  printi("test assembled with remaining lengths: {}".format(targetLengths))
 
                     found = None
-                    for asm in repl:
+                    for asm in _repl:
                         if len(targetRanges) == 0:
-                            print("ran out of ranges to fill")
+                            printi("ran out of ranges to fill")
                             raise ObfuFailure("ran out of ranges to fill")
                         # get the [perhaps approximate] length of insn
                         try:
@@ -567,28 +586,28 @@ class Obfu(object):
                             r = targetRanges[idx]
                             assembled = assemble(asm, r.start)
                             if not isinstance(assembled, list):
-                                if obfu_debug: print(("assemble failed '%s': %s" % (asm, assembled)))
+                                if obfu_debug: printi(("assemble failed '%s': %s" % (asm, assembled)))
                                 raise ObfuFailure("assemble: {}".format(asm))
                             else:
-                                if obfu_debug: print(("assemble (0x%x) '%s': %s" % (r.start, asm, listAsHex(assembled))))
+                                if obfu_debug: printi(("assemble (0x%x) '%s': %s" % (r.start, asm, listAsHex(assembled))))
                             length = len(assembled)
                             PatchBytes(r.start, assembled, code=1, comment="{} {}".format(patternComment, _targetRanges))
 
                             forceCode(r.start)
                             if not IsCode_(r.start):
-                                if obfu_debug: print("0x%x: Couldn't MakeCode" % r.start)
+                                if obfu_debug: printi("0x%x: Couldn't MakeCode" % r.start)
                             # we could also leave the generic ranges in place with
                             # modificiations to indication not to use, then erase over
                             # them later... but remember, the reason we are ejecting them
                             # is because we need to avoid out-of-order code
                             r.start += length;
-                            #  r.true_length + 1 -= length;
+                            #  r.length -= length;
                             if idx > 0:
                                 usedRanges.extend(targetRanges[0:idx])
                                 targetRanges = targetRanges[idx:]
                             #  no need to do this
                             #  # yes, this is safe and works. r is like an magic c++ iterator
-                            #  if r.true_length + 1 < 1:
+                            #  if r.length < 1:
                             #  usedRanges = targetRanges[:1]
                             #  targetRanges = targetRanges[1:]
 
@@ -597,23 +616,23 @@ class Obfu(object):
                         except KeyboardInterrupt:
                             raise KeyboardInterrupt()
                         #  except ValueError:
-                            #  print(("couldn't find room for '%s' in %s" % (asm, _targetRanges)))
+                            #  printi(("couldn't find room for '%s' in %s" % (asm, _targetRanges)))
                             #  raise ObfuFailure("assemble: {}".format(asm))
 
                     if not is_int3:
                         usedRanges.extend(targetRanges)
                     if obfu_debug:
-                        print("usedRanges: {}".format(pf(usedRanges)))
+                        printi("usedRanges: {}".format(pf(usedRanges)))
                     for r in usedRanges:
-                        start, last, length = r.start, r.end, r.true_length + 1
+                        start, last, length = r.start, r.last, r.length
                         if length > 0:
                             ## ZeroCode(start, length)
                             if obfu_debug:
-                                print("usedRangesNopping: {:x}, {:x}, {}".format(start, length, patternComment))
+                                printi("usedRangesNopping: {:x}, {:x}, {}".format(start, length, patternComment))
                             PatchNops(start, length, patternComment)
                     return True
         else:
-            print(("ProcessReplacement: Unexpected type (exected tuple): %s" % type(repl)))
+            printi(("ProcessReplacement: Unexpected type (exected tuple): %s" % type(repl)))
             pp(repl)
         return False
 
@@ -621,7 +640,7 @@ class Obfu(object):
     def replace_pattern_bitwise(self, pat, ea, addressList, addressListWithNops, addressListFull):
             # result = self.replace_pattern_bitwise(pattern[0], pattern[1], pattern[2], pattern[3], list(addressList), ea, list(addressListWithNops), pattern[4], pattern[5])
             # result = self.replace_pattern_bitwise(pattern, ea, list(addressList), list(addressListWithNops))
-        #  print(json.dumps(searchIndex))
+        #  printi(json.dumps(searchIndex))
         search, mask, replFunc, brief = pat.search, pat.mask, pat.replFunc, pat.brief
         searchLen = len(search)
         if len(addressList) < searchLen:
@@ -636,7 +655,7 @@ class Obfu(object):
             repl = replFunc(search, search, original, ea, addressList, brief,
                             addressListWithNops=addressListWithNops, addressListFull=addressListFull)
             if repl:
-                print("Replace bitwise with {}:".format(pfh(repl)))
+                if debug: printi("Replace bitwise with {}:".format(pfh(repl)))
                 # pp(repl)
                 if self.process_replacement(search, repl, addressList, brief, addressListWithNops, addressListFull, pat=pat):
                     return {'addressList': addressList, 'pattern': pat}
@@ -649,17 +668,16 @@ class Obfu(object):
                            addressListWithNops, addressListFull, safe, pat, context=None):
         # inslen = MyGetInstructionLength(ea)
         # buf = GetManyBytes(ea, ItemSize(ea))
-        #  print(json.dumps(searchIndex))
+        #  printi(json.dumps(searchIndex))
 
         if not isInt(ea):
             raise ValueError("ea is {}".format(ea))
 
-        if obfu_debug: print("replace_pattern_ex")
-        debug = 0
+        if obfu_debug: printi("replace_pattern_ex")
 
         searchLen = len(search)
         if len(addressList) < searchLen:
-            if obfu_debug: print("addressList too short ({} < {})".format(len(addressList), searchLen))
+            if obfu_debug: printi("addressList too short ({} < {})".format(len(addressList), searchLen))
             return False
 
         failed = 0
@@ -669,9 +687,11 @@ class Obfu(object):
             else:
                 failed = 1
                 if obfu_debug:
-                    print("returning, no match at index {} (wanted: {:x} found: {:x} at {:x})".format(i, search[i], idc.get_wide_byte(addressList[i]), addressList[i]))
+                    printi("returning, no match at index {} (wanted: {:x} found: {:x} at {:x})".format(i, search[i], idc.get_wide_byte(addressList[i]), addressList[i]))
+                    printi("search string: {}".format(listAsHex(search)))
+                    printi("values       : {}".format(listAsHex([idc.get_wide_byte(addressList[i]) for i in searchIndex])))
                     if i == 12:
-                        print("12", Byte(addressList[i]), search[i])
+                        printi("12", Byte(addressList[i]), search[i])
                 break
 
         if failed:
@@ -687,12 +707,12 @@ class Obfu(object):
                             addressListWithNops=addressListWithNops, addressListFull=addressListFull, context=context)
             if not repl:
                 return False
-            # print("Replace:")
+            # printi("Replace:")
             # pp(repl)
 
             # 141057f05 Search|Replace (A): 21|('0x15', ['<generator object recursive_map at 0x0000021AAAFC8F48>', '<generator object recursive_map at 0x0000021AAAFC8F48>'])
             #          jmp via push rbp, xchg, lea rsp, jmp rsp-8
-            print("{:x} replFunc: Search: {}\n                   Replace: {}\n                   Comment: {}"
+            printi("{:x} replFunc: Search: {}\n                   Replace: {}\n                   Comment: {}"
                     .format(ea, listAsHex(search), 
                         repl, 
                         patternComment)) # listAsHex(search), 
@@ -700,8 +720,8 @@ class Obfu(object):
             if self.process_replacement(search, repl, addressList, patternComment, addressListWithNops, addressListFull, length=len(search), pat=pat):
                 return {'addressList': addressList, 'safe': safe}
         elif repl:
-            #  print("{:x} Search|Replace (B): {}|{}\n          {}".format(ea, listAsHex(search), ahex(repl), patternComment))
-            print("{:x} repl:     Search: {}\n                   Replace: {}\n                   Comment: {}"
+            #  printi("{:x} Search|Replace (B): {}|{}\n          {}".format(ea, listAsHex(search), ahex(repl), patternComment))
+            printi("{:x} repl:     Search: {}\n                   Replace: {}\n                   Comment: {}"
                     .format(ea, listAsHex(search), 
                         ahex(repl), 
                         patternComment)) # listAsHex(search), 
@@ -709,10 +729,10 @@ class Obfu(object):
                                         addressListWithNops, addressListFull, pat=pat):
                 return {'addressList': addressList, 'safe': safe}
         elif not repl:
-            print(("0x%x: No replacement for patch %s" % (ea, patchComment)))
+            printi(("0x%x: No replacement for patch %s" % (ea, patchComment)))
             return False
         else:
-            print("repl but could not process_replacement")
+            printi("repl but could not process_replacement")
             return False
             #  requiredLen = len(repl)
         #
@@ -722,51 +742,51 @@ class Obfu(object):
         #  translatedAddressList.append(addressList[i])
         #
         #  if obfu_debug:
-        #  print("requiredLen: %i\nsearchLen: %i" % (requiredLen, searchLen))
-        #  print(listAsHexWith0x(translatedAddressList))
+        #  printi("requiredLen: %i\nsearchLen: %i" % (requiredLen, searchLen))
+        #  printi(listAsHexWith0x(translatedAddressList))
         #
         #  target = BADADDR
         #  r = searchLen - requiredLen + 1
         #  if obfu_debug:
-        #  print("range: %i" % r)
+        #  printi("range: %i" % r)
         #  for i in range(r):
         #  if (addressList[i + requiredLen - 1] - addressList[i] == requiredLen - 1):
         #  target = i
         #  break
         #
         #  if obfu_debug:
-        #  print("target: %i" % target)
+        #  printi("target: %i" % target)
         #
         #  if target == BADADDR:
-        #  print("0x%x: %i contiguous bytes not found at target with addressList for %s" % (ea, requiredLen, patternComment))
-        #  print("requiredLen: %i\nsearchLen: %i" % (requiredLen, searchLen))
-        #  print(listAsHexWith0x(translatedAddressList))
+        #  printi("0x%x: %i contiguous bytes not found at target with addressList for %s" % (ea, requiredLen, patternComment))
+        #  printi("requiredLen: %i\nsearchLen: %i" % (requiredLen, searchLen))
+        #  printi(listAsHexWith0x(translatedAddressList))
         #  return False
         #
         #  if i:
         #  result = []
-        #  if obfu_debug: print("Making %i nops" % i)
+        #  if obfu_debug: printi("Making %i nops" % i)
         #  nopAddresses = [addressList[n] for n in range(i)]
         #  nopRanges = GenericRanger(nopAddresses)
         #  for r in nopRanges:
-        #  if obfu_debug: print("%i nops" % r.true_length + 1)
-        #  result += MakeNops(r.true_length + 1)
+        #  if obfu_debug: printi("%i nops" % r.length)
+        #  result += MakeNops(r.length)
         #
         #  result.extend(repl)
         #  repl = result
         #  replaceLen = len(repl)
 
-        if obfu_debug: print(("0x%x: %s: repl: %s" % (ea, patternComment, listAsHex(repl))))
+        if obfu_debug: printi(("0x%x: %s: repl: %s" % (ea, patternComment, listAsHex(repl))))
         replaceLen = len(repl)
 
-        #  print("0x%x: XXX: %s [%s]" % (ea, GetDisasm(ea), patternComment))
+        #  printi("0x%x: XXX: %s [%s]" % (ea, GetDisasm(ea), patternComment))
         #  GetDisasm(ea)
 
         replace_locs = []
         for i in range(replaceLen):
             replace_locs.append(addressList[i])
             if idc.is_code(idc.get_full_flags(ItemHead(addressList[i]))):
-                if obfu_debug: print("[debug] MyMakeUnknown({:x}, {}, DOUNK_EXPAND | DOUNK_NOTRUNC".format(addressList[i],
+                if obfu_debug: printi("[debug] MyMakeUnknown({:x}, {}, DOUNK_EXPAND | DOUNK_NOTRUNC".format(addressList[i],
                                                                                                       InsnLen(
                                                                                                           addressList[
                                                                                                               i])))
@@ -774,19 +794,19 @@ class Obfu(object):
             # SetSpDiff(addressList[i], 0)
             idaapi.patch_byte(addressList[i], repl[i])
         gr = GenericRanger(replace_locs, sort=0)
-        print("replace_locs: {}".format(pf(gr)))
+        printi("replace_locs: {}".format(pf(gr)))
         MakeCode(addressList[0])
 
-        if obfu_debug: print(("0x%x: Making %i comments" % (addressList[0], replaceLen)))
+        if obfu_debug: printi(("0x%x: Making %i comments" % (addressList[0], replaceLen)))
         commentAddresses = [addressList[n] for n in range(replaceLen)]
         commentRanges = GenericRanger(commentAddresses, sort=0, outsort=0)
-        if obfu_debug: print(("commentRanges: %s" % str(commentRanges)))
+        if obfu_debug: printi(("commentRanges: %s" % str(commentRanges)))
         for r in commentRanges:
-            if obfu_debug: print(("commentRange: %s" % str(r)))
-            if obfu_debug: print(("0x%x: %i comments" % (r.start, r.true_length + 1)))
+            if obfu_debug: printi(("commentRange: %s" % str(r)))
+            if obfu_debug: printi(("0x%x: %i comments" % (r.start, r.length)))
             lastHead = BADADDR
 
-            for a in range(r.start, r.start + r.true_length + 1):
+            for a in range(r.start, r.start + r.length):
                 h = ItemHead(a)
                 if h != lastHead:
                     lastHead = h
@@ -802,10 +822,10 @@ class Obfu(object):
             addressRanges = GenericRanger(patchAddresses, sort=0, outsort=0)
             for r in addressRanges:
                 l = []
-                for i in range(r.start, r.start + r.true_length + 1):
+                for i in range(r.start, r.start + r.length):
                     l.append(repl[rangeLookup[i]])
                 PatchBytes(r.start, l, patternComment, code=1)
-            # print("0x%x: 0x%x: Patched %i bytes: %s for %s" % (ea, r.start, r.true_length + 1, hex(l), patternComment))
+            # printi("0x%x: 0x%x: Patched %i bytes: %s for %s" % (ea, r.start, r.length, hex(l), patternComment))
 
             # MyMakeUnknown(addressList[i], 1, 0)
 
@@ -820,8 +840,8 @@ class Obfu(object):
 
         Wait()
         MakeCodeAndWait(ea, comment=GetFunctionName(ea))
-        #  print("0x%x: patched %i bytes: %s" % (ea, replaceLen, patternComment))
-        #  print("0x%x: XXX: %s [%s]" % (ea, GetDisasm(ea), patternComment))
+        #  printi("0x%x: patched %i bytes: %s" % (ea, replaceLen, patternComment))
+        #  printi("0x%x: XXX: %s [%s]" % (ea, GetDisasm(ea), patternComment))
         GetDisasm(ea)
         Commenter(ea, "line").remove("[PATCH] %s" % patternComment)
         Commenter(ea, "line").add("[PATCH] %i bytes: %s" % (replaceLen, patternComment))
@@ -866,7 +886,7 @@ class Obfu(object):
         self.AnalyzeQueue.append([start, end])
 
     def comb(self, ea, length, recursion=0, nops=False, comment="", limit=None, debugComments=False):
-        if obfu_debug: print(("0x%x: obfu::comb: length:%i" % (ea, length)))
+        if obfu_debug: printi(("0x%x: obfu::comb: length:%i" % (ea, length)))
         # Make sure all the instructions disassembled, and break up the JMPs
         fnFlags = idc.get_full_flags(ea)
         fnEnd = FindFuncEnd(ea)
@@ -878,7 +898,7 @@ class Obfu(object):
 
         if idc.is_tail(fnFlags):
             if not MyMakeUnkn(ea, 0):
-                print(("0x%x: MyMakeUnkn: failed" % ea))
+                printi(("0x%x: MyMakeUnkn: failed" % ea))
             #  Wait()
             MakeCodeAndWait(ea, force=1, comment=GetFunctionName(ea))
             fnFlags = idc.get_full_flags(ea)
@@ -899,7 +919,7 @@ class Obfu(object):
             flags = idc.get_full_flags(ip)
             if idc.is_unknown(flags) and idc.is_flow(flags) and MyGetInstructionLength(ip):
                 MakeCodeAndWait(ip)
-            #  if obfu_debug: print("0x%x: 0x%x: obfu::comb: %i" % (ea, ip, count))
+            #  if obfu_debug: printi("0x%x: 0x%x: obfu::comb: %i" % (ea, ip, count))
 
             # TODO: add these to lists where we need to maximise available bytes to write to
             if Byte(ip) == 0xcc:  # int3
@@ -907,7 +927,7 @@ class Obfu(object):
                 break
             insLen = MakeCodeAndWait(ip, 1, comment=GetFunctionName(ea))
             if idc.is_tail(flags) or not idc.is_code(flags):
-                print(("0x%x: comb: is tail: 0x%x" % (ea, ip)))
+                printi(("0x%x: comb: is tail: 0x%x" % (ea, ip)))
                 insLen = MakeCodeAndWait(ip, force=1, comment=GetFunctionName(ea))
             else:
                 pass
@@ -915,7 +935,7 @@ class Obfu(object):
             if idc.is_tail(flags) or not idc.is_code(flags):
                 #  Jump(ip)
                 MyMakeUnkn(idc.prev_head(idc.next_head(ea)), 1)
-                print(("0x%x: 0x%0x: comb: still at tail, should AnalyseArea" % (ea, ip)))
+                printi(("0x%x: 0x%0x: comb: still at tail, should AnalyseArea" % (ea, ip)))
                 #  AnalyseArea(ip, 1)
                 insLen = MakeCodeAndWait(ip, force=1, comment=GetFunctionName(ea))
                 if idc.is_tail(flags) or not idc.is_code(flags):
@@ -932,7 +952,7 @@ class Obfu(object):
             # insLen = MakeCodeAndWait(ip, force = True)
             count += insLen
             if not insLen:
-                print(("0x%x: 0x%x: Couldn't make any more code... %s" % (ea, ip, GetDisasm(ip))))
+                printi(("0x%x: 0x%x: Couldn't make any more code... %s" % (ea, ip, GetDisasm(ip))))
                 # raise ObfuFailure("Couldn't make more stuff...")
                 if obfu_debugComments: Commenter(ip, "line").add("[obfu::comb] End of code")
                 break
@@ -942,14 +962,14 @@ class Obfu(object):
                 #  MyMakeUnknown(ip, count, 0)
                 #  Wait()
                 #  insLen = MakeCodeAndWait(ip)
-                #  print("0x%x: making unknown %i bytes: 0x%x (insLen now %i)" % (ea, count, ip, insLen))
+                #  printi("0x%x: making unknown %i bytes: 0x%x (insLen now %i)" % (ea, count, ip, insLen))
 
                 #  if not insLen:
                 #  if recursion < 5:
                 #  MyMakeUnknown(ea, 1, DOUNK_EXPAND | DOUNK_NOTRUNC)
                 #  Wait()
                 #  return self.comb(ea, length, recursion + 1)
-                #  print("0x%x: Couldn't qassemble instruction at 0x%x" % (ea, ip))
+                #  printi("0x%x: Couldn't qassemble instruction at 0x%x" % (ea, ip))
                 #  raise ObfuFailure("0x%x: Couldn't qassemble instruction at 0x%x" % (ea, ip))
 
             mnem = GetMnem(ip)
@@ -957,7 +977,7 @@ class Obfu(object):
             w = Word(ip)
 
             if b == 0xc2 or b == 0xc3 or mnem == "retn":  # retn
-                #  print("Adding %x" % b)
+                #  printi("Adding %x" % b)
                 addressList += list(range(ip, ip + insLen))
                 if obfu_debugComments: Commenter(ip, "line").add("[obfu::comb] retn")
                 break
@@ -1018,7 +1038,7 @@ class Obfu(object):
             else:
                 ip = list(flowRefs)[0]
 
-        if obfu_debug: print(("0x%x: 0x%x: obfu::comb::end: %i" % (ea, ip, count)))
+        if obfu_debug: printi(("0x%x: 0x%x: obfu::comb::end: %i" % (ea, ip, count)))
         return addressList
 
     def combEx(self, ea, length=20000, callsAsJumps=False,
@@ -1070,7 +1090,7 @@ class Obfu(object):
             visited.add((ip, size, de_flags))
 
             if not size:
-                print(("0x%x: 0x%0x: combEx: couldn't decode instruction" % (ea, ip)))
+                printi(("0x%x: 0x%0x: combEx: couldn't decode instruction" % (ea, ip)))
                 raise ObfuFailure("0x%x: comb: still at tail: 0x%x" % (ea, ip))
 
             nextIp = ip + size
@@ -1086,23 +1106,23 @@ class Obfu(object):
                         nextIp = target
                         _end = _start = 0
                         if idc.get_fchunk_attr(ip, FUNCATTR_END) == ip + size:
-                            #  print("At chunk end: {:x}".format(ip))
+                            #  printi("At chunk end: {:x}".format(ip))
                             chunkEnd = ip + size
                             _end = 1
                         if idc.get_fchunk_attr(target, FUNCATTR_START) == target:
                             if removeEmptyChunks and _end and chunkInstructions == 0 and chunkRef and chunkStart and GetInsLen(
                                     chunkRef) == 5:
-                                print(
+                                printi(
                                     "Will jump to chunk start: {:x} from chunk end: {:x} having counted {} instructions".format(
                                         target, ip, chunkInstructions))
                             #  else:
-                            #  print("Will jump to chunk start: {:x}".format(target))
+                            #  printi("Will jump to chunk start: {:x}".format(target))
                             _start = 1
                             if removeEmptyChunks and _end and not chunkInstructions and chunkRef and chunkStart and GetInsLen(
                                     chunkRef) == 5:
                                 qassemble('jmp {:x}h'.format(target), chunkRef, apply=1)
                                 # remove_fchunk(ea, chunkStart)
-                                print("Removed chunk {:x}-{:x}, patched {:x}".format(chunkStart, chunkEnd, chunkRef))
+                                printi("Removed chunk {:x}-{:x}, patched {:x}".format(chunkStart, chunkEnd, chunkRef))
                             else:
                                 # don't advance chunkRef now, we might hit another empty chunk
                                 pass
@@ -1172,7 +1192,8 @@ class Obfu(object):
 
         return addresses, clean, instructions, nopset, jmps, jccs_unvisited, flaggedAddresses
 
-    def _patch(self, ea, length=None, context=None):
+    def _patch(self, ea, length=None, context=None, depth=0):
+        self._depth = depth
         self.prep_groups()
         # check_for_update()
         if length is None:
@@ -1181,7 +1202,7 @@ class Obfu(object):
             raise ValueError("ea is {}".format(ea))
 
         # obfu_read_patches()
-        #  if obfu_debug: print("0x%x: obfu::_patch" % (ea))
+        #  if obfu_debug: printi("0x%x: obfu::_patch" % (ea))
         self.start = ea
         # colorise_xor(idaapi.cmd)
 
@@ -1190,11 +1211,11 @@ class Obfu(object):
         tmp = [x[0] for x in self.combed]
         index = _.indexOf(tmp, ea)
         if -1 < index < self.default_comb_len - 150:
-            if obfu_debug: print("[_patch] cached: {:x} ({} < {})".format(ea, index, len(tmp)))
+            # if obfu_debug: printi("[_patch] cached: {:x} ({} < {})".format(ea, index, len(tmp)))
             index = _.indexOf(tmp, ea)
             comb_results_all = self.combed[index:]
         else:
-            if obfu_debug: print("[_patch] {:x} recombing ({} < {})".format(ea, index, len(tmp)))
+            if obfu_debug: printi("[_patch] {:x} recombing ({} < {})".format(ea, index, len(tmp)))
             self.combed = self.combEx(ea, length)[6]
             comb_results_all = self.combed[:]
 
@@ -1220,14 +1241,14 @@ class Obfu(object):
                 matched.append(pattern.brief)
                 self.combed.clear()
                 count += 1
-                if obfu_debug: print("found bitwise pattern")
+                if obfu_debug: printi("found bitwise pattern")
                 #  Jump(ea)
                 return PatternResult(pattern, result)
 
         searches = 0
         groups_matched = 0
 
-        if obfu_debug: print("[_patch] {:x}".format(ea))
+        if obfu_debug: printi("[_patch] {:x}".format(ea))
 
 
         addrLen = len(addressList)
@@ -1235,16 +1256,16 @@ class Obfu(object):
             if count:
                 break
             if addrLen < len(group):
-                if obfu_debug: print("{}: addrLen < len(group)".format(group.pattern))
+                #  if obfu_debug: printi("{}: addrLen < len(group)".format(group.pattern))
                 continue
             if not group.match_addresses(addressList):
-                if obfu_debug: print("{}: not group.match_addresses".format(group.pattern))
+                #  if obfu_debug: printi("{}: not group.match_addresses".format(group.pattern))
                 continue
 
             groups_matched += 1
-            if obfu_debug: print("[Obfu::_patch] group:    {} group._size: {}".format(group, group._size))
+            if obfu_debug: printi("[Obfu::_patch] group:    {} group._size: {}".format(group, group._size))
             for pat in _.sortBy(self.groups[group], 'priority'):
-                if obfu_debug: print("[Obfu::_patch] checking: {}".format(pat.brief))
+                if obfu_debug: printi("[Obfu::_patch] checking: {}".format(pat.brief))
                 searches += 1
 
                 # def replace_pattern_ex(  search,     repl,    replFunc, searchIndex, patternComment, addressList,       ea, addressListWithNops,       safe):
@@ -1252,13 +1273,13 @@ class Obfu(object):
                 results = []
                 while q and not count:
                     pat = q.pop(0)
-                    if obfu_debug: print("len(addressList): {}".format(len(addressList)))
-                    result = self.replace_pattern_ex(pat.search, pat.repl, pat.replFunc, pat.searchIndex, pat.brief,
+                    if obfu_debug: printi("len(addressList): {}".format(len(addressList)))
+                    result = self.replace_pattern_ex(tuple(pat.search), tuple(pat.repl), pat.replFunc, pat.searchIndex, pat.brief,
                                                      list(addressList), ea, list(addressListWithNops), list(addressListFull), pat.safe, context=context, pat=pat)
                     if result:
                         count += 1
                         if obfu_debug:
-                            print("result! count: {}".format(count))
+                            printi("result! count: {}".format(count))
                         self.combed.clear()
                         results.append(PatternResult(pat, result))
                         matched.append(pat)
@@ -1268,10 +1289,10 @@ class Obfu(object):
                         _q = []
                         for p in asList(then):
                             if not p in self.labels:
-                                print("[_patch] then-label '{}' not found in {})".format(p, self.labels.keys()))
+                                printi("[_patch] then-label '{}' not found in {})".format(p, self.labels.keys()))
                                 break
                             for nextpat in self.labels[p]:
-                                #  print("[_patch] then-label '{}' found in {})".format(p, self.labels.keys()))
+                                #  printi("[_patch] then-label '{}' found in {})".format(p, self.labels.keys()))
                                 _q.append(nextpat)
                         if _q:
                             q.extend(_.sortBy(_q, 'priority'))
@@ -1296,8 +1317,8 @@ class Obfu(object):
                         # forceAsCode(start, ea - start, hard = 1)
                         # return 1
         if obfu_debug and (searches or groups_matched):
-            print("searches: {} groups_matched: {}".format(searches, groups_matched));
-            print("matched: {}".format([x.brief for x in matched]));
+            printi("searches: {} groups_matched: {}".format(searches, groups_matched));
+            printi("matched: {}".format([x.brief for x in matched]));
 
         if results:
             self.combed.clear()
@@ -1307,7 +1328,7 @@ class Obfu(object):
         eip = self.eip
         end = self.end
         while eip <= end:
-            if obfu_debug: print(("0x%x: obfu::get_next_instruction" % ea))
+            if obfu_debug: printi(("0x%x: obfu::get_next_instruction" % ea))
 
             yield [eip, self._patch(eip)]
             # self.eip += ItemSize(self.eip)

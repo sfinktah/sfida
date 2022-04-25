@@ -7,7 +7,7 @@ import json
 import os
 import idc
 import circularlist
-from attrdict1 import AttrDict
+from attrdict1 import SimpleAttrDict
 #  import pydot.src.pydot
 
 from execfile import make_refresh
@@ -127,7 +127,7 @@ def MakePrevHeadSuggestions(ea=None):
     ea = eax(ea)
     gap = PrevGap(ea)
     if gap > 0:
-        for start in range(PrevHead(ea) + InsnLen(PrevHead(ea)), ea - 1):
+        for start in range(PrevHead(ea) + InsnLen(PrevHead(ea)), ea):
             yield start, diida(start, ea, returnLength=1)
 
 def PrevMakeHead(ea=None):
@@ -208,10 +208,17 @@ def smartTraversalFactory(fn1, direction = -1):
                 targetList2.extend(_.filter(targetList, lambda x, *a: IsCode_(x)))
                 targetList2.extend([x for x in targetList if x not in targetList2])
                 targetList2 = _.flatten(targetList2)
-                if not targetList2:
-                    targetList2.extend(refs['callRefs'])
+                #  if not targetList2:
+                targetList2.extend(refs['callRefs'])
+                targetList2 = _.uniq(targetList2)
                 while targetList2:
                     target = targetList2.pop(0)
+                    if targetList2:
+                        # we still have alternatives
+                        if is_same_func(ea, target): continue
+                        if max([0] + [is_same_func(ea, _ea) for _ea in xrefs_to(target)]): 
+                            continue
+
                     # skip dead-end jumps
                     if IsFlow(target) or IsRef(target):
                         break
@@ -741,7 +748,7 @@ def UnpatchUnnamed():
     
 
 def UnpatchUn():
-    return (UnpatchUnused(), UnpatchUnnamed())
+    UnpatchPredicate(lambda x, *a: not IsFunc_(x) or not HasUserName(GetFuncStart(x)))
 
 
 _unpatch_count = 0
@@ -759,7 +766,7 @@ def ForceFunction2(start, noMakeFunction=False):
     fnName = idc.get_name(start)
     do_return = None
     ea = start
-    func = AttrDict(clone_items(ida_funcs.get_fchunk(start)))
+    func = SimpleAttrDict(clone_items(ida_funcs.get_fchunk(start)))
     if func:
         if func.flags & idc.FUNC_TAIL or func.start_ea != start:
             if func.start_ea < start:
@@ -815,7 +822,54 @@ def ForceFunction2(start, noMakeFunction=False):
 
     return False
 
-def unpatch_func2(funcea=None, unpatch=False):
+def unpatch_func(ea):
+    ea = GetFuncStart(ea)
+    last_chunks = GetChunkAddresses(ea)
+    _unpatch_count = 0
+    for r in range(100):
+        chunks = GetChunkAddresses(ea)
+        RemoveAllChunks(ea)
+        idc.del_func(ea)
+        for x, y in chunks:
+            ida_auto.revert_ida_decisions(x, y)
+        for x, y in chunks:
+            MyMakeUnknown(x, y - x, DOUNK_EXPAND | DOUNK_NOTRUNC)
+        for x, y in chunks:
+            z = x
+            end = y
+            while ida_bytes.get_original_qword(z) != Qword(z) or z < end:
+                UnPatch(z, z + 4)
+                _unpatch_count += 1
+                z += 4
+        cend = dict()
+        if False:
+            for x, y in chunks:
+                z2 = EndOfContig(x)
+                happy, start, end, trim = forceCode(x, z)
+                print("unpatching chunk {:x} - {:x} z:{:x} z2:{:x} end:{:x} trim:{:x}".format(x, y, z, z2, end, trim))
+                # r = obfu.combEx(x, 65535, oneChunk=True)
+                cend[x] = z2
+
+            for x, y in cend.items():
+                if not IsFunc_(x):
+                    EaseCode(x, forceStartIfHead=1, noExcept=1)
+                    ida_auto.auto_apply_tail(x, ea)
+                    idc.append_func_tail(ea, x, y)
+                    idc.auto_wait()
+            #  print("forcingCode {:x} - {:x}".format(x, y))
+            #  forceCode(x, y, trim=True)
+        idc.auto_wait()
+        idc.add_func(ea)
+        idc.auto_wait()
+
+        # ida_funcs.reanalyze_function(ea)
+        break
+    #  for x, y in chunks: ida_auto.plan_and_wait(x, cend[x])
+    #  ida_auto.auto_make_proc(ea)
+    #  ida_auto.auto_wait()
+    if debug: printi("unpatched {} bytes".format(_unpatch_count))
+
+def unpatch_func2(funcea=None, unpatch=True):
     """
     unpatch_func2
 
@@ -900,52 +954,6 @@ def unpatch_func2(funcea=None, unpatch=False):
     if _unpatch_count:
         print("[unpatch_funcs2] unpatched {} bytes".format(_unpatch_count))
     return _unpatch_count
-
-def unpatch_func(ea):
-    ea = GetFuncStart(ea)
-    last_chunks = GetChunkAddresses(ea)
-    _unpatch_count = 0
-    for r in range(100):
-        chunks = GetChunkAddresses(ea)
-        RemoveAllChunks(ea)
-        idc.del_func(ea)
-        for x, y in chunks:
-            ida_auto.revert_ida_decisions(x, y)
-        for x, y in chunks:
-            MyMakeUnknown(x, y - x, DOUNK_EXPAND | DOUNK_NOTRUNC)
-        for x, y in chunks:
-            z = x
-            end = y
-            while ida_bytes.get_original_qword(z) != Qword(z) or z < end:
-                UnPatch(z, z + 4)
-                _unpatch_count += 1
-                z += 4
-        cend = dict()
-        for x, y in chunks:
-            z2 = EndOfContig(x)
-            happy, start, end, trim = forceCode(x, z)
-            print("unpatching chunk {:x} - {:x} z:{:x} z2:{:x} end:{:x} trim:{:x}".format(x, y, z, z2, end, trim))
-            # r = obfu.combEx(x, 65535, oneChunk=True)
-            cend[x] = z2
-
-        for x, y in cend.items():
-            if not IsFunc_(x):
-                EaseCode(x, forceStartIfHead=1, noExcept=1)
-                ida_auto.auto_apply_tail(x, ea)
-                idc.append_func_tail(ea, x, y)
-                idc.auto_wait()
-            #  print("forcingCode {:x} - {:x}".format(x, y))
-            #  forceCode(x, y, trim=True)
-        idc.auto_wait()
-        idc.add_func(ea)
-        idc.auto_wait()
-
-        # ida_funcs.reanalyze_function(ea)
-        break
-    #  for x, y in chunks: ida_auto.plan_and_wait(x, cend[x])
-    #  ida_auto.auto_make_proc(ea)
-    #  ida_auto.auto_wait()
-    print("unpatched {} bytes".format(_unpatch_count))
 
 
 patchedBytes = []
@@ -1326,7 +1334,7 @@ def ml():
 
 
 def graph_results(results, links):
-
+    import pydot.src.pydot as pydot
     def safe_name(name, second = None):
         if second is not None:
             return safe_name(name) + '-' + safe_name(second)
@@ -1634,8 +1642,9 @@ class prevpath(object):
 
 
 
-def pprev(ea=None, stop=None, depth=0, show=0, data=0):
+def pprev(ea=None, data=0, stop=None, depth=0, show=0):
     results = []
+
     def history(path):
         return path.start_ea, path.ea, path.insn_history
         history = []
@@ -1652,7 +1661,7 @@ def pprev(ea=None, stop=None, depth=0, show=0, data=0):
         return history
         # return _.flatten(history)
     
-    start_ea = ea = get_ea_by_any(ea)
+    start_ea = ea = eax(ea)
     visited = set([ea])
     links = []
     paths = []
@@ -1714,8 +1723,9 @@ HELPER_HOTKEYS.append(MyHotkey("Ctrl-Alt-N", make_nops))
 HELPER_HOTKEYS.append(MyHotkey("Ctrl-Alt-O", make_offset))
 HELPER_HOTKEYS.append(MyHotkey("Ctrl-Alt-S", sig_maker))
 HELPER_HOTKEYS.append(MyHotkey("Ctrl-Alt-U", hotkey_unpatch))
+HELPER_HOTKEYS.append(MyHotkey("Alt-P", fake_cli_factory("hotkey_patch()")))
 HELPER_HOTKEYS.append(MyHotkey("J", lambda: hotkey_switch_jumptype(shift=0)))
-HELPER_HOTKEYS.append(MyHotkey("Ctrl-J", lambda: SkipJumps(here(), apply=1)))
+HELPER_HOTKEYS.append(MyHotkey("Ctrl-J", lambda: hotkey_skipjumps()))
 HELPER_HOTKEYS.append(MyHotkey("Shift-Alt-F", makeFunctionFromInstruction))
 HELPER_HOTKEYS.append(MyHotkey("Shift-Alt-J", down))
 HELPER_HOTKEYS.append(MyHotkey("Shift-Alt-K", up))
@@ -1780,6 +1790,17 @@ def sub_lte(r, sub, val):
     result = []
     for v in r:
         if ((v - sub)) <= val:
+            result.append(v)
+    return result
+
+def and_eq(r, mask, val):
+    result = []
+    for v in r:
+        tmp = (v & mask)
+        if val is True:
+            if tmp:
+                result.append(v)
+        elif tmp == val:
             result.append(v)
     return result
 

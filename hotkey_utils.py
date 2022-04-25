@@ -1450,6 +1450,31 @@ def create_insns(ea1, ea2):
                 n = idc.create_insn(ea)
         ea += n
 
+def hotkey_patch():
+    chunkStart, chunkEnd = get_selection_or_ea()
+    if chunkStart + MyGetInstructionLength(chunkStart) >= chunkEnd:
+        print("single patch at {:x}", chunkStart)
+        obfu._patch(chunkStart)
+    elif chunkEnd > chunkStart and chunkEnd < BADADDR and chunkEnd - chunkStart < 8192:
+        print("range patch")
+        reflow = True
+        while reflow:
+            reflow = False
+            print("reflow:")
+            for ea in idautils.Heads(chunkStart, chunkEnd):
+                print("for ea: {:x}".format(ea))
+                r = True
+                while r and not reflow:
+                    r = False
+                    r = obfu._patch(ea)
+                    if r and isinstance(r, list):
+                        print("result")
+                        for p in r:
+                            if deep_get(p, 'pat.options.reflow', '') == 'reflow':
+                                print("reflowing")
+                                reflow = True
+
+
 def hotkey_unpatch():
     chunkStart, chunkEnd = get_selection_or_ea()
     if GetFuncStart(chunkStart) == chunkStart and chunkEnd == idc.next_head(chunkStart):
@@ -1469,6 +1494,11 @@ def hotkey_unpatch():
                     MyMakeUnknown(ea, n, DOUNK_NOTRUNC)
                     n = idc.create_insn(ea)
             ea += n
+
+def hotkey_skipjumps():
+    chunkStart, chunkEnd = get_selection_or_ea()
+    for ea in idautils.Heads(chunkStart, chunkEnd):
+        SkipJumps(ea, apply=1)
 
 def hotkey_unchunk():
     def hotkey_unchunk_expand_ea(ea, *args):
@@ -1558,8 +1588,9 @@ def hotkey_switch_jumptype(shift=0):
         if isAnyJmp(ea):
             if isConditionalJmp(ea):
                 hotkey_switch_jumptype.last_ea = ea
-                hotkey_switch_jumptype.last_asm = dii(ea)
-                nassemble(ea, "jmp 0x{:x}".format(GetTarget(ea)), apply=1)
+                hotkey_switch_jumptype.last_asm = dii(ea, 6)
+                nassemble(ea, "jmp 0x{:x}; nop".format(GetTarget(ea)), apply=1)
+                idc.create_insn(ea + 5)
             else:
                 if hotkey_switch_jumptype.last_ea == ea:
                     nassemble(ea, hotkey_switch_jumptype.last_asm, apply=1)

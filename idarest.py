@@ -163,6 +163,7 @@ class idarest_plugin_t(IdaRestConfiguration, IdaRestLog, ida_idaapi.plugin_t):
         if idarest_plugin_t.config['api_info']: idc.msg("[idarest_plugin_t::start] timer started\n")
 
         def cleanup():
+            self.register(self.host, self.port, unregister=True)
             self.log("**atexit** cleanup")
             if worker and worker.is_alive():
                 self.log("[idarest_plugin_t::start::cleanup] stopping..\n")

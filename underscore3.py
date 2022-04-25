@@ -17,6 +17,53 @@ from collections import Sequence
 import six
 from six.moves import builtins
 
+def oget(obj, key, default=None, call=False):
+    """Get attribute or dictionary value of object
+    Parameters
+    ----------
+    obj : object
+        container with optional dict-like properties
+    key : str
+        key
+    default : any
+        value to return on failure
+    call : bool
+        call attr if callable
+
+    Returns
+    -------
+    any
+        similar to obj[key] or getattr(obj, key)
+
+    See Also
+    --------
+    dotted : creates `path` from dotted string
+    deep_get : uses `oget` to traverse deeply nested objects
+
+    Examples
+    --------
+    >>> oget(sys.modules, '__main__')
+    <module '__main__' (built-in)>
+    >>> oget(sys.modules['__main__'], 'oget')
+    <function oget at 0x000001A9A1920378>
+    """
+    if not isinstance(key, str):
+        raise TypeError("oget(): attribute ('{}') name must be string".format(key))
+    r = None
+
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    try:
+        r = obj[key] if key in obj else getattr(obj, key, default)
+    except TypeError:
+        # TypeError: 'module' object is not subscriptable
+        r = getattr(obj, key, default)
+
+    if call and callable(r):
+        r = r()
+
+    return r
+
 # https://stackoverflow.com/questions/42095393/python-map-a-function-over-recursive-iterables
 def recursive_map(seq, func):
     for item in seq:
@@ -59,7 +106,7 @@ def Array(o):
     else:
         return list([o])
 
-def xrefs_to(ea, types=None):
+def _us_xrefs_to(ea, types=None):
 
     if types is None:
         types = [ idc.fl_CF,
@@ -224,6 +271,53 @@ class underscore(object):
             return dict(val)
         else:
             return val
+
+    def _oget(self, obj, key, default=None, call=False):
+        return oget(obj, key, default=default, call=call)
+        """Get attribute or dictionary value of object
+        Parameters
+        ----------
+        obj : object
+            container with optional dict-like properties
+        key : str
+            key
+        default : any
+            value to return on failure
+        call : bool
+            call attr if callable
+
+        Returns
+        -------
+        any
+            similar to obj[key] or getattr(obj, key)
+
+        See Also
+        --------
+        dotted : creates `path` from dotted string
+        deep_get : uses `oget` to traverse deeply nested objects
+
+        Examples
+        --------
+        >>> oget(sys.modules, '__main__')
+        <module '__main__' (built-in)>
+        >>> oget(sys.modules['__main__'], 'oget')
+        <function oget at 0x000001A9A1920378>
+        """
+        if not isString(key):
+            raise TypeError("oget(): attribute ('{}') name must be string".format(key))
+        r = None
+        try:
+            r = obj[key] if key in obj else default
+        except TypeError:
+            # TypeError: 'module' object is not subscriptable
+            r = getattr(obj, key, default)
+
+        if call and callable(r):
+            r = r()
+
+        return r
+
+
 
     """
     Collection Functions
@@ -527,11 +621,11 @@ class underscore(object):
             for x in self.obj:
                 r2 = []
                 for _key in key:
-                    r2.append(x.get(_key))
+                    r2.append(self._oget(x, _key, call=1))
                 r1.append(tuple(r2))
             return(r1) 
 
-        return self._wrap([x.get(key) for x in self.obj])
+        return self._wrap([self._oget(x, key, call=1) for x in self.obj])
 
     def re_findall(self, pattern, flags=0):
         """
@@ -566,7 +660,7 @@ class underscore(object):
         return self._wrap([str(idaapi.decompile(get_ea_by_any(e), hf=None, flags=idaapi.DECOMP_WARNINGS)) for e in self.obj])
 
     def ida_xrefs_to(self):
-        return self._wrap([xrefs_to(get_ea_by_any(e)) for e in self.obj])
+        return self._wrap([_us_xrefs_to(get_ea_by_any(e)) for e in self.obj])
 
     def ida_all_xrefs_from(self):
         def iter(x):

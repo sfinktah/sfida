@@ -27,9 +27,9 @@ def list_splice(target, start, delete_count=None, *items):
 
     return removed
 
-class AttrDict(dict):
+class SimpleAttrDict(dict):
     def __init__(self, *args, **kwargs):
-        super(AttrDict, self).__init__(*args, **kwargs)
+        super(SimpleAttrDict, self).__init__(*args, **kwargs)
         self.__dict__ = self
 
 class helper_mixin(object):
@@ -46,7 +46,7 @@ class helper_mixin(object):
         d = struct.unpack(fmt, ida_bytes.get_bytes(ea, struct.calcsize(fmt)))
         o = self.zipObject(_names, d)
         self._overspill = list(d[len(_names):])
-        return AttrDict(o)
+        return SimpleAttrDict(o)
 
     def struct_elemcount(self, fmt):
         elems = [x for x in re.split(r'(\d+)(\w)', fmt) if x]
@@ -89,7 +89,7 @@ class section_header(object):
 
     def __init__(self, base, data):
         self.base = base
-        self.data = AttrDict()
+        self.data = SimpleAttrDict()
         for i in range(len(self._packinfo)):
             if len(self._packinfo[i]) > 2:
                 count = self._packinfo[i][2]
@@ -248,7 +248,7 @@ class debug_information_codeview(helper_mixin, section_header):
         return _pop
 
     def GUID(self, data):
-        result = AttrDict()
+        result = SimpleAttrDict()
         result.Data1 = data[0]
         result.Data2 = data[1]
         result.Data3 = data[2]
@@ -258,7 +258,7 @@ class debug_information_codeview(helper_mixin, section_header):
     def __init__(self, base, data, size):
         #  super(debug_information_codeview, self).__init__(base, data)
         self.base = base
-        self.data = AttrDict()
+        self.data = SimpleAttrDict()
         self.data.Name = 'CodeView'
         for i in range(len(self._packinfo)):
             pop = self._pop

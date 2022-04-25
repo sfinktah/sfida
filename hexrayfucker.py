@@ -9,6 +9,7 @@ check_for_update = make_auto_refresh(os.path.abspath(__file__))
 _import("from columns import MakeColumns")
 _import("from underscoretest import _")
 _import("from split_paren import *")
+_import("from attrdict1 import SimpleAttrDict")
 #  ```
 #  Python> sid = idc.get_frame_id(idc.get_func_name(idc.BADADDR, 'sub_5450'))
 #  Python> print(list(idautils.StructMembers(sid)))
@@ -151,7 +152,7 @@ class FuncArgs:
 
 first_use = dict()
 used_colors = set()
-def colorme(match):
+def vt100_color(match):
     """
           8: 'o_imagebase_259',
           9: '{',
@@ -171,8 +172,10 @@ def colorme(match):
     #  if o != 9: 
     used_colors.add(o)
     t = _.indexOf(list(used_colors), o)
-    w = len(used_colors) + 40
-    t = t + 40
+    w = len(used_colors) + 31
+    t = t + 31
+    if t > 37:
+        t += 3
     # if t > 47:        t += 3
     text = group[1]
     rest = group[2]
@@ -193,43 +196,54 @@ def colorme(match):
     if text:
         result += "\x1b[{}m{}\x1b[0m".format(t, text)
     if rest:
-        result += "\x1b[{}m{}\x1b[0m".format(w, rest)
+        result += "\x1b[{};2m{}\x1b[0m".format(w, rest)
     if ignore:
         result += ignore
+
     return result
 
 #  def colorize_sub(s):
-    #  return re.sub(r"\x01(.)(.*?)\x02\1", colorme, re.sub(r"\x04\x04|\x01\([0-9a-fA-F]{16}", '', s))
+    #  return re.sub(r"\x01(.)(.*?)\x02\1", vt100_color, re.sub(r"\x04\x04|\x01\([0-9a-fA-F]{16}", '', s))
 
 def colorize_sub(s):
-    return re.sub(r"\x01(.)(.*?)\x02\1([^\x01-\x1b]*)", colorme, re.sub(r"\x04\x04|\x01\([0-9a-fA-F]{16}", '', s))
+    return re.sub(r"\x01(.)(.*?)\x02\1([^\x01-\x1b]*)", vt100_color, re.sub(r"\x04\x04|\x01\([0-9a-fA-F]{16}", '', s))
 
 def count_indent(s):
     return re.sub(r"\u2015( *)", lambda m: "\u2015{}\u2015".format(len(m.group(1))), s)
 
 def colorize(vu):
-    s = "\n\u2015".join([x.line for x in genAsList(vu.cfunc.get_pseudocode())])
+    s = [x.line for x in genAsList(vu.cfunc.get_pseudocode())]
+    for l in s:
+        if "__stdcall" in l:
+            print("Comment: {}".format(bytearray(l.encode('raw_unicode_escape'))))
+    s = "\n\u2015".join(s)
     #  s = re.sub(r'\x01\([0-9A-F]{16}', '\x01', s)
     #  print(s)
     #  return s
     # s = re.sub(r'\x01\x09;\x02\x09(\x01\x28[0-9A-F]\{16})', '', s, re.M)
     s = re.sub(r'\x01\t;\x02\t\x01\(.{16}', '', s)
     s = re.sub(r'\x01 else\x02  *\x01 if\x02 ', 'elif', s)
+    s = re.sub(r'\x01 else\x02  *\x01 if\x02 ', 'elif', s)
     s = s.replace("\x04\x04\x01\x09}\x02\x09", "") # "\u2016")
     s = s.replace(" \x01\x09(\x02\x09 ", " \x01\x09(\x02\x09 ")
     s = s.replace(" \x01\x09)\x02\x09 ", " \x01\x09)\x02\x09 ")
     #  s = s.split("\x04")
     #  s = "\n".join(s)
+    s = s.replace("\x01\x0c//", "# ")
+    s = s.replace("\x02\t //", "\x02\t # ")
+    s = s.replace("::", ".")
+    s = s.replace("\x01\t->\x02\t", "\x01\t.\x02\t")
+    s = s.replace("\x01\t:\x02\t\x01\t:\x02\t", "\x01\t.\x02\t")
     s = colorize_sub(colorize_sub(s))
     s = count_indent(s)
+    # \x01\x08VEHICLE::CREATE_VEHICLE_ACTUAL_0\x02\x08
     s = re.sub(r'\n\u2015\d+\u2015\{', ':', s)
     s = re.sub(r'\u2015(\d+)\u2015', lambda m: '  ' * int(m.group(1)), s)
     s = s.split("\n")
     s = "\n".join([x for x in s if x.strip()])
     s = s.replace("\n\x02\x0c", "\n  ")
-    s = s.replace("\x01\x0c//", "# ")
     #  s = re.sub(r'\x1b\[\d+m', '', s)
-    print(s)
+    # print(s)
     return(s)
 
 def get_min_spd(ea = None):
@@ -289,7 +303,7 @@ def dump_stkvars(ea = None, iteratee=None, stkzero=0, spdoffset=0):
     results = []
     sid = idc.get_frame_id(GetFuncStart(here()))
     for member in idautils.StructMembers(sid):
-        o = AttrDict()
+        o = SimpleAttrDict()
         o.offset, o.name, o.size = member
         o.offset += spdoffset
         o.zeroed = o.offset + stkzero
@@ -654,7 +668,7 @@ def get_flags_by_size(size):
         else: b |= 1
         # handle annoying miss in pattern
         if b == 6: b += 1
-        print("b: {}".format(bin(b)))
+        if debug: print("b: {}".format(bin(b)))
 
     flag2 = (b << 28) + (1 << 10)
 
@@ -691,7 +705,7 @@ def show_lvars_to_stk(ea, vu=None):
 
         c = MakeColumns()
         for name, size, offset1, offset2 in stk_lvars:
-            o = AttrDict()
+            o = SimpleAttrDict()
             o.update({
                 'name': name,
                 'size': size,
@@ -768,7 +782,7 @@ def sync_lvars_to_stk(ea, vu=None):
 
         c = MakeColumns()
         for name, size, offset1, offset2, _type in stk_lvars:
-            o = AttrDict()
+            o = SimpleAttrDict()
             o.update({
                 'name': name,
                 'size': size,
@@ -851,7 +865,7 @@ def dump_lvars_and_stk(ea, vu=None):
 
         c = MakeColumns()
         for name, size, offset1, offset2, _type, reg, stk_off, stk_zeroed, mapped, automapped in stk_lvars:
-            o = AttrDict()
+            o = SimpleAttrDict()
             o.update({
                 'name': name,
                 'size': size,
@@ -1005,7 +1019,7 @@ def decompile_function_search(ea, regex, flags = 0):
         try:
             cfunc = str(idaapi.decompile(GetFuncStart(addr)))
             if isinstance(cfunc, str):
-                m = re.findall(regex, cfunc)
+                m = re.findall(regex, cfunc, flags)
                 for x in m:
                     yield x
         except ida_hexrays.DecompilationFailure:
@@ -1404,6 +1418,35 @@ def decompile_native(ea = None):
     fnName = idc.get_name(ea);
     idc.SetType(ea, "void __fastcall func(native args);")
     idc.auto_wait()
+    decompile_function_for_common_renames(ea)
+    nn = get_latest_native_names(cacheOnly=1)
+    fnNameSplit = string_between('', '_ACTUAL', fnName.upper(), retn_all_on_fail=1).replace('::', '__').split('__', maxsplit=1)
+    if len(fnNameSplit) == 2:
+        _bestMatch = None
+        _bestLength = 9999
+        namespace, name = fnNameSplit
+        nameLen = len(name)
+        for n in nn.values():
+            n = SimpleAttrDict(n)
+            _nnameLen = len(n.name)
+            if name in n.name:
+                _diffLen = _nnameLen - nameLen
+                if _diffLen >= 0:
+                    if _diffLen < _bestLength:
+                        _bestLength = _diffLen
+                        _bestMatch = n
+
+        if _bestMatch:
+            _params = ''
+            for _p in _bestMatch.params:
+                pn, pt = _p['name'], _p['type']
+                pt = pt.replace('Vector', 'WVector')
+                _params += "{} {}, ".format(pt, pn)
+            _params = _params.rstrip(", ")
+            Commenter(ea).add('[NATIVE PARAMS] {}'.format(_params))
+
+            
+
     # SetFuncFlags(ea, lambda f: (f & ~0x22) | 0x10 )
     with Pseudocode(ea) as vu:
         rules = [
@@ -2250,7 +2293,7 @@ def scan_variable(name, ea, vu=None, regex=False):
     m = sys.modules['HexRaysPyTools']
     widget = vu.ct
     # widget = ida_kernwin.find_widget('Pseudocode-AU') 
-    ctx = AttrDict({'widget': widget})
+    ctx = SimpleAttrDict({'widget': widget})
     #  vu = ida_hexrays.get_widget_vdui(widget)
     item = get_ctree_item_t_var(vu, name)
     if item:

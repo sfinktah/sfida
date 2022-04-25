@@ -1,9 +1,3 @@
-guide = [
-    0xF8, 0xCB, 0x97, 0x03, 0x9E, 0x01, 0xB2, 0xDD,
-    0xA0, 0x06, 0x87, 0x02, 0x01, 0x8D, 0x01, 0xFF,
-    0xEA, 0x40, 0x9C, 0x02, 0x87, 0xE5, 0x86, 0xF6,
-    0x0F, 0xFF, 0xFF]
-
 """
 Speaking generally about Arxan -- most integrity and healing operates on other
 Arxan functions.  You can identify which addresses are healed or checked by
@@ -548,7 +542,7 @@ def cs1(guide, range=arxan_range()):
         if not range.start < 0xFFFFFFFF:
             break
         print("range: {}".format(range))
-        results.append(GenericRange(base + range.start, base + range.start + range.len))
+        results.append(GenericRange(base + range.start, last=base + range.start + range.len))
     #  arxan_range.start = arxan_range.len
     #  arxan_range.len = 0
     return results

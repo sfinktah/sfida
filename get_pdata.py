@@ -1,6 +1,6 @@
 import os, re, itertools
 from glob import glob
-from sfida.sf_string_between import string_between
+from string_between import string_between
 from execfile import execfile, make_refresh
 refresh_pdata = make_refresh(os.path.abspath(__file__))
 refresh = make_refresh(os.path.abspath(__file__))
@@ -140,7 +140,10 @@ native_structs = """
 
     """
 
-#  idc.parse_decls(native_structs, 0)
+sid = idc.get_struc_id('native')
+if sid == idc.BADADDR:
+    idc.parse_decls(native_structs, 0)
+
 
 def file_size(fn):
     return os.path.getsize(fn)
@@ -483,7 +486,10 @@ def cut(filename, sep=' ', min=0):
             yield re.split(sep, line)
 
 
-def get_latest_native_names():
+def get_latest_native_names(cacheOnly=False):
+    if cacheOnly and file_exists("natives-cache.json"):
+        return json_load("natives-cache.json")
+
     nn = {}
     with JsonStoredDict('e:/git/give-two.github.io/storage/scripts/alloc8or.json') as natives:
         for namespace, d1 in natives.items():
@@ -499,7 +505,10 @@ def get_latest_native_names():
             for hash, d2 in d1.items():
                 d2['namespace'] = namespace
                 nn[int(hash, 16)] = d2
-        return nn
+
+    json_save_safe("natives-cache.json", nn)
+    return nn
+    
 
 def make_latest_json():
     global natives;
@@ -842,7 +851,12 @@ def apply_native_renames():
             fnName = GetFuncName(fnLoc)
             hashString = string_between('0x', '', fnName, inclusive=1).split('_')[0]
             #  try:
-            fnHash = parseHex(hashString)
+            try:
+                fnHash = parseHex(hashString)
+            except ValueError:
+                # dprint("[apply_native_renames] ValueError parsing {} from {}")
+                print("[apply_native_renames] ValueError parsing {} from {}".format(hashString, fnName))
+                
             fnHash = "0x%016X" % fnHash
             if fnHash and fnHash in natives:
                 if fnName.find('::_') > 0:

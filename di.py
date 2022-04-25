@@ -321,7 +321,7 @@ def idafy(operand, ea, size):
 
 def diInsnsObjectIter(code, ea=None, dt=distorm_64_bit_flag()):
     for it in diInsnsIter(asBytes(bytearray(code)), ea):
-        yield AttrDict({
+        yield SimpleAttrDict({
             'ea': it[0],
             'size': it[1],
             'insn': idafy(it[2], it[0], it[1]),

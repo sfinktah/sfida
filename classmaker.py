@@ -56,6 +56,24 @@ def getptr(ea=None, bits=None, signed=False):
         result = MakeSigned(result, bits)
     return result
 
+def getptr(ea=None, bits=None, signed=False):
+    if bits is None:
+        bits = ptrsize.bits
+    result = idc.get_qword(eax(ea)) & ((1 << bits) - 1)
+    if signed:
+        result = MakeSigned(result, bits)
+    return result
+
+def setptr(ea=None, value=0, bits=None, signed=False):
+    ea = eax(ea)
+    if bits is None:
+        bits = ptrsize.bits
+    result = (idc.get_qword(ea) & ~((1 << bits) - 1)) | (value & ((1 << bits) - 1))
+    if signed:
+        result = MakeSigned(result, bits)
+    idc.patch_qword(ea, result)
+    return result
+
 getptr.bits = bits
 
 def copy_vtable():
@@ -333,6 +351,7 @@ def rename_generic_methods(ea=None):
     """
     ea = eax(ea)
     _type = "__int64 __fastcall function();"
+    isOff
     _is_offset = GetDisasm(ea).startswith('offset', 3)    
     if _is_offset:
         deref = getptr(ea) # idc.get_qword(ea)

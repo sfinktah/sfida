@@ -68,6 +68,7 @@ def fix_dataseg_offsets(base=None, ori_base=None, size=None, seg_name='.data', s
                     idc.op_plain_offset(ea, 0, 0)
                     count += 1
                 elif qword >= base and qword < end:
+                    print("making offset at {:x}".format(ea))
                     idc.create_data(ea, FF_QWORD, 8, ida_idaapi.BADADDR)
                     idc.op_plain_offset(ea, 0, 0)
 

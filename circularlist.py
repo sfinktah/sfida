@@ -3,11 +3,15 @@ import re
 from pprint import PrettyPrinter
 from mypprint import MyPrettyPrinter
 from collections import defaultdict
-from execfile import execfile, _import
-from attrdict1 import AttrDict
+from execfile import execfile, _import, make_refresh
+from attrdict1 import SimpleAttrDict
 #  _import('from sfida.sf_string_between import *')
 #  _import('from hotkey_utils import stutter_chunk')
 # execfile('hotkey_utils')
+
+import os
+refresh_circular = make_refresh(os.path.abspath(__file__))
+refresh = make_refresh(os.path.abspath(__file__))
 
 class CircularList(object):
     """
@@ -16,8 +20,12 @@ class CircularList(object):
 
     def __init__(self, size, data=[]):
         """Initialization"""
-        self.size = size
-        self._data = list(data)[-size:]
+        if callable(getattr(size, 'append', None)):
+            self.size = len(size)
+            self._data = [x for x in size]
+        else:
+            self.size = size
+            self._data = list(data)[-size:]
         self.end = len(self._data) % self.size
 
     def clear(self):
@@ -73,22 +81,36 @@ class CircularList(object):
         return string_between('({', '}', pattern, inclusive=1, repl= \
                 lambda v: '(?P<{}>'.format(string_between('({', '}', v)))
 
-    def multimatch(self, pattern_list, flags=0):
+    def multimatch(self, pattern_list, flags=0, predicate=None, iteratee=None, gettext=None, anchor=None, groupiter=None):
+        if gettext is None:
+            gettext=lambda o: o if isinstance(o, str) else o.insn
+        #  if groupiter is None:
+            #  groupiter = lambda o: o.text
         matches = []
-        group_matches = dict()
+        group_matches = defaultdict(list)
         group_matches['default'] = matches
         last_pattern = self.pattern_transform(pattern_list[-1])
-        if not re.search(last_pattern, self[-1], flags):
-            return None
+        if anchor == 'end':
+            if not re.search(last_pattern, self[-1], flags):
+                return None
         pattern_iter = iter(stutter_chunk([self.pattern_transform(x) for x in pattern_list], 2, 1))
-        pattern, peek = next(pattern_iter)
+        _pattern, peek = next(pattern_iter)
         pattern_count = 0
-        buffer_count = len(self._data)
+        pattern_size = len(pattern_list)
+        bsize = len(self._data)
         repetitions = defaultdict(list)
+
         i = -1
-        while i+1 < buffer_count:
+        while i+1 < bsize:
             i += 1
-            l = self[i]
+            line = self[i]
+            if not call_if_callable(predicate, line, default=True):
+                continue
+            text = call_if_callable(gettext, line, default=line)
+            line = call_if_callable(iteratee, line, default=line)
+            multi = greedy = False
+            min = 1
+            pattern = _pattern
             if pattern.endswith(('++', '**', '++?', '**?')):
                 multi = True
                 greedy = True
@@ -101,66 +123,112 @@ class CircularList(object):
                 elif pattern.endswith('**'):
                     min = 0
                 pattern = pattern[0:-2]
-            else:
-                multi = greedy = False
-            #  if multi:
-                # dprint("[multi] multi, min, pattern")
-                #  print("[multi] multi:{}, min:{}, pattern:{}".format(multi, min, pattern))
-                
-            m = re.search(pattern, l, flags)
+
+            # dprint("[multimatch] pattern, multi, greedy, line, i, bsize")
+            #  print("[multimatch] pattern:{}, multi:{}, greedy:{}, line:{}, i:{}, bsize:{}".format(pattern, multi, greedy, line, i, bsize))
+            
+
+            m = re.search(pattern, text, flags)
+            mobj = line
             if multi and not greedy and peek:
-                mpeek = re.search(peek, l, flags)
+                mpeek = re.search(peek, text, flags)
             else: 
                 mpeek = None
+
             if not m:
+                if debug: print("[fail-] m:{}, multi:{}, min:{}, pattern:{}, line:{}".format(False, multi, min, pattern, text))
                 if multi and len(repetitions[pattern_count]) >= min:
                     try:
-                        pattern, peek = next(pattern_iter)
+                        _pattern, peek = next(pattern_iter)
                         # dprint("[multi] pattern")
                         #  print("[multi] pattern:{}".format(pattern))
                         
                         pattern_count += 1
+                        i -= 1
+                        continue
                     except StopIteration:
-                        if i == buffer_count - 1:
+                        pattern_count += 1
+                        if i == bsize - 1:
                             if len(group_matches):
-                                return AttrDict(group_matches)
+                                return SimpleAttrDict(group_matches)
                             return matches
+                else:
+                    return None
 
             elif m and mpeek and multi and not greedy and len(repetitions[pattern_count]) >= min:
+                if debug: print("m,multi,not greedy")
+                # dprint("[multimatch] greedy, multi, line")
+                #  print("[multimatch] greedy:{}, multi:{}, line:{}".format(greedy, multi, line))
+                
                 m = mpeek
-                pattern, peek = next(pattern_iter)
+                try:
+                    _pattern, peek = next(pattern_iter)
+                    pattern = _pattern
+                    pattern_count += 1
+                    i -= 1
+                    continue
+                except StopIteration:
+                    pattern_count += 1
+                    # dprint("[multimatch] ")
+                    if debug: print("[multimatch] :stopiter".format())
+                    
+                    if i == bsize - 1:
+                        if len(group_matches):
+                            return SimpleAttrDict(group_matches)
+                        return matches
                 # dprint("[multi-peek-advance] m")
                 #  print("[multi-peek-advance] m:{}".format(m))
                 
                 pattern_count += 1
+
             if m:
-                matches.append(m)
+                #  dprint("[multi] multi, min, pattern")
+                if debug: print("[multi] m:{}, multi:{}, min:{}, pattern:{}, text:{}".format(True, multi, min, pattern, text))
+                matches.append(mobj)
                 # dprint("[multi] m")
                 #  print("[either] m:{}".format(m))
                 
                 for k, v in m.groupdict().items():
-                    if k not in group_matches:
-                        group_matches[k] = []
-                    group_matches[k].append(v)
+                    group_matches[k].append( call_if_callable(groupiter, mobj, default=v) )
                     # dprint("[multi] k, v")
                     #  print("[either] k:{}, v:{}".format(k, v))
                     
                 if multi:
-                    repetitions[pattern_count].append(m)
+                    repetitions[pattern_count].append(mobj)
                     # dprint("[multi] repetitions[pattern_count]")
                     #  print("[multi] repetitions[pattern_count]:{}".format(repetitions[pattern_count]))
                     
                 elif not multi:
                     try:
-                        pattern, peek = next(pattern_iter)
+                        _pattern, peek = next(pattern_iter)
                         #  print("[non-multi] pattern:{}".format(pattern))
                         pattern_count += 1
+                        #  i -= 1
+                        continue
                     except StopIteration:
-                        if i == buffer_count - 1:
+                        if debug: print("multistopiter")
+                        if i == bsize - 1:
                             if len(group_matches):
-                                return AttrDict(group_matches)
+                                return SimpleAttrDict(group_matches)
                             return matches
-                    # if debug: print("not matched as there are {} items remaining".format(buffer_count - i - 1))
+                    if debug: print("not matched as there are {} items remaining".format(bsize - i - 1))
+        if multi and len(repetitions[pattern_count]) >= min:
+            pattern_count += 1
+        if debug: 
+            print("[multimatch] fell through: i:{}, bsize:{}, pattern_count:{}, pattern_size:{}".format(i, bsize, pattern_count, pattern_size))
+            if pattern_count < pattern_size:
+                # dprint("[multimatch] pattern_list[pattern_count]")
+                print("[multimatch] pattern_list[pattern_count]:{}".format(pattern_list[pattern_count]))
+                
+        if pattern_count >= pattern_size:
+            if debug: 
+                print("but saved by being at end of pattern_list")
+                # dprint("[multimatch] i, bsize, pattern_count, pattern_size")
+                
+                
+            if len(group_matches):
+                return SimpleAttrDict(group_matches)
+            return matches
         return None
 
     def as_list(self):
@@ -193,7 +261,7 @@ class CircularList(object):
             self.size) + ' items)'
 
     # produce pprint compatible object, easy as pie!
-    def __pprint_repr__(self):
+    def __pprint_repr__(self, *args, **kwargs):
         return { 'CircularList': self.as_list() }
 
     # to take total control (python 3)

@@ -1,7 +1,7 @@
 import os, re
 import idc, idaapi
 #  from sfida.sf_common import get_ea_by_any
-from sfida.sf_string_between import string_between
+from string_between import string_between
 #  from sftools import A
 from collections import defaultdict
 
@@ -150,9 +150,14 @@ class Commenter(object):
                 if sb and len(sb):
                     yield sb
 
-    def clear(self):
+    def clear(self, filter=None):
         for getter in self.fnGetters:
-            self.cm[str(getter)].clear()
+            if filter:
+                for v in self.cm[str(getter)]:
+                    if filter(v):
+                        self.cm[str(getter)].remove(v)
+            else:
+                self.cm[str(getter)].clear()
         self.maybe_commit()
 
     def match(self, pattern, flags=0):

@@ -165,10 +165,10 @@ class BitwiseMask(object):
             tmp._add_byte(i, c)
         _before = self.tri
         for stmt in self.eval:
-            print("eval: {}".format(stmt))
+            if debug: printi("eval: {}".format(stmt))
             eval(stmt, globals(), {'x': self, 'y': tmp})
         _after = self.tri
-        print("[sub] source:  {}\n[sub] eval b4: {}\n[sub] after  : {}".format(tmp.tri, _before, _after))
+        if debug: printi("[sub] source:  {}\n[sub] eval b4: {}\n[sub] after  : {}".format(tmp.tri, _before, _after))
         return self.value
 
     #  48&fe 83 c0&f8 f8     48~49 83 c0~c7 f8     0100100. 10000011 11000... 11111000

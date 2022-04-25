@@ -11,18 +11,6 @@ from idc import *
 from execfile import execfile, unload, _import
 # execfile('di', globals())
 
-# import obfu
-# from di import de, getLength, diida, ripadd
-# from helpers import EA, hex
-# from is_flags import IsCode_
-# from membrick import FindInSegments
-# from obfu_helpers import qassemble
-# from ranger import GenericRanger
-# from sfcommon import MakeCodeAndWait, LabelAddressPlus
-# from slowtrace2 import retrace
-# from start import ida_idaapi.integer_types, isString, pprint, debug
-# from test import AllRefsTo, GetChunks
-
 # from slowtrace_helpers import eax, get_ea_by_any
 
 def get_itype_string(itype):

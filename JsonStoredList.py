@@ -37,13 +37,15 @@ def json_load(_fn, _default=None):
         return _default
 
 def json_save_safe(dst, json_object):
+    if dst.startswith("http"):
+        return
     dirname, basename = os.path.split(dst)
     try:
         with tempfile.NamedTemporaryFile(prefix=basename, mode='w', dir=dirname, delete=False) as filename:
                 filename.file.write(json.dumps(json_object))
                 filename.file.close()
-                print("replace({}, {})".format(filename.name, dst))
-                print("file_exists", os.path.exists(filename.name))
+                # print("replace({}, {})".format(filename.name, dst))
+                # print("file_exists", os.path.exists(filename.name))
                 replace(filename.name, dst)
                 if os.path.exists(filename.name):
                     os.unlink(filename.name)
@@ -178,7 +180,7 @@ class JsonStoredDefaultDictList(object):
             return defaultdict(list)
 
 
-print("JsonStoredList loaded")
+# print("JsonStoredList loaded")
 
 """
 with JsonStoredDict('demangled1.json') as dm:

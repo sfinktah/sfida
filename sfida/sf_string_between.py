@@ -3,7 +3,7 @@
 import itertools
 import re, os
 try:
-    from attrdict1 import AttrDict
+    from ..attrdict1 import SimpleAttrDict
 except:
     pass
 # requires py > 3.6
@@ -149,7 +149,7 @@ def string_between(left, right, subject, *args, **kwargs):
     # start|end|inclusive|greedy|rightmost|repl|retn_all_on_fail|retn_class|
     # left, right, subject, start=0, end=None, inclusive=False, greedy=False, rightmost=False, repl=None, retn_all_on_fail=False, retn_class=False
     # vim regex for above: s/\(\w\+\)=\([^ ,]\+\)/.../g
-    v = AttrDict(kwargs)
+    v = SimpleAttrDict(kwargs)
     for _key, _value in zip(['start', 'end'], args):
         v[_key] = _value
     for _key, _value in default_arguments:

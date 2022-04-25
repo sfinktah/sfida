@@ -2,6 +2,9 @@ import pickle, os
 import idc, idaapi, ida_ida, ida_funcs, ida_bytes
 from bisect import bisect_left, bisect_right, bisect
 from choose_multi import *
+from execfile import execfile, make_refresh
+refresh_emu = make_refresh(os.path.abspath(__file__))
+refresh = make_refresh(os.path.abspath(__file__))
 
 try:
     from string_between import string_between_splice, string_between
@@ -126,6 +129,22 @@ def differences(a, b):
         raise ValueError("Lists of different length.")
     return sum(i != j for i, j in zip(a, b))
 
+def read_emu_glob(fn, path=None):
+    if path is not None:
+        match_emu._files.clear()
+        emu_path(path)
+
+    if isinstance(fn, list):
+        return [read_emu_glob(x) for x in fn]
+
+    from glob import glob
+    if not match_emu._path:
+        print("No path set")
+        return
+
+    read_emu(glob(os.path.join(match_emu._path, '*/*/*' + fn + '*')))
+
+
 def read_emu(fn=None):
     """ 
     read_emu: read a file / list of files into patches
@@ -152,6 +171,12 @@ def read_emu(fn=None):
 
     return 0
 
+def emu_path(pn=None):
+    if pn is not None:
+        match_emu._files.clear()
+        match_emu._keys.clear()
+        match_emu._path = smart_path(pn)
+    return match_emu._path
 
 @static_vars(_files = dict(), _keys = dict(), _path = None)
 def match_emu(ea=None, size=None, path=None, retnAll=False):
@@ -173,9 +198,9 @@ def match_emu(ea=None, size=None, path=None, retnAll=False):
         path = guess
 
     if path is not None:
-        if match_emu._path != path:
-            match_emu._files.clear()
-        match_emu._path = path
+        # if match_emu._path != path:
+        match_emu._files.clear()
+        match_emu._path = emu_path(path)
 
     # compile list of files
     if not match_emu._files:
@@ -264,7 +289,7 @@ def match_emu(ea=None, size=None, path=None, retnAll=False):
 
     return results
 
-def check_emu(ea=None, size=None, path=None):
+def check_emu(ea=None, size=None, path=None, auto=None):
     """
     check_emu: Find possible Arxan patches for the given address
     range [ea, ea + size) and show disassembly
@@ -284,6 +309,9 @@ def check_emu(ea=None, size=None, path=None):
     p = []
     p2 = []
     for _subdir, r in res.items():
+        if auto:
+            r = _.filter(r, lambda x, *a: re.search(auto, x[2]))
+            pp(r)
         results[_subdir] = dict()
         if r:
             for base, length, fn in r:
@@ -291,13 +319,17 @@ def check_emu(ea=None, size=None, path=None):
                         match_emu._path.rstrip('/'), _subdir, _subdir, base, length, fn)
                 #  print("would check: {}".format(fn))
                 #  continue
-                asm = '; '.join([x[2] for x in diInsns(
-                    file_get_contents_bin(fullfn), ea=base)])
-                asm = re.sub(r'0x[0-9a-fA-F]{8,}', lambda x, *a: get_name_by_any(x[0]), asm)
-                results[_subdir][asm] = "{:x} - {:x} {} {}".format(base, base + length, fn, asm)
-                pph((_subdir, fn, hex(base), hex(base + length), asm))
-                p.append((_subdir, fn, hex(base), hex(base + length), asm))
-                p2.append(fullfn)
+                try:
+                    asm = '; '.join([x[2] for x in diInsns(
+                        file_get_contents_bin(fullfn), ea=base)])
+                    asm = re.sub(r'0x[0-9a-fA-F]{8,}', lambda x, *a: get_name_by_any(x[0]), asm)
+                    results[_subdir][asm] = "{:x} - {:x} {} {}".format(base, base + length, fn, asm)
+                    pph((_subdir, fn, hex(base), hex(base + length), asm))
+                    p.append((_subdir, fn, hex(base), hex(base + length), asm))
+                    p2.append(fullfn)
+                except FileNotFoundError:
+                    printi("File Not Found: " + fullfn)
+                    raise
         
         if results[_subdir]:
             for line in results[_subdir].values():
@@ -306,18 +338,26 @@ def check_emu(ea=None, size=None, path=None):
     pp(p)
     if not p:
         return
-    variable_chooser = MyChoose(
-        p,
-        "Select Patch",
-        [["Type", 8], ["Function", 25], ["Start", 16], ["End", 16], ["Disassembly", 128]]
-    )
-    row = variable_chooser.Show(modal=True)
+    if not auto:
+        variable_chooser = MyChoose(
+            p,
+            "Select Patch",
+            [["Type", 8], ["Function", 25], ["Start", 16], ["End", 16], ["Disassembly", 128]]
+        )
+        row = variable_chooser.Show(modal=True)
+    else:
+        row = 0
+        ida_bytes.patch_bytes(eax(p[row][2]), file_get_contents_bin(p2[row]))
+        Commenter(eax(p[row][2]), 'line').add("Patched by: " + p[row][1])
+        return eax(p[row][2]), eax(p[row][3])
+
     if row != -1:
         print("Chose {}: {}".format(row, p2[row]))
         ida_bytes.patch_bytes(eax(p[row][2]), file_get_contents_bin(p2[row]))
         Commenter(eax(p[row][2]), 'line').add("Patched by: " + p[row][1])
         #  idc.set_cmt(eax(p[row][2]), '\n'.join(idc.get_cmt(eax(p[row][2]), 0).split('\n') + ["Patched by: " + p[row][1]]), False)
         idc.create_insn(eax(p[row][2]))
+        EaseCode(eax(p[row][2]))
 
 def comment_emu(funcea=None, path=None):
     """

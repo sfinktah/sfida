@@ -13,39 +13,48 @@ class GenericRange(object):
     endash = '\u2013'
     formatter = None
 
-    def __init__(self, start=None, end=None):
-        self.start = start
-        self.end = end
+    def __init__(self, start=None, sacrificial=None, last=None, trend=None, end=None, length=None):
+        self._start = start
+        self._last = None
+        args = {'sacrificial':sacrificial, 'last':last, 'trend':trend, 'end':end, 'length':length}
+        argc = sum([x is not None for x in args.values()])
+        if argc > 1 or end is not None or sacrificial is not None: # or (trend is None and length is None and last is None):
+                    raise SyntaxError("GenericRange: please use GenericRange(start=x, last=y|trend=y+1|length=1+y-x")
 
-        if end is None:
+        if last is not None:
+            self._last = last
+        elif trend is not None:
+            self._last = trend - 1
+        elif length is not None:
+            self._last = self._start + length - 1
+        else:
             if hasattr(start, 'start'):
-                self.start = get_start(start)
-                if hasattr(start, 'end') or hasattr(start, 'stop'):
-                    self.end = get_end(start)
+                self._start = get_start(start)
+                self._last = get_last(start)
             elif hasattr(start, '__iter__') and len(list(start)) > 1:
                 l = list(start)
-                self.start, self.end = l[0], l[-1]
+                self._start, self._last = l[0], l[-1]
 
-        if self.start and self.end and self.start > self.end:
-            self.start, self.end = self.end, self.start
+        if self._start and self._last and self._start > self._last:
+            self._start, self._last = self._last, self._start
 
     def __repr__(self):
-        return "{:x}{}{:x}".format(self.start, self.endash, self.end) if self.end != self.start else "{:x}".format(self.start)
+        return "{:x}{}{:x}".format(self.start, self.endash, self.last) if self.last != self.start else "{:x}".format(self.start)
 
     def __getitem__(self, index):
         r = self.start + index
-        if r > self.end:
+        if r > self.last:
             raise IndexError()
         return r
 
     def __iter__(self):
         i = self.start
-        while i <= self.end:
+        while i <= self.last:
             yield i
             i += 1 
 
     def chunk(self):
-        return self.start, self.end
+        return self.start, self.last
 
     def issubset(self, other):
         return issubset(self, other)
@@ -53,13 +62,8 @@ class GenericRange(object):
     def issuperset(self, other):
         return issuperset(self, other)
 
-    def __len__(self):
-        if self.start is None or self.end is None:
-            return 0
-        return self.end - self.start
-
     def __key(self):
-        return (self.start, self.end)
+        return (self.start, self.last)
 
     def __hash__(self):
         return hash(self.__key())
@@ -74,31 +78,65 @@ class GenericRange(object):
             return self.start < other.start
         return NotImplemented
 
-    @property
-    def length(self):
-        return self.__len__() + 1
+    def __len__(self):
+        """ this will now return correct lengths (subtract 1 for old behaviour) """
+        if self.start is None or self.last is None:
+            return 0
+        return self.trend - self.start
 
     @property
-    def true_length(self):
+    def length(self):
         return self.__len__()
 
     @length.setter
     def length(self, value):
         diff = value - self.__len__()
-        self.end += diff
+        self._last += diff
+
+    @property
+    def length_sub_1(self):
+        return self.__len__() - 1
+
+    @property
+    def start(self):
+        return self._start
+
+    @start.setter
+    def start(self, value):
+        self._start = value
+
+    @property
+    def last(self):
+        return self._last
+
+    @last.setter
+    def last(self, value):
+        self._last = value
+
+
+    @property
+    def trend(self):
+        return self._last + 1
+
+    @trend.setter
+    def trend(self, value):
+        self._last = value - 1
+
+
+
 
 
 def GenericRanger(genericRange, sort, outsort=True, prefilter=None, iteratee=None, input_filter=None):
 
     def adjoins(r1, r2):
         """Does the range r1 adjoin or overlap the range r2?"""
-        return get_end(r1) + 1 >= get_start(r2) and get_end(r2) + 1 >= get_start(r1)
+        return get_last(r1) + 1 >= get_start(r2) and get_last(r2) + 1 >= get_start(r1)
 
     def union(r1, r2):
         try:
-            return type(r1)([min(get_start(r1), get_start(r2)), max(get_end(r1), get_end(r2))])
+            return type(r1)([min(get_start(r1), get_start(r2)), max(get_last(r1), get_last(r2))])
         except TypeError:
-            return type(r1)(min(get_start(r1), get_start(r2)), max(get_end(r1), get_end(r2)))
+            return type(r1)(min(get_start(r1), get_start(r2)), max(get_last(r1), get_last(r2)))
 
 
     def check_overlap(array, element):
@@ -137,10 +175,11 @@ def GenericRanger(genericRange, sort, outsort=True, prefilter=None, iteratee=Non
         return l
 
     def lengthify(group):
-        if group.end is None:
-            group.end = group.start
+        if group.last is None:
+            group.last = group.start
         if iteratee and callable(iteratee):
-            result = iteratee(group.start, group.end)
+            print("Should this be group.last or group.trend?")
+            result = iteratee(group.start, group.last)
             if result and isflattenable(result):
                 r = GenericRange(result)
                 group = r
@@ -156,11 +195,11 @@ def GenericRanger(genericRange, sort, outsort=True, prefilter=None, iteratee=Non
 
     # convert ranges to `GenericRange`s
     if isinstance(genericRange, GenericRange):
-        genericRange = list(range(genericRange.start, genericRange.end + 1))
+        genericRange = list(range(genericRange.start, genericRange.trend))
     elif not input_filter:
         if not isinstance(genericRange, (list, set)):
             gr = GenericRange(genericRange)
-            genericRange = list(range(gr.start, gr.end + 1))
+            genericRange = list(range(gr.start, gr.trend))
 
     if input_filter is None:
         genericRange = flatten(genericRange)
@@ -193,7 +232,7 @@ def GenericRanger(genericRange, sort, outsort=True, prefilter=None, iteratee=Non
 
         if start is not None:
             if end > start:
-                group.end = end
+                group.last = end
                 start = None
             else:
                 raise RuntimeError("This point never reached")
@@ -207,7 +246,7 @@ def GenericRanger(genericRange, sort, outsort=True, prefilter=None, iteratee=Non
 
     ## If we were counting out a range, then it's over now.
     if start:
-        group.end = end
+        group.last = end
 
     append(result, group)
 
@@ -251,7 +290,7 @@ def GenericRangerHealer(genericRange, sort, outsort = True, iteratee = None, app
         #  print("r.start, r.end, diff: {}", hex(r.start), hex(r.end), r.end - r.start)
         
         if r.start > 0x140000000:
-            for i in range(r.start, r.end + 1):
+            for i in range(r.start, r.trend):
                 b.append(expanded[i])
                 # dprint("[debug] b")
                 #  print("[debug] b:{}".format(b))
@@ -284,10 +323,10 @@ def GenericRangerHealer(genericRange, sort, outsort = True, iteratee = None, app
 def get_start(r):
     return r.start if hasattr(r, 'start') else r[0]
 
-def get_end(r):
-    if hasattr(r, 'end'):
-        return r.end
+def get_last(r):
+    if hasattr(r, 'last'):
+        return r.last
     if hasattr(r, 'stop'):
-        return r.stop
+        return r.stop - 1
     return r[1]
 

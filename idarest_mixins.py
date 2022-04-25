@@ -20,9 +20,10 @@ class Namespace(object):
 class IdaRestLog:
     PROJECT_LOG_FILE = os.path.join( os.path.dirname( idc.get_idb_path() ), "idarest.log" )
 
+    @staticmethod
     def log(msg):
-        with open(PROJECT_LOG_FILE, 'wa') as f:
-            f.write(msg + "\n")
+        with open(IdaRestLog.PROJECT_LOG_FILE, 'a') as f:
+            f.write(msg.rstrip() + "\n")
 
 
 
