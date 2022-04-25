@@ -1,4 +1,4 @@
-import socket
+import socket, atexit
 from underscore3 import _
 try:
     from .idarest_mixins import IdaRestConfiguration, IdaRestLog
@@ -68,7 +68,7 @@ class idarest_master_plugin_t(IdaRestConfiguration, IdaRestLog, ida_idaapi.plugi
 
         #  print('[idarest_master_plugin_t::start] registered atexit cleanup')
 
-        atexit.register(cleanup)
+        #  atexit.register(cleanup)
         return idaapi.PLUGIN_KEEP
 
     def run(*args):

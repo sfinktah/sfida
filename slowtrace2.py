@@ -2,6 +2,7 @@ from __future__ import print_function
 import colorsys
 import idc
 import re
+from static_vars import static_vars
 from queue import Queue
 import traceback
 import inspect
