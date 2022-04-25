@@ -5,6 +5,7 @@ import traceback
 import re
 import subprocess
 import math
+from superglobals import *
 from attrdict1 import SimpleAttrDict
 from collections import defaultdict
 from string_between import string_between
@@ -127,9 +128,12 @@ def printi(value, sacrificial=None, depth=None, *args, **kwargs):
     if isinstance(g_output, list):
         g_output.append(str)
         return
-    if isinstance(g_output, Queue):
-        g_output.put(str)
-        return
+    try:
+        if isinstance(g_output, Queue):
+            g_output.put(str)
+            return
+    except NameError:
+        pass
     print(str)
 
 

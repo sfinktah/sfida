@@ -48,7 +48,7 @@ import ida_ua
 import ida_xref
 
 from idc import BADADDR
-
+from superglobals import *
 from underscoretest import _
 from execfile import unload
 unload('execfile')
@@ -117,7 +117,6 @@ debug = 0
 
 filenames = [
             "attrdict1.py",
-            "file_get_contents.py",
             "sfida/sf_is_flags.py",
             "circularlist.py",
             "di.py",
@@ -128,6 +127,7 @@ filenames = [
             "JsonStoredList.py",
             "keypatch.py",
             "slowtrace_helpers.py",
+            "file_get_contents.py",
             "slowtrace2.py",
             "hotkey_utils.py",
             "helpers.py",
@@ -137,7 +137,7 @@ filenames = [
             "sfcommon.py",
             "sftools.py",
             "hex.py",
-            "function_address_export.py",
+            #  "function_address_export.py",
             "structmaker.py",
             "classmaker.py",
             "membrick.py",

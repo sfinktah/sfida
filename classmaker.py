@@ -7,14 +7,13 @@ from execfile import _import, _from
 
 file_dir = os.path.dirname(__file__)
 sys.path.append(file_dir)
-from loader import import_from
+#  from loader import import_from
 #  import fuzzywuzzy
 #  from fuzzywuzzy import fuzz
 #  from fuzzywuzzy import process
 
 BatchMode = _require('BatchMode').BatchMode
 
-oget
 __class_maker_struct = []
 __class_maker_member_names = []
 
