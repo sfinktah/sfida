@@ -217,7 +217,7 @@ def find_checksummers():
         abso = idc.get_qword(mem(ea).add(o_abs).rip(4).val())
         #  base = idc.get_qword(mem(ea).add(o_base).rip(4).val())
         if rel == abso: #  and base == idc.get_name_ea_simple("__ImageBase"):
-            mem(abso).label('ArxanChecksumActual')
+            mem(abso).label('ArxanChecksumActual1')
             if idc.get_wide_byte(ea + 81) == 0xe8:
                 mem(ea).add(82).rip(4).label('ArxanGetNextRange').type("void __fastcall f(uint8_t **guide, arxan_range *range);")
             mem(ea).add(o_abs).rip(4).label('pArxanChecksum_AbsAddressSelf')
@@ -250,6 +250,7 @@ def find_checksummers2():
             #  mem(ea).add(o_abs).rip(4).label("p{}_AbsAddressSelf".format(fnName))
             #  mem(ea).add(o_rel).rip(4).label(fnName)
             #  mem(abso).label(fnName)
+            mem(abso).label('ArxanChecksumActual2')
             return abso
         else:
             print("rel: {:x}, abso: {:x}".format(rel, abso))
@@ -270,9 +271,10 @@ def find_checksummers3():
             #  mem(ea).add(o_abs).rip(4).label("p{}_AbsAddressSelf".format(fnName))
             #  mem(ea).add(o_rel).rip(4).label(fnName)
             #  mem(abso).label(fnName)
+            mem(abso).label('ArxanChecksumActual3')
             return abso
         else:
-            print("rel: {:x}, abso: {:x}".format(rel, abso))
+            print("{:x}: rel: {:x}, abso: {:x}".format(ea, rel, abso))
         return False
 
     pattern = '48 8D 05 ?? ?? ?? ?? 48 89 45 ?? 48 8B 05 ?? ?? ?? ?? 48 F7 D8'
@@ -300,6 +302,7 @@ def find_checksummers4():
     patterns = ['D3 E0 33 45 ?? 89 45 ?? 8B 45 ?? E9']
 
 def find_checksummers5():
+    __ImageBase = 0x140000000
     strucText = """
         typedef unsigned char uint8_t;
         typedef int int32_t;
@@ -319,7 +322,7 @@ def find_checksummers5():
         rel = mem(ea).add(o_rel).rip(4).val()
         abso = idc.get_qword(mem(ea).add(o_abs).rip(4).val())
         base = idc.get_qword(mem(ea).add(o_base).rip(4).val())
-        if rel == abso and base == idc.get_name_ea_simple("__ImageBase"):
+        if rel == abso and base == __ImageBase:
             mem(abso).label('ArxanChecksumActual')
             if idc.get_wide_byte(ea + 81) == 0xe8:
                 mem(ea).add(82).rip(4).label('ArxanGetNextRange').type("void __fastcall f(uint8_t **guide, arxan_range *range);")
@@ -531,8 +534,8 @@ def find_arxan_mutators_from_balances():
             try: 
                 EaseCode(ea, forceStart=1)
                 r = AdvanceToMnemEx(ea, term='call', inclusive=1, ease=1)
-                if r and r["insns"]:
-                    insns = r["insns"]
+                if r and r.insns:
+                    insns = _.pluck(r.insns, 'insn')
                     if not (5 < len(insns) < 12):
                         print("{:x} [find_arxan_mutators_from_balances] len(insns): {}".format(ea, len(insns)))
                         continue
@@ -543,7 +546,7 @@ def find_arxan_mutators_from_balances():
                         EaseCode(ea, forceStart=1)
                     results.append(eax(insn))
                     if not HasUserName(eax(insn)):
-                        LabelAddressPlus(eax(insn), 'ArxanChecksumOrHealerB')
+                        LabelAddressPlus(eax(insn), 'ArxanChecksumActual0')
             except AdvanceFailure:
                 pass
     return results
@@ -583,6 +586,11 @@ def find_stack_align_adjust():
             LabelAddressPlus(ea, '')
         print("find_stack_align_adjust: 0x{:x}".format(ea))
         fnStart = destart(ea, 0xa8)
+        if fnStart is None:
+            print("[find_stack_align_adjust] couldn't trace back from {:x}".format(ea))
+            continue
+        while diida(fnStart - 1).startswith("push"):
+                fnStart -= 1
         if not fnStart:
             continue
         while idc.get_wide_byte(fnStart - 1) == 0x41 or idc.get_wide_byte(fnStart - 2) == 0x41:
@@ -653,22 +661,22 @@ def find_shifty_stuff():
     print("find_shifty_stuff()")
     pp(obfu)
     print("{}".format("arxan_mutators"))
-    results['checks'] = find_arxan_mutators_from_balances()
+    cs0 = find_arxan_mutators_from_balances()
     # retrace_list(r)
     print("{}".format("rbp_frame"))
     results['rbp'] = find_rbp_frame()
     # retrace_list(r)
-    r = find_checksummers()
-    print("checksummers: {}".format(r))
-    r.extend(find_checksummers2())
-    print("checksummers: {}".format(r))
-    r.extend(find_checksummers3())
-    results['cs'] = r
-    rc = r[0:]
+    r = {}
+    cs1 = find_checksummers()
+    print("checksummers: {}".format(hex(r)))
+    cs2 = find_checksummers2()
+    print("checksummers2: {}".format(hex(r)))
+    cs3 = find_checksummers3()
+    results['cs'] = [cs0, cs1, cs2, cs3]
     print("checksummers...")
     print([idc.get_func_name(x) for x in r])
-    # LabelManyAddresses(r, "ArxanChecksumTest", force=1)
-    # retrace_list(r)
+    LabelManyAddresses(r, "ArxanChecksumTest", force=1)
+    retrace_list(r)
     print("{}".format("lame_memcpys"))
     results['memcpy'] = find_lame_memcpys()
     # retrace_list(r)
@@ -680,19 +688,19 @@ def find_shifty_stuff():
     results['balance'] = find_stack_align_adjust()
     print("{}".format("imagebase_offsets"))
     find_imagebase_offsets()
-    for ea in [GetFuncStart(x) for x in FindInSegments("8b 05 ?? ?? ?? ?? 0f af 05 ?? ?? ?? ?? 8b 15 ?? ?? ?? ??")]:
-        AddTag(ea, "seldom")
     if False:
-        for ea in rc:
-            decompile_arxan(ea)
-            decompile_arxan(ea)
+        for ea in [GetFuncStart(x) for x in FindInSegments("8b 05 ?? ?? ?? ?? 0f af 05 ?? ?? ?? ?? 8b 15 ?? ?? ?? ??")]:
+            AddTag(ea, "seldom")
 
-    LabelManyAddresses(results['checks'], "ArxanCheckFunction2", force=1)
-    LabelManyAddresses(results['cs'], "ArxanCheckFunction", force=1)
+    #  LabelManyAddresses(results['cs'][0], "ArxanCheckFunction__0", force=1)
+    #  LabelManyAddresses(results['cs'][0], "ArxanCheckFunction__1", force=1)
+    #  LabelManyAddresses(results['cs'][1], "ArxanCheckFunction__2", force=1)
+    #  LabelManyAddresses(results['cs'][2], "ArxanCheckFunction__3", force=1)
     LabelManyAddresses(results['csworkers'], "ArxanGetNextRange", force=1)
     LabelManyAddresses(results['balance'], "ArxanBalance", force=1)
+    for ea in results['balance']:
+        Commenter(ea, 'line').remove('[DENY JMP]')
     LabelManyAddresses(results['memcpy'], "ArxanMemcpy", force=1)
-    setglobal('shifty', results)
     results['rol'] = find_rolls()
     results['setret'] = find_setreturn()
     results['vortex'] = find_vortex()
@@ -856,13 +864,17 @@ def TagAddress(addr, tag, remove=False):
 
 def LabelManyAddresses(l, label, force = False):
     for ea in l:
-        head = ea
-        if IsTail(head):
-            head = idc.get_item_head(ea)
-        if not IsCode_(head):
-            forceCode(head)
-        if not force and idc.hasUserName(idc.get_full_flags(ea)) and not idc.get_name(ea).startswith('_sub_'):
-            continue
+        #  #  head = ea
+        #  #  if IsTail(head):
+            #  #  head = idc.get_item_head(ea)
+        #  #  if not IsCode_(head):
+            #  #  try:
+                #  #  forceCode(head)
+            #  #  except AdvanceFailure:
+                #  #  print("AdvanceFailure labelling {:x}".format(head))
+                #  #  continue
+        #  #  if not force and idc.hasUserName(idc.get_full_flags(ea)) and not idc.get_name(ea).startswith('_sub_'):
+            #  #  continue
         # dprint("[labelling] ex, label")
         #  print("[labeling] ea:{:x}, label:{}".format(ea, label))
         
@@ -878,6 +890,17 @@ def FunctionsMatching(regex=None, exclude=None, filter=lambda x: x, flags=0):
     if exclude:
         result = [a for a in result if not re.search(regex, idc.get_name(a))]
     return result
+
+def NamesMatching(regex=None, exclude=None, filter=lambda x: x, flags=0):
+    if regex and not isinstance(regex, re.Pattern):
+        regex = re.compile(regex, flags)
+    if exclude and not isinstance(exclude, re.Pattern):
+        exclude = re.compile(exclude, flags)
+    result = [a[0] for a in idautils.Names() if filter(a[0]) and (not regex or re.match(regex, a[1]))]
+    if exclude:
+        result = [a for a in result if not re.search(regex, idc.get_name(a))]
+    return result
+
 
 def FunctionNamesMatching(regex=None, exclude=None, filter=lambda x: x, flags=0):
     return GetFuncName(FunctionsMatching(regex, exclude, filter, flags))
@@ -937,6 +960,8 @@ def FindInSegments(searchstr, segments=None, limit=None, predicate=None, iterate
         return results
 
     if isinstance(searchstr, int):
+        if searchstr < 0:
+            searchstr = searchstr & 0xffffffff
         _len = math.ceil((len("{:x}".format(searchstr))) / 2)
         _bytes = searchstr.to_bytes(_len, byteorder='little')
         searchstr = ' '.join("{:02x}".format(x) for x in _bytes)
@@ -967,30 +992,32 @@ def FindInSegments(searchstr, segments=None, limit=None, predicate=None, iterate
         #  with MemBatchMode(1):
         ea = ida_search.find_binary(ea, seg_end, searchstr, 16, idc.SEARCH_CASE | idc.SEARCH_DOWN | idc.SEARCH_NOSHOW)
         while ea < seg_end:
+            skip = False
             r = ea
             if predicate and callable(predicate):
                 pr = predicate(r)
                 if not pr:
-                    continue
-            if iteratee and callable(iteratee):
-                r = iteratee(r)
+                    skip = True
+            if not skip:
+                if iteratee and callable(iteratee):
+                    r = iteratee(r)
 
-            results.append(r)
-            #  if not predicate or not callable(predicate):
-                #  results.append(ea)
-            #  else:
-                #  r = predicate(ea)
-                #  if r and r > 1:
-                    #  results.append(r)
-                    #  if callable(iteratee):
-                        #  iteratee(r)
-                #  elif r:
+                results.append(r)
+                #  if not predicate or not callable(predicate):
                     #  results.append(ea)
-                    #  if callable(iteratee):
-                        #  iteratee(ea)
+                #  else:
+                    #  r = predicate(ea)
+                    #  if r and r > 1:
+                        #  results.append(r)
+                        #  if callable(iteratee):
+                            #  iteratee(r)
+                    #  elif r:
+                        #  results.append(ea)
+                        #  if callable(iteratee):
+                            #  iteratee(ea)
 
-            if limit and len(results) > limit:
-                return results
+                if limit and len(results) > limit:
+                    return results
             #  with MemBatchMode(1):
             ea = ida_search.find_binary(ea, seg_end, searchstr, 16,
                                         SEARCH_CASE | SEARCH_DOWN | SEARCH_NEXT | SEARCH_NOSHOW)
