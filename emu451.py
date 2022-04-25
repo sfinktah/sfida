@@ -6,7 +6,7 @@ import itertools
 from braceexpand import braceexpand
 from collections import defaultdict
 from execfile import make_refresh
-from attrdict1 import AttrDict
+from attrdict1 import SimpleAttrDict
 import pickle
 import ida_dbg
 
@@ -14,7 +14,14 @@ refresh_emu = make_refresh(os.path.abspath(__file__))
 refresh = make_refresh(os.path.abspath(__file__))
 base = ida_ida.cvar.inf.min_ea
 
-ddir = getglobal('ddir', string_between('\\', '\\', GetIdbDir(), rightmost=1))
+# ddir = getglobal('ddir', string_between('\\', '\\', GetIdbDir(), rightmost=1))
+ddir = getglobal('ddir', idautils.GetIdbDir())
+if not dir_exists(os.path.join(ddir, 'memcpy')):
+    os.mkdir(os.path.join(ddir, 'memcpy'))
+if not dir_exists(os.path.join(ddir, 'written')):
+    os.mkdir(os.path.join(ddir, 'written'))
+if not dir_exists(os.path.join(ddir, 'read')):
+    os.mkdir(os.path.join(ddir, 'read'))
 
 max_count = count = last_count = last_memcpy = last_written = last_read = 0
 functions = set()
@@ -121,7 +128,7 @@ def make_reg_list():
         br16 = "{{{a,c,d,b}x,{s,b}p,{s,d}i},r{8..15}w}"
         br8 = "{{{a,c,d,b}l,{s,b}pl,{s,d}il},r{8..15}b,{a,c,d,b}h}"
 
-        make_reg_list.reglist = AttrDict({
+        make_reg_list.reglist = SimpleAttrDict({
             'r64': braceexpandlist(br64),  # 16
             'r32': braceexpandlist(br32),  # 16
             'r16': braceexpandlist(br16),  # 16
@@ -544,7 +551,7 @@ def checksummer1(fn):
             #  count=max(max_count + 1000000, 1000000)
         )
 
-        filename = 'r:/ida/' + ddir + '/stack_{}.txt'.format(fnName)
+        filename = ddir + '/stack_{}.txt'.format(fnName)
         file_put_contents(filename, "\n".join(sp_writes))
 
         return 0
@@ -561,7 +568,7 @@ def checksummer1(fn):
     ## file_put_contents_bin('h:/ida/gtasc-2245/unvisited_{:x}.pickle'.format(fnLoc), pickle.dumps({'visited': visited & addresses, 'unvisited': unvisited, 'extra': extra}))
     out("function {} visited {:.0%} (returned {})".format(fnName, percent, helper.getRegVal("eax")))
     if count >= 1000000:
-        filename = 'r:/ida/' + ddir + '/limit_{}_{}.bin'.format(fnName, count)
+        filename = ddir + '/limit_{}_{}.bin'.format(fnName, count)
         if not file_exists(filename):
             file_put_contents(filename, '')
     if count >= 1000000 or abort:
@@ -624,10 +631,10 @@ def checksummers(*args, **kwargs):
             if skip:
                 out("=== skipping {} ===".format(fnName))
                 continue
-            #  if len(glob('r:/ida/' + ddir + '/limit_{}_100*.*'.format(fnName))) == 0:
+            #  if len(glob(ddir + '/limit_{}_100*.*'.format(fnName))) == 0:
                 #  out("=== skipping for lack of disk match {} ===".format(fnName))
                 #  continue
-            #  if len(glob('r:/ida/' + ddir + '/memcpy_*_{}.bin'.format(fnName))) == 0:
+            #  if len(glob(ddir + '/memcpy_*_{}.bin'.format(fnName))) == 0:
                 #  out("=== skipping as this function doesn't perform memcpy {} ===".format(fnName))
                 #  continue
             retn = checksummer1(fnLoc)
@@ -649,18 +656,18 @@ def checksummers(*args, **kwargs):
                 fheads = set()
                 # print("memcpy", pfh(memcpy))
                 for r in GenericRanger(memcpy, sort=1, input_filter=patchmap_filter):
-                    #  out("memcpy: {} {}".format(r, GetFuncName(r.start, r.end)), silent=1)
+                    #  out("memcpy: {} {}".format(r, GetFuncName(r.start, r.last)), silent=1)
                     if r.start > 0x140000000:
                         memcpy_count += len(r)
                         healed_by[r].add(fnName)
 
-                        filename = 'r:/ida/' + ddir + '/memcpy/memcpy_{:x}_{:x}_{}.bin'.format(r.start, r.end - r.start + 1, fnName)
+                        filename = ddir + '/memcpy/memcpy_{:x}_{:x}_{}.bin'.format(r.start, r.last - r.start + 1, fnName)
                         if not file_exists(filename):
-                            if comment: Commenter(r.start, 'line').add("{} bytes healed by {}".format(fnName, r.end - r.start + 1)).commit()
-                            if patch: PatchBytes(r.start, helper.getEmuBytes(r.start, r.end - r.start + 1), "Patched by {}".format(fnName))
-                            file_put_contents_bin(filename, helper.getEmuBytes(r.start, r.end - r.start + 1))
+                            if comment: Commenter(r.start, 'line').add("{} bytes healed by {}".format(fnName, r.last - r.start + 1)).commit()
+                            if patch: PatchBytes(r.start, helper.getEmuBytes(r.start, r.last - r.start + 1), "Patched by {}".format(fnName))
+                            file_put_contents_bin(filename, helper.getEmuBytes(r.start, r.last - r.start + 1))
 
-                            for head in idautils.Heads(r.start, r.end):
+                            for head in idautils.Heads(r.start, r.last):
                                 if IsFuncHead(head):
                                     fheads.add(head)
                                     if tag:
@@ -674,16 +681,16 @@ def checksummers(*args, **kwargs):
             if True and read_set:
                 fheads = set()
                 for r in GenericRanger(read_set, sort=1):
-                    out("read_set: {} {}".format(r, GetFuncName(r.start, r.end)), silent=1)
+                    out("read_set: {} {}".format(r, GetFuncName(r.start, r.last)), silent=1)
                     read_count += len(r)
 
                     if r.start > 0x140000000:
-                        filename = 'r:/ida/' + ddir + '/read/read_{:x}_{:x}_{}.bin'.format(r.start, r.end - r.start + 1, fnName)
+                        filename = ddir + '/read/read_{:x}_{:x}_{}.bin'.format(r.start, r.last - r.start + 1, fnName)
                         if not file_exists(filename):
-                            if comment: Commenter(r.start, 'line').add("{} bytes read by {}".format(fnName, r.end - r.start + 1)).commit()
-                            file_put_contents_bin(filename, helper.getEmuBytes(r.start, r.end - r.start + 1))
+                            if comment: Commenter(r.start, 'line').add("{} bytes read by {}".format(fnName, r.last - r.start + 1)).commit()
+                            file_put_contents_bin(filename, helper.getEmuBytes(r.start, r.last - r.start + 1))
 
-                            for head in idautils.Heads(r.start, r.end):
+                            for head in idautils.Heads(r.start, r.last):
                                 if IsFuncHead(head):
                                     fheads.add(head)
                                     if tag:
@@ -698,17 +705,17 @@ def checksummers(*args, **kwargs):
             if True and written_set:
                 fheads = set()
                 for r in GenericRanger(written_set, sort=1):
-                    out("written_set: {} {}".format(r, GetFuncName(r.start, r.end)), silent=1)
+                    out("written_set: {} {}".format(r, GetFuncName(r.start, r.last)), silent=1)
                     written_count += len(r)
 
                     if r.start > 0x140000000:
-                        filename = 'r:/ida/' + ddir + '/written/written_{:x}_{:x}_{}.bin'.format(r.start, r.end - r.start + 1, fnName)
+                        filename = ddir + '/written/written_{:x}_{:x}_{}.bin'.format(r.start, r.last - r.start + 1, fnName)
                         if not file_exists(filename):
-                            if comment: Commenter(r.start, 'line').add("{} bytes written by {}".format(fnName, r.end - r.start + 1)).commit()
-                            if patch: PatchBytes(r.start, helper.getEmuBytes(r.start, r.end - r.start + 1), "Patched(W) by {}".format(fnName))
-                            file_put_contents_bin(filename, helper.getEmuBytes(r.start, r.end - r.start + 1))
+                            if comment: Commenter(r.start, 'line').add("{} bytes written by {}".format(fnName, r.last - r.start + 1)).commit()
+                            if patch: PatchBytes(r.start, helper.getEmuBytes(r.start, r.last - r.start + 1), "Patched(W) by {}".format(fnName))
+                            file_put_contents_bin(filename, helper.getEmuBytes(r.start, r.last - r.start + 1))
 
-                            for head in idautils.Heads(r.start, r.end):
+                            for head in idautils.Heads(r.start, r.last):
                                 if IsFuncHead(head):
                                     fheads.add(head)
                                     if tag:

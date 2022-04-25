@@ -7,7 +7,7 @@ from underscoretest import _
 from braceexpand import braceexpand
 from collections import defaultdict
 from execfile import make_refresh
-from attrdict1 import AttrDict
+from attrdict1 import SimpleAttrDict
 import pickle
 
 refresh_emu = make_refresh(os.path.abspath(__file__))
@@ -110,7 +110,7 @@ def make_reg_list():
         br16 =  "{{{a,c,d,b}x,{s,b}p,{s,d}i},r{8..15}w}"
         br8  =  "{{{a,c,d,b}l,{s,b}pl,{s,d}il},r{8..15}b,{a,c,d,b}h}"
 
-        make_reg_list.reglist =  AttrDict({
+        make_reg_list.reglist =  SimpleAttrDict({
                 'r64': braceexpandlist(br64), # 16
                 'r32': braceexpandlist(br32), # 16
                 'r16': braceexpandlist(br16), # 16
@@ -675,10 +675,10 @@ def checksummers(*args, **kwargs):
 
             fheads = set()
             for r in GenericRanger(healer, sort=1, input_filter=patchmap_filter):
-                out("healed: {} {}".format(r, GetFuncName(r.start, r.end)), silent=1)
+                out("healed: {} {}".format(r, GetFuncName(r.start, r.last)), silent=1)
                 healed_count += len(r)
                 healed_by[r].add(fnName)
-                for head in idautils.Heads(r.start, r.end):
+                for head in idautils.Heads(r.start, r.last):
                     if IsFuncHead(head):
                         fheads.add(head)
                         AddTag(head, 'healed')
@@ -689,10 +689,10 @@ def checksummers(*args, **kwargs):
 
             fheads = set()
             for r in GenericRanger(ranges, sort=1):
-                out("checked: {} {}".format(r, GetFuncName(r.start, r.end)))
+                out("checked: {} {}".format(r, GetFuncName(r.start, r.last)))
                 checked_count += len(r)
                 checked_by[r].add(fnName)
-                for head in idautils.Heads(r.start, r.end):
+                for head in idautils.Heads(r.start, r.last):
                     if IsFuncHead(head):
                         fheads.add(head)
                         AddTag(head, 'checked')
@@ -753,7 +753,7 @@ def aligned_hash(argv):
 # .text:00000001438DD3AE 0A8 0F B6 00                        movzx   eax, byte ptr [rax]
 
 def filterUserData(userData, hexlify=False):
-    someUserData = AttrDict()
+    someUserData = SimpleAttrDict()
     for k, v in userData.items():
         if isinstance(v, (int, bool, str)):
             if hexlify and isinstance(v, int) and v > 999:
