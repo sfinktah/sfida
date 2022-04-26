@@ -1475,6 +1475,18 @@ def hotkey_patch():
                                 reflow = True
 
 
+
+def hotkey_edit_nasm():
+    chunkStart, chunkEnd = get_selection_or_ea()
+    if chunkStart + MyGetInstructionLength(chunkStart) >= chunkEnd:
+        _asm = diida(chunkStart)
+    elif chunkEnd > chunkStart and chunkEnd < BADADDR and chunkEnd - chunkStart < 8192:
+        _asm = diida(chunkStart, chunkEnd)
+
+    _new_asm = idaapi.ask_text(0x10000, _asm, "Edit Disassembly")
+    if _new_asm:
+        nassemble(chunkStart, _new_asm, apply=True)
+
 def hotkey_unpatch():
     chunkStart, chunkEnd = get_selection_or_ea()
     if GetFuncStart(chunkStart) == chunkStart and chunkEnd == idc.next_head(chunkStart):

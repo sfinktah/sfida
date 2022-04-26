@@ -1300,11 +1300,11 @@ def file_put_json(fn, data, flags = None):
         print("file not writable or some such")
 
 def mark_start():
-    print("mark_start")
+    #  print("mark_start")
     idc.put_bookmark(idc.get_screen_ea(), 0, 0, 0, 18, 'mark_start')
 
 def mark_end():
-    print("mark_end")
+    #  print("mark_end")
     idc.put_bookmark(idc.get_screen_ea() + idc.get_item_size(idc.get_screen_ea()), 0, 0, 0, 19, 'mark_end')
 
 def make_store_bookmark_fn(i):
@@ -1317,7 +1317,8 @@ def make_goto_bookmark_fn(i):
     def func():
         ea = idc.get_bookmark(i)
         if ea == idc.BADADDR:
-            print("bookmark {} is undefined".format(i))
+            ask_yn(ASKBTN_BTN1, "bookmark {} is undefined".format(i))
+            #  print("bookmark {} is undefined".format(i))
             return
         #  print("jumping to 0x{:x} (bookmark {})".format(ea, i))
         idc.jumpto(ea)
@@ -1738,6 +1739,7 @@ HELPER_HOTKEYS.append(MyHotkey("Shift-Alt-]", mark_end))
 HELPER_HOTKEYS.append(MyHotkey("Shift-Ctrl-Alt-U", UnpatchUn))
 HELPER_HOTKEYS.append(MyHotkey("Shift-Ctrl-J", hotkey_join_to_parent))
 HELPER_HOTKEYS.append(MyHotkey("Shift-J", lambda: hotkey_switch_jumptype(shift=1)))
+HELPER_HOTKEYS.append(MyHotkey("Shift-Alt-E", hotkey_edit_nasm))
 
 
 #  

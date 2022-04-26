@@ -46,6 +46,7 @@ call_stack  = list()
 last_regs = dict()
 readfrom = set()
 reshow_bits = dict()
+stack_pointer = None
 
 def str_startswith(s, prefixlist, icase=False, start=None, end=None):
     if icase:
@@ -241,6 +242,7 @@ def insnHookActual(unicornObject, address, instructionSize, userData):
     global last_regs
     global after_output
     global call_stack;
+    global stack_pointer;
 
     helper = userData["EmuHelper"]
     if "breakpoints" not in userData:
@@ -317,8 +319,8 @@ def insnHookActual(unicornObject, address, instructionSize, userData):
             #  if fnName:
                 #  stepout("{}:".format(fnName))
             try:
-                #  insn = diida(address)
-                insn = GetDisasm(address)
+                insn = diida(address)
+                #  insn = GetDisasm(address)
             except IndexError:
                 insn = "** INVALID **"
             helper = userData["EmuHelper"]
@@ -363,7 +365,12 @@ def insnHookActual(unicornObject, address, instructionSize, userData):
             cmt = idc.get_extra_cmt(address, E_PREV + (0))
             if (cmt):
                 stepout("{:9} {:5} {}".format('', '', ida_lines.tag_remove(cmt)))
-            stepout("{:9x} {:5x} {:16} {}{}".format(address, helper.getRegVal('rsp') - 0x11000, TagRemoveSubstring(fnName), string_between('; ', '', insn, repl=''), extra))
+            if stack_pointer is not None:
+                _spd = helper.getRegVal('rsp') - stack_pointer
+            else:
+                _spd = 'unset'
+            stack_pointer = helper.getRegVal('rsp')
+            stepout("{:9x} {:5x} {:16} {}{} ; spd: {}".format(address, helper.getRegVal('rsp') - 0x11000, TagRemoveSubstring(fnName), string_between('; ', '', insn, repl=''), extra, _spd))
 
             show_after()
 

@@ -3,10 +3,10 @@ import re
 import idc
 import ida_ua, idaapi
 
-try:
-    import distorm3c as distorm3
-except ModuleNotFoundError:
-    import distorm3
+#  try:
+    #  import distorm3c as distorm3
+#  except ModuleNotFoundError:
+import distorm3
 # import distorm3 as distorm3
 # from start import asBytesRaw
 from string_between import string_between

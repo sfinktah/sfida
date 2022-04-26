@@ -1,4 +1,5 @@
 import os
+import re
 
 def smart_path(pn):
     if os.path.sep == '\\':

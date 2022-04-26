@@ -5,6 +5,8 @@ from choose_multi import *
 from execfile import execfile, make_refresh
 refresh_emu = make_refresh(os.path.abspath(__file__))
 refresh = make_refresh(os.path.abspath(__file__))
+import lzma
+import re
 
 try:
     from string_between import string_between_splice, string_between
@@ -13,23 +15,16 @@ except ModuleNotFoundError:
     raise ModuleNotFoundError('string-between')
 
 from di import diInsns, MyGetInstructionLength
+from file_get_contents import *
 
-def file_exists(fn):
-    return os.path.exists(fn) and os.path.isfile(fn)
 
-def dir_exists(fn):
-    return os.path.exists(fn) and os.path.isdir(fn)
-
-def file_get_contents_bin(fn):
+def file_get_contents_bin_spread(fn):
+    fn = smart_path(fn)
     if fn.endswith('.bin'):
         if not file_exists(fn) and not re.match(r'/\d\d/\d\d/', fn):
             fn = spread_filename(fn)
     return open(fn, 'rb').read()
 
-def file_put_contents_bin(fn, data):
-    with open(fn, 'wb') as f:
-        f.write(data)
-    return os.path.abspath(fn)
 
 def parseHex(string, _default = None):
     if string.startswith('0x'):
@@ -37,7 +32,11 @@ def parseHex(string, _default = None):
     #  string = string.lstrip('0x')
     if not string:
         print('empty string')
-    return int(string, 16)
+    try:
+        return int(string, 16)
+    except ValueError:
+        print("ValueError: parseHex: {}".format(string))
+        raise
 
 def get_ea_by_any(val, d=object):
     """
@@ -142,8 +141,70 @@ def read_emu_glob(fn, path=None):
         print("No path set")
         return
 
-    read_emu(glob(os.path.join(match_emu._path, '*/*/*' + fn + '*')))
+    fns = os.path.normpath(os.path.join(match_emu._path, 'memcpy/*/*/*' + fn + '*.bin'))
+    globbed = list(glob(fns))
+    print('globbing... {}'.format(fns)
+    fns = os.path.normpath(os.path.join(match_emu._path, 'written/*/*/*' + fn + '*.bin'))
+    globbed.extend(list(glob(fns)))
+    print('globbing... {}'.format(fns)
+    print('globbed: {}'.format(globbed))
+    read_emu(globbed)
 
+def make_emu_patchfile(fn=None, noImport=False, width=76):
+    import base64
+    """ 
+    eg: read_emu(glob('r:/data/memcpy/*_ArxanFunction_140000000.bin'))
+
+    @param fn: filename or [fn1, fn2, ...]
+
+    """
+    if not noImport:
+        result = [
+                "def base64_patch_tmp():",
+                "    from base64 import b64decode", 
+                "    from ida_bytes import put_bytes",
+                "    from lzma import decompress",
+                "    put64 = lambda ea, b64: put_bytes(ea, b64decode(b64))",
+                "    lzp64 = lambda ea, b64: put_bytes(ea, decompress(b64decode(b64)))",
+                ""
+                ]
+    else:
+        result = []
+    
+
+    if not noImport and not isinstance(fn, list):
+        fn = [fn]
+    if isinstance(fn, list):
+        [ result.extend(make_emu_patchfile(x, noImport=1, width=width)) for x in fn ]
+        result.extend([
+            "",
+            "base64_patch_tmp()"
+            ])
+        return result
+
+    base = parseHex(string_between('_', '_', fn))
+    if base > 0x140000000 and base < 0x150000000:
+        b = file_get_contents_bin_spread(fn)
+        cmd = 'put64'
+        if len(b) > 128:
+            b = lzma.compress(b)
+            cmd = 'lzp64'
+        if b:
+            b64 = base64.b64encode(b).decode('raw_unicode_escape')
+            if len(b64) < (width - 22 - 4):
+                bout = '    {}(0x{:x}, "{}")'.format(cmd, base, b64)
+                result.append(bout)
+            else:
+                bout = '    {}(0x{:x}, """'.format(cmd, base) + b64
+                bout = indent(8, bout, width=width, joinWith=None, skipFirst=True)
+                result.extend(bout)
+                if len(result[-1]) < (width - 3 - 4):
+                    result[-1] += '""")'
+                else:
+                    result.append('        """)')
+            #  result.append('')
+
+    return result 
 
 def read_emu(fn=None):
     """ 
@@ -157,7 +218,7 @@ def read_emu(fn=None):
         return [(parseHex(string_between('_', '_', x)), read_emu(x)) for x in fn]
     base = parseHex(string_between('_', '_', fn))
     if base > 0x140000000 and base < 0x150000000:
-        b = file_get_contents_bin(fn)
+        b = file_get_contents_bin_spread(fn)
         if b:
             #  if rv:
                 #  idc.jumpto(base)
@@ -221,11 +282,11 @@ def match_emu(ea=None, size=None, path=None, retnAll=False):
 
         pickle_fn = "{}/files.pickle".format(path.rstrip('/'))
         if file_exists(pickle_fn):
-            match_emu._files = pickle.loads(file_get_contents_bin(pickle_fn))
+            match_emu._files = pickle.loads(file_get_contents_bin_spread(pickle_fn))
         else:
             # generate new list
             for _subdir in subdirs:
-                for fn in glob("{0}/{1}/*/*/{1}_*.bin".format(path.rstrip('/'), _subdir)):
+                for fn in glob("{0}/{1}/*/*/*.bin".format(path.rstrip('/'), _subdir)):
                     bn = os.path.basename(fn)
                     addr,  bn = string_between_splice('_',   '_', bn, repl='')
                     size,  bn = string_between_splice('__',  '_', bn, repl='')
@@ -266,16 +327,10 @@ def match_emu(ea=None, size=None, path=None, retnAll=False):
     for _subdir in subdirs:
         left  = bisect_left(match_emu._keys[_subdir], ea - match_emu._files["maxsize"])
         right = bisect_right(match_emu._keys[_subdir], ea2)
-        # dprint("[debug] _subdir, left, right")
-        #  print("[debug] _subdir:{}, left:{}, right:{}".format(_subdir, left, right))
-        
         
         results[_subdir] = []
         for l in match_emu._keys[_subdir][max(0, left - 1):right + 1]:
             for length in match_emu._files[_subdir][l]:
-                # dprint("[debug] l, length")
-                #  print("[debug] l:{}, length:{}".format(l, length))
-                
                 r = l + length
                 if                    \
                         l  < ea2 and  \
@@ -321,7 +376,7 @@ def check_emu(ea=None, size=None, path=None, auto=None):
                 #  continue
                 try:
                     asm = '; '.join([x[2] for x in diInsns(
-                        file_get_contents_bin(fullfn), ea=base)])
+                        file_get_contents_bin_spread(fullfn), ea=base)])
                     asm = re.sub(r'0x[0-9a-fA-F]{8,}', lambda x, *a: get_name_by_any(x[0]), asm)
                     results[_subdir][asm] = "{:x} - {:x} {} {}".format(base, base + length, fn, asm)
                     pph((_subdir, fn, hex(base), hex(base + length), asm))
@@ -347,13 +402,13 @@ def check_emu(ea=None, size=None, path=None, auto=None):
         row = variable_chooser.Show(modal=True)
     else:
         row = 0
-        ida_bytes.patch_bytes(eax(p[row][2]), file_get_contents_bin(p2[row]))
+        ida_bytes.patch_bytes(eax(p[row][2]), file_get_contents_bin_spread(p2[row]))
         Commenter(eax(p[row][2]), 'line').add("Patched by: " + p[row][1])
         return eax(p[row][2]), eax(p[row][3])
 
     if row != -1:
         print("Chose {}: {}".format(row, p2[row]))
-        ida_bytes.patch_bytes(eax(p[row][2]), file_get_contents_bin(p2[row]))
+        ida_bytes.patch_bytes(eax(p[row][2]), file_get_contents_bin_spread(p2[row]))
         Commenter(eax(p[row][2]), 'line').add("Patched by: " + p[row][1])
         #  idc.set_cmt(eax(p[row][2]), '\n'.join(idc.get_cmt(eax(p[row][2]), 0).split('\n') + ["Patched by: " + p[row][1]]), False)
         idc.create_insn(eax(p[row][2]))

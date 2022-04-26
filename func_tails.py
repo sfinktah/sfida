@@ -90,7 +90,6 @@ class FuncTailsNoFunc(FuncTailsError):
 class AdvanceInsnList(object):
     """Docstring for AdvanceInsnList """
 
-
     def __init__(self, ea, insns=[], insn_count=None, byte_count=None, results=[], refs_from={}, refs_to={}, flow_refs_from={}, flow_refs_to={}, start_ea=None, end_ea=None):
         """@todo: to be defined
             ea
@@ -157,12 +156,72 @@ class AdvanceInsnList(object):
     #  __repr__(self, /)
     #  __setitem__(self, key, value, /)
 
+    ### ---
     def __len__(self):
-        return len(self._list_insns)
-
+        return self._list_insns.__len__()
+    
+    def __getitem__(self, key):
+        return self._list_insns.__getitem__(key)
+    
+    def __setitem__(self, key, value):
+        self._list_insns.__setitem__(key, value)
+    
+    def __delitem__(self, key):
+        self._list_insns.__delitem__(key)
+    
     def __iter__(self):
         return self._list_insns.__iter__()
-        
+    
+    def __reversed__(self):
+        return self._list_insns.__reversed__()
+    
+    def __contains__(self, item):
+        return self._list_insns.__containers__(item)
+    
+    def append(self, object):
+        self._list_insns.append(object)
+    
+    def clear(self):
+        self._list_insns.clear()
+    
+    def copy(self):
+        return (type(self))(self._list_insns.copy())
+    
+    def count(self):
+        return self._list_insns.count()
+    
+    def extend(self, iterable):
+        for item in iterable:
+            self.append(item)
+    
+    def index(self, value, start=0, stop=9223372036854775807):
+        self._list_insns.index(value, start, stop)
+    
+    def insert(self):
+        self._list_insns.insert()
+    
+    def pop(self):
+        self._list_insns.pop()
+    
+    def remove(self):
+        self._list_insns.remove()
+    
+    def reverse(self):
+        self._list_insns.reverse()
+    
+    def sort(self):
+        self._list_insns.sort()
+    
+    def insert(self, index, object):
+        self._list_insns.insert(index, object)
+    
+    def pop(self, index=-1):
+        return self._list_insns.pop(index)
+    
+    def remove(self, value):
+        self._list_insns.remove(value)
+    
+    ### ---
     def items(self):
         for o in self._list_insns:
             yield o.ea, o.insn
@@ -175,6 +234,7 @@ class AdvanceInsnList(object):
 
     def labeled_values(self):
         return [o.labeled_value for o in self._list_insns]
+
 
 
 class FuncTailsInsn(object):
@@ -210,6 +270,11 @@ class FuncTailsInsn(object):
         self._insn_refs_to = refs_to
         self._insn_flow_refs_from = flow_refs_from
         self._insn_flow_refs_to = flow_refs_to
+
+        self._insn_target = None
+
+        if (isJmpOrCall(ea)):
+            self._insn_target = GetTarget(ea)
 
     def __str__(self):
         return self._insn_text
@@ -405,11 +470,17 @@ class FuncTailsInsn(object):
     def flow_refs_from(self): return self._insn_flow_refs_from
     @property
     def flow_refs_to(self): return self._insn_flow_refs_to
+    @property
+    def target(self): return self._insn_target
 
     @property
     def labeled_value(self):
-        if len(self._insn_refs_to):
-            return "loc_{:X}: {}".format(self._insn_ea, self._insn_insn)
+        if len(self._insn_refs_to) or len(self._insn_labels):
+            if self._insn_labels:
+                _label = self._insn_labels[0]
+            else:
+                _label = "loc_{:X}".format(self._insn_ea)
+            return "{}: {}".format(_label, self._insn_insn)
         return "{}".format(self._insn_insn)
 
     # https://stackoverflow.com/questions/40828173/how-can-i-make-my-class-pretty-printable-in-python/66250289#66250289
@@ -1157,6 +1228,7 @@ def AdvanceToMnemEx(ea, term='retn', iteratee=None, **kwargs):
 
             if (is_any_jmp or is_follow_call) and GetTarget(ea) != BADADDR:
                 target = GetTarget(ea)
+                #  target = SkipJumps(ea, skipNops=True)
                 if not IsValidEA(target):
                     UnPatch(ea)
                     target = GetTarget(ea)
@@ -1174,6 +1246,9 @@ def AdvanceToMnemEx(ea, term='retn', iteratee=None, **kwargs):
                 flow_refs_to[ea].add(idc.prev_head(ea))
 
             if term_callback and term_callback(ea) or not term_callback and mnem in (term):
+                if insns:
+                    if insns[-1].target == ea:
+                        insns.pop(-1)
                 if getattr(opt, 'inclusive', 0):
                     final_loop = 1
                 else:
@@ -1241,11 +1316,17 @@ def AdvanceToMnemEx(ea, term='retn', iteratee=None, **kwargs):
                 #  insns.append("{}:".format(label))
 
             if mnem not in (['nop']):
-                insns.append(FuncTailsInsn(insn, ea, "    {}".format(insn), labels=current_labels, refs_from=refs_from[ea], refs_to=refs_to[ea]))
+                insns.append(FuncTailsInsn(insn, ea, "    {}".format(insn), labels=[label] if label else [], refs_from=refs_from[ea], refs_to=refs_to[ea]))
                 current_labels.clear()
                 #  insns.append("    {}".format(insn))
                 insn_count += 1
                 byte_count += size
+
+
+            if label:
+                if len(insns) > 1:
+                    if insns[-2].target == ea:
+                        insns.pop(-2)
 
             ignore_flow = 0
 

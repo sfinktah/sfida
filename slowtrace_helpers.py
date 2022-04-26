@@ -104,7 +104,7 @@ def printi(value, sacrificial=None, depth=None, *args, **kwargs):
     g_depth = TraceDepth.get()
 
     if sacrificial is not None:
-        value = ", ".implode(str(x) for x in [value] + args)
+        value = ", ".join(str(x) for x in [value] + list(args))
     #  assert sacrificial is None
     if isinstance(depth, int):
         g_depth = depth
@@ -8311,24 +8311,20 @@ def SuperJump(funcea=None):
             if isUnconditionalJmpOrCall(ea):
                 SkipJumps(ea, apply=1)
 
-def process_balance(funcea=None):
+def process_balance(ea=None):
     """
     process_balance
 
-    @param funcea: any address in the function
+    @param ea: linear address
     """
-    if isinstance(funcea, list):
-        return [process_balance(x) for x in funcea]
+    if isinstance(ea, list):
+        return [process_balance(x) for x in ea]
 
-    funcea = eax(funcea)
-    func = ida_funcs.get_func(funcea)
-
-    if not func:
-        return 0
-    else:
-        funcea = func.start_ea
-
-    sti = CircularList([x for x in func_tails(funcea, quiet=1, returnOutput='buffer', returnFormat=lambda o: o) if not x.insn.startswith(('nop', 'jmp'))])
+    if ea is None and IsFunc_(here()):
+        ea = here()
+    ea = eax(ea)
+    sti = CircularList(AdvanceToMnemEx(ea))
+        # in func_tails(ea=ea, quiet=1, returnOutput='buffer', returnFormat=lambda o: o) if not x.insn.startswith(('nop', 'jmp'))])
     setglobal('sti', sti)
     # sti = func_tails(returnOutput='buffer')
     if False:

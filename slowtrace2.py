@@ -107,8 +107,14 @@ def indent(n, s, skipEmpty=True, splitWith='\n', joinWith='\n', n2plus=None, ski
 
     if width:
         assert isinstance(width, int)
-        s = [textwrap.wrap(line, width=width - n) for line in s]
-        s = _.flatten(s)
+        r = []
+        if skipFirst:
+            r.append(s[0][0:width])
+            s[0] = s[0][width:]
+            if not s[0]:
+                s.pop(0)
+        r.extend([textwrap.wrap(line, width=width - n) for line in s])
+        s = _.flatten(r)
 
     result = []
 
@@ -130,7 +136,9 @@ def indent(n, s, skipEmpty=True, splitWith='\n', joinWith='\n', n2plus=None, ski
             elif isinstance(n, int):
                 result.append(indentString * n + line)
 
-    return joinWith.join(result)
+    if joinWith:
+        return joinWith.join(result)
+    return result
 
 def getglobal(key, default=None):
     """
@@ -710,6 +718,7 @@ def retrace(address=None, color="#280c01", retails=False, redux=False, unpatchFi
                 _old_hash = GetFuncHash(ea)
                 patchResults = []
                 spdList = []
+                setglobal('spdList', spdList)
                 try:
                     #  print("count #{}/{}".format(count, count_limit))
                     rv = slowtrace2(ea, color=color, returnPatches=patchResults, returnOutput=traceOutput, spdList=spdList, **kwargs)
@@ -762,11 +771,6 @@ def retrace(address=None, color="#280c01", retails=False, redux=False, unpatchFi
                                 printi("***** RERUNNING DUE TO WARNING MESSAGES *****")
                                 count = count_limit - 1
                                 continue
-                    if spdList:
-                        #  spd = _fix_spd_auto(SkipJumps(ea)) != 0
-                        for r in range(100):
-                            if not _fix_spd(spdList):
-                                break
                     # ft = func_tails(funcea, returnErrorObjects=1, quiet=1, externalTargets=externalTargets)
                     if ft:
                         if not IsFunc_(funcea):
@@ -777,6 +781,12 @@ def retrace(address=None, color="#280c01", retails=False, redux=False, unpatchFi
                         printi('\n'.join([str(x) for x in ft]))
                         
                         return -1
+                    elif spdList:
+                        #  spd = _fix_spd_auto(SkipJumps(ea)) != 0
+                        for r in range(100):
+                            printi("_fix_spd(spdList) attempt {}".format(r))
+                            if not _fix_spd(spdList):
+                                break
                     
                     return rv
             except RelocationUnpatchRequest as e:
@@ -3352,12 +3362,15 @@ def slowtrace2(ea=None,
 
                                             count = -1
                                             if cont_count == 0:
-                                                if _extra is not None:
+                                                if _extra:
                                                     raise ArxanFailure("No effective returns, but extra code after balance present")
                                                 Commenter(ea).add("Arxan Leader with no effective returns")
                                                 Commenter(ea).add("[ARXAN-PATCHED]")
-                                                nassemble(target, "retn", apply=1)
-                                                SkipJumps(ea, apply=1)
+                                                #  nassemble(target, "retn", apply=1)
+                                                if arxanJmpOrCall == 'call':
+                                                    PatchNops(ea, GetInsnLen(ea), 'Arxan with no returns')
+                                                else:
+                                                    nassemble(ea, 'retn', apply=1)
 
                                             elif cont_count == 1 and _extra is None:
                                                 skip_next = 0

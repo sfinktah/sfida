@@ -324,6 +324,9 @@ def PatchBytes(ea, patch=None, comment=None, code=False):
     if isinstance(patch, bytearray):
         # fast patch
         idaapi.patch_bytes(ea, byte_type(patch))
+        if 'helper' in globals() and hasattr(globals()['helper'], 'writeEmuMem'):
+            print("[PatchBytes] also writing to writeEmuMem")
+            helper.writeEmuMem(ea, patch)
         if comment:
             Commenter(ea, 'line').add(comment)
     else:
@@ -331,6 +334,9 @@ def PatchBytes(ea, patch=None, comment=None, code=False):
             Commenter(ea, 'line').add(comment)
         # slower patch to allow for unset values
         [idaapi.patch_byte(ea+i, patch[i]) for i in range(length) if patch[i] != -1]
+        if 'helper' in globals() and hasattr(globals()['helper'], 'writeEmuMem'):
+            print("[PatchBytes] also writing to writeEmuMem")
+            [helper.writeEmuMem(ea+i, bytearray([patch[i]])) for i in range(length) if patch[i] != -1]
 
     #  if was_code:
         #  if debug: print("was_code")
