@@ -1,12 +1,20 @@
+# pip install distorm3 string-between
+
 import pickle, os
-import idc, idaapi, ida_ida, ida_funcs, ida_bytes
+import idc, idaapi, ida_ida, ida_funcs, ida_bytes, idautils
 from bisect import bisect_left, bisect_right, bisect
-from choose_multi import *
-from execfile import execfile, make_refresh
-refresh_emu_helpers = make_refresh(os.path.abspath(__file__))
-refresh = make_refresh(os.path.abspath(__file__))
+from collections import defaultdict
+
 import lzma
 import re
+from glob import glob
+
+try:
+    from execfile import execfile, make_refresh
+    refresh_emu_helpers = make_refresh(os.path.abspath(__file__))
+    refresh = make_refresh(os.path.abspath(__file__))
+except ModuleNotFoundError:
+    pass
 
 try:
     from string_between import string_between_splice, string_between
@@ -14,9 +22,9 @@ except ModuleNotFoundError:
     print("please run: pip install string-between")
     raise ModuleNotFoundError('string-between')
 
+from choose_multi import *
 from di import diInsns, MyGetInstructionLength
 from file_get_contents import *
-
 
 def file_get_contents_bin_spread(fn):
     fn = smart_path(fn)
@@ -24,7 +32,6 @@ def file_get_contents_bin_spread(fn):
         if not file_exists(fn) and not re.match(r'/\d\d/\d\d/', fn):
             fn = spread_filename(fn)
     return open(fn, 'rb').read()
-
 
 def parseHex(string, _default = None):
     if string.startswith('0x'):
@@ -136,7 +143,6 @@ def read_emu_glob(fn, path=None):
     if isinstance(fn, list):
         return [read_emu_glob(x) for x in fn]
 
-    from glob import glob
     if not match_emu._path:
         print("No path set")
         return
@@ -350,6 +356,7 @@ def match_emu(ea=None, size=None, path=None, retnAll=False):
         if file_exists(pickle_fn):
             match_emu._files = pickle.loads(file_get_contents_bin_spread(pickle_fn))
         else:
+            print("database being generated, this make take some times...")
             # generate new list
             for _subdir in subdirs:
                 for fn in glob("{0}/{1}/*/*/*.bin".format(path.rstrip('/'), _subdir)):
@@ -432,7 +439,6 @@ def check_emu(ea=None, size=None, path=None, auto=None):
     for _subdir, r in res.items():
         if auto:
             r = _.filter(r, lambda x, *a: re.search(auto, x[2]))
-            pp(r)
         results[_subdir] = dict()
         if r:
             for base, length, fn in r:
@@ -449,14 +455,13 @@ def check_emu(ea=None, size=None, path=None, auto=None):
                     p.append((_subdir, fn, hex(base), hex(base + length), asm))
                     p2.append(fullfn)
                 except FileNotFoundError:
-                    printi("File Not Found: " + fullfn)
+                    print("File Not Found: " + fullfn)
                     raise
         
         if results[_subdir]:
             for line in results[_subdir].values():
                 print(line)
 
-    pp(p)
     if not p:
         return
     if not auto:
@@ -469,16 +474,19 @@ def check_emu(ea=None, size=None, path=None, auto=None):
     else:
         row = 0
         ida_bytes.patch_bytes(eax(p[row][2]), file_get_contents_bin_spread(p2[row]))
-        Commenter(eax(p[row][2]), 'line').add("Patched by: " + p[row][1])
+        if 'Commenter' in globals():
+            Commenter(eax(p[row][2]), 'line').add("Patched by: " + p[row][1])
         return eax(p[row][2]), eax(p[row][3])
 
     if row != -1:
         print("Chose {}: {}".format(row, p2[row]))
         ida_bytes.patch_bytes(eax(p[row][2]), file_get_contents_bin_spread(p2[row]))
-        Commenter(eax(p[row][2]), 'line').add("Patched by: " + p[row][1])
+        if 'Commenter' in globals():
+            Commenter(eax(p[row][2]), 'line').add("Patched by: " + p[row][1])
         #  idc.set_cmt(eax(p[row][2]), '\n'.join(idc.get_cmt(eax(p[row][2]), 0).split('\n') + ["Patched by: " + p[row][1]]), False)
         idc.create_insn(eax(p[row][2]))
-        EaseCode(eax(p[row][2]))
+        if 'EaseCode' in globals():
+            EaseCode(eax(p[row][2]))
 
 def comment_emu(funcea=None, path=None):
     """
@@ -496,7 +504,7 @@ def comment_emu(funcea=None, path=None):
     else:
         funcea = func.start_ea
 
-    for cs, ce in Chunks(funcea): 
+    for cs, ce in idautils.Chunks(funcea): 
         _r = match_emu(cs, ce, path=path)
         for _type, r in _r.items():
             if r:

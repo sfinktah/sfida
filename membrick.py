@@ -522,7 +522,7 @@ def find_rolls():
             LabelAddressPlus(ea, 'OrphanedArxanRoll')
     return results
 
-def find_arxan_mutators_from_balances():
+def find_checksummers_from_balances():
     # pattern = '55 48 83 ec 20 48 8d 6c 24 20 48 89 4d 10 48 89 55 18 44 89 45 20 8b 45 20 83 f8 04 0f 82 ?? ?? ?? ?? e9 ?? ?? ?? ??'
     # pattern = '48 89 85 ?? ?? 00 00 48 8b 85 ?? ?? 00 00 0f b6 00 48 0f be c0 85 c0 0f 84'
     patterns = [
@@ -537,13 +537,15 @@ def find_arxan_mutators_from_balances():
                 if r and r.insns:
                     insns = _.pluck(r.insns, 'insn')
                     if not (5 < len(insns) < 12):
-                        print("{:x} [find_arxan_mutators_from_balances] len(insns): {}".format(ea, len(insns)))
+                        print("{:x} [find_checksummers_from_balances] len(insns): {}".format(ea, len(insns)))
                         continue
                     insn = insns[-1]
                     insn = string_between('', ' ', insn, greedy=1, inclusive=1, repl='')
                     print("{:x} {}".format(eax(insn), insn))
                     if not IsCode_(insn):
                         EaseCode(ea, forceStart=1)
+                    if isUnconditionalJmpOrCall(eax(insn)):
+                        continue
                     results.append(eax(insn))
                     if not HasUserName(eax(insn)):
                         LabelAddressPlus(eax(insn), 'ArxanChecksumActual0')
@@ -661,7 +663,7 @@ def find_shifty_stuff():
     print("find_shifty_stuff()")
     pp(obfu)
     print("{}".format("arxan_mutators"))
-    cs0 = find_arxan_mutators_from_balances()
+    cs0 = find_checksummers_from_balances()
     # retrace_list(r)
     print("{}".format("rbp_frame"))
     results['rbp'] = find_rbp_frame()
