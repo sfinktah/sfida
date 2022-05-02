@@ -19,7 +19,7 @@ except ModuleNotFoundError:
 try:
     from string_between import string_between_splice, string_between
 except ModuleNotFoundError:
-    print("please run: pip install string-between")
+    print("please run: pip install string-between distorm3")
     raise ModuleNotFoundError('string-between')
 
 from choose_multi import *
