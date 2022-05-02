@@ -451,7 +451,6 @@ def check_emu(ea=None, size=None, path=None, auto=None):
                         file_get_contents_bin_spread(fullfn), ea=base)])
                     asm = re.sub(r'0x[0-9a-fA-F]{8,}', lambda x, *a: get_name_by_any(x[0]), asm)
                     results[_subdir][asm] = "{:x} - {:x} {} {}".format(base, base + length, fn, asm)
-                    pph((_subdir, fn, hex(base), hex(base + length), asm))
                     p.append((_subdir, fn, hex(base), hex(base + length), asm))
                     p2.append(fullfn)
                 except FileNotFoundError:
