@@ -103,13 +103,30 @@ class IdaRestClient(IdaRestConfiguration, object):
         else:
             if self.config['client_debug']: print("[IdaRestClient::update_hosts] master returned invalid data: {}".format(j))
 
-    def get_json(self, route, **kwargs):
+    def get_json(self, route, host=None, **kwargs):
         """Get the result of an eval query from every active host (except ourselves)"""
         self.update_hosts()
         results = dict()
+        if host is not None:
+            url = 'http://{}/ida/api/v1.0/'.format(host)
+            try:
+                request = requests.get(url + route, params=kwargs, timeout=(self.connect_timeout, self.read_timeout))
+                if request.status_code != 200:
+                    raise HttpResponseError(request.status_code)
+                return request
+            except requests.exceptions.ReadTimeout:
+                print("ReadTimeout: {}".format(url + route))
+                self.host_failed(url)
+            except requests.exceptions.ConnectTimeout:
+                print("ConnectTimeout: {}".format(url + route))
+            return
+
         for idb, url in self.hosts.items():
             try:
                 request = requests.get(url + route, params=kwargs, timeout=(self.connect_timeout, self.read_timeout))
+                if request.status_code != 200:
+                    raise HttpResponseError(request.status_code)
+                results[idb] = request.json()
             except requests.exceptions.ReadTimeout:
                 print("ReadTimeout: {}".format(url + route))
                 self.host_failed(url)
@@ -117,9 +134,6 @@ class IdaRestClient(IdaRestConfiguration, object):
             except requests.exceptions.ConnectTimeout:
                 print("ConnectTimeout: {}".format(url + route))
                 continue
-            if request.status_code != 200:
-                raise HttpResponseError(request.status_code)
-            results[idb] = request.json()
         # print("get_json: results: {}".format(results))
         return results
 

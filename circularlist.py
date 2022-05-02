@@ -213,6 +213,7 @@ class CircularList(object):
                             return matches
                     if debug: print("not matched as there are {} items remaining".format(bsize - i - 1))
         if multi and len(repetitions[pattern_count]) >= min:
+            print("[multimatch] adding 1 for repeating pattern at end")
             pattern_count += 1
         if debug: 
             print("[multimatch] fell through: i:{}, bsize:{}, pattern_count:{}, pattern_size:{}".format(i, bsize, pattern_count, pattern_size))

@@ -15,36 +15,67 @@ if not idc:
     from idb.idapython import idautils
     from di import diida
     from execfile import make_refresh
-    from function_address_export import node_format
+    #  from function_address_export import _node_format
     from helpers import UnPatch
     from python3.idc_bc695 import GetFunctionName
     from sfcommon import GetFuncStart, forceCode
     from sfida.sf_is_flags import IsFlow
     from sfida.sf_string_between import string_between
     from sftools import eax
-    from slowtrace_helpers import GetInsnLen, isConditionalJmp, isAnyJmp, GetTarget, isNop, isRet, isCall, GetChunkOwners, CreateInsns
+    from slowtrace_helpers import GetInsnLen, isConditionalJmp, isAnyJmp, GetTarget, isNop, isRet, isCall, \
+        GetChunkOwners, CreateInsns
     from underscoretest import _
 
 refresh_func_tails = make_refresh(os.path.abspath(__file__))
 refresh = make_refresh(os.path.abspath(__file__))
-#  check_for_update = make_auto_refresh(os.path.abspath(__file__.replace('2', '_helpers')))
 
+def _node_format(ea):
+    if isinstance(ea, int):
+        if HasUserName(ea):
+            return idc.get_name(ea, idc.calc_gtn_flags(ea, ea))
+        return hex(ea).replace('0x', '')
+    return ea
+
+#  check_for_update = make_auto_refresh(os.path.abspath(__file__.replace('2', '_helpers')))
 
 
 def skip_first(gen):
     for i, n in enumerate(gen):
         if i == 0:
-            continue 
+            continue
 
         yield n
+
 
 class FuncTailsError(object):
     def __init__(self):
         pass
 
     def __str__(self):
-        if hasattr(self, 'to'):
-            return self.to.__str__()
+        return "{}: {}".format(
+            self.__class__.__name__,
+            ", ".join(
+                    ["{}: {}".format(k, ahex(getattr(self, k))) for k in dir(self) if str(k)[0] != '_']
+                ))
+
+
+
+    # https://stackoverflow.com/questions/40828173/how-can-i-make-my-class-pretty-printable-in-python/66250289#66250289
+    def __pprint_repr__(self, *args, **kwargs):
+        if isinstance(kwargs, dict):
+            if 'indent' in kwargs:
+                _indent = kwargs['indent']
+                if _indent:
+                    return self.__str__()
+                #  if _indent: return self._toText()
+        # return long form output
+        result = {}
+        props = [x for x in dir(self) if not x.startswith('_')]
+        for k in props:
+            result[k] = getattr(self, k)
+
+        return result
+
 
 class FuncTailsJump(FuncTailsError):
     """External Jump"""
@@ -54,43 +85,50 @@ class FuncTailsJump(FuncTailsError):
         self.frm = frm
         self.to = to
 
+
 class FuncTailsUnusedChunk(FuncTailsError):
     """Unused Chunk"""
 
     def __init__(self, chunk_ea):
-        self.ea = chunk_ea   
+        self.ea = chunk_ea
+
 
 class FuncTailsNoppedChunk(FuncTailsError):
     """Unused Chunk"""
 
     def __init__(self, chunk_ea):
-        self.ea = chunk_ea   
-    
+        self.ea = chunk_ea
+
+
 class FuncTailsBadTail(FuncTailsError):
     """Unused Chunk"""
 
-    def __init__(self, chunk_ea, tail_ea = None):
-        self.ea = chunk_ea   
+    def __init__(self, chunk_ea, tail_ea=None):
+        self.ea = chunk_ea
         self.tail_ea = tail_ea
-    
+
+
 class FuncTailsAdditionalChunkOwners(FuncTailsError):
     def __init__(self, chunk_ea, owners):
-        self.ea     = chunk_ea
+        self.ea = chunk_ea
         self.owners = owners
+
 
 class FuncTailsInvalidTarget(FuncTailsError):
     def __init__(self, ea):
-        self.ea     = ea
+        self.ea = ea
+
 
 class FuncTailsNoFunc(FuncTailsError):
     def __init__(self, ea):
-        self.ea     = ea
+        self.ea = ea
 
 
 class AdvanceInsnList(object):
     """Docstring for AdvanceInsnList """
 
-    def __init__(self, ea, insns=[], insn_count=None, byte_count=None, results=[], refs_from={}, refs_to={}, flow_refs_from={}, flow_refs_to={}, start_ea=None, end_ea=None):
+    def __init__(self, ea, insns=[], insn_count=None, byte_count=None, results=[], refs_from={}, refs_to={},
+                 flow_refs_from={}, flow_refs_to={}, start_ea=None, end_ea=None):
         """@todo: to be defined
             ea
             insns
@@ -117,27 +155,65 @@ class AdvanceInsnList(object):
         self._list_ea = ea
 
     @property
-    def insns(self): return self._list_insns
+    def insns(self):
+        return self._list_insns
+
     @property
-    def insn_count(self): return self._list_insn_count
+    def insn_count(self):
+        return self._list_insn_count
+
     @property
-    def byte_count(self): return self._list_byte_count
+    def byte_count(self):
+        return self._list_byte_count
+
     @property
-    def results(self): return self._list_results
+    def results(self):
+        return self._list_results
+
     @property
-    def refs_from(self): return self._list_refs_from
+    def refs_from(self):
+        return self._list_refs_from
+
     @property
-    def refs_to(self): return self._list_refs_to
+    def refs_to(self):
+        return self._list_refs_to
+
     @property
-    def flow_refs_from(self): return self._list_flow_refs_from
+    def flow_refs_from(self):
+        return self._list_flow_refs_from
+
     @property
-    def flow_refs_to(self): return self._list_flow_refs_to
+    def flow_refs_to(self):
+        return self._list_flow_refs_to
+
     @property
-    def start_ea(self): return self._list_start_ea
+    def start_ea(self):
+        return self._list_start_ea
+
     @property
-    def end_ea(self): return self._list_end_ea
+    def end_ea(self):
+        return self._list_end_ea
+
     @property
-    def ea(self): return self._list_ea
+    def ea(self):
+        return self._list_ea
+
+    def __pprint_repr__(self, *args, **kwargs):
+        if isinstance(kwargs, dict):
+            if 'indent' in kwargs:
+                _indent = kwargs['indent']
+                if _indent:
+                    return self.labeled_value
+                #  if _indent: return self._toText()
+        # return long form output
+        result = {}
+        props = [x for x in dir(self) if x.startswith('_list')]
+        for k in props:
+            result[k[6:]] = getattr(self, k)
+
+        result['labeled_value'] = self.labeled_value
+
+        return result
     #  def errors(self): return self._list_errors
 
     #  __contains__(self, key, /)
@@ -159,68 +235,68 @@ class AdvanceInsnList(object):
     ### ---
     def __len__(self):
         return self._list_insns.__len__()
-    
+
     def __getitem__(self, key):
         return self._list_insns.__getitem__(key)
-    
+
     def __setitem__(self, key, value):
         self._list_insns.__setitem__(key, value)
-    
+
     def __delitem__(self, key):
         self._list_insns.__delitem__(key)
-    
+
     def __iter__(self):
         return self._list_insns.__iter__()
-    
+
     def __reversed__(self):
         return self._list_insns.__reversed__()
-    
+
     def __contains__(self, item):
-        return self._list_insns.__containers__(item)
-    
+        return self._list_insns.__contains__(item)
+
     def append(self, object):
         self._list_insns.append(object)
-    
+
     def clear(self):
         self._list_insns.clear()
-    
+
     def copy(self):
         return (type(self))(self._list_insns.copy())
-    
+
     def count(self):
         return self._list_insns.count()
-    
+
     def extend(self, iterable):
         for item in iterable:
             self.append(item)
-    
+
     def index(self, value, start=0, stop=9223372036854775807):
         self._list_insns.index(value, start, stop)
-    
+
     def insert(self):
         self._list_insns.insert()
-    
+
     def pop(self):
         self._list_insns.pop()
-    
+
     def remove(self):
         self._list_insns.remove()
-    
+
     def reverse(self):
         self._list_insns.reverse()
-    
+
     def sort(self):
         self._list_insns.sort()
-    
+
     def insert(self, index, object):
         self._list_insns.insert(index, object)
-    
+
     def pop(self, index=-1):
         return self._list_insns.pop(index)
-    
+
     def remove(self, value):
         self._list_insns.remove(value)
-    
+
     ### ---
     def items(self):
         for o in self._list_insns:
@@ -236,11 +312,11 @@ class AdvanceInsnList(object):
         return [o.labeled_value for o in self._list_insns]
 
 
-
 class FuncTailsInsn(object):
     """Docstring for FuncTailsInsn """
 
-    def __init__(self, insn=None, ea=None, text=None, size=None, comments=None, sp=None, spd=None, warnings=None, errors=None, chunkhead=None, op=None, labels=[],
+    def __init__(self, insn=None, ea=None, text=None, size=None, comments=None, sp=None, spd=None, warnings=None,
+                 errors=None, chunkhead=None, op=None, labels=[],
                  refs_from={}, refs_to={}, flow_refs_from={}, flow_refs_to={}):
         """@todo: to be defined
 
@@ -273,15 +349,15 @@ class FuncTailsInsn(object):
 
         self._insn_target = None
 
-        if (isJmpOrCall(ea)):
+        if (isAnyJmpOrCall(ea)):
             self._insn_target = GetTarget(ea)
 
     def __str__(self):
         return self._insn_text
 
     #  def __eq__(self, other):
-        #  if isinstance(other, str):
-             #  return self._insn_text == other
+    #  if isinstance(other, str):
+    #  return self._insn_text == other
 
     def __add__(self, *args, **kwargs):
         return str(self).__add__(*args, **kwargs)
@@ -299,11 +375,11 @@ class FuncTailsInsn(object):
         return str(self).__ge__(*args, **kwargs)
 
     #  def __getattribute__(self, *args, **kwargs):
-        #  return str(self).__getattribute__(*args, **kwargs)
-#  
+    #  return str(self).__getattribute__(*args, **kwargs)
+    #
     #  def __getitem__(self, *args, **kwargs):
-        #  return str(self).__getitem__(*args, **kwargs)
-#  
+    #  return str(self).__getitem__(*args, **kwargs)
+    #
     def __gt__(self, *args, **kwargs):
         return str(self).__gt__(*args, **kwargs)
 
@@ -316,8 +392,8 @@ class FuncTailsInsn(object):
     def __le__(self, *args, **kwargs):
         return str(self).__le__(*args, **kwargs)
 
-    def __len__(self, *args, **kwargs):
-        return str(self).__len__(*args, **kwargs)
+    #  def __len__(self, *args, **kwargs):
+    #  return str(self).__len__(*args, **kwargs)
 
     def __lt__(self, *args, **kwargs):
         return str(self).__lt__(*args, **kwargs)
@@ -433,45 +509,78 @@ class FuncTailsInsn(object):
     def zfill(self, *args, **kwargs):
         return str(self).zfill(*args, **kwargs)
 
+    @property
+    def text(self):
+        return self._insn_text
 
     @property
-    def text(self): return self._insn_text
-    @property
-    def ea(self): return self._insn_ea
-    @property
-    def sp(self): return self._insn_sp
-    @property
-    def spd(self): return self._insn_spd
-    @property
-    def comments(self): return self._insn_comments
-    @property
-    def warnings(self): return self._insn_warnings
-    @property
-    def errors(self): return self._insn_errors
-    @property
-    def chunkhead(self): return self._insn_chunkhead
-    @property
-    def op(self): return self._insn_op
-    @property
-    def labels(self): return self._insn_labels
-    @property
-    def insn(self): return self._insn_insn
+    def ea(self):
+        return self._insn_ea
 
-    def __len__(self): return self._insn_size
+    @property
+    def sp(self):
+        return self._insn_sp
 
-    def add_label(self, label): self._insn_labels.append(label)
-    def settext(self, text): self._insn_text = text
-        
     @property
-    def refs_from(self): return self._insn_refs_from
+    def spd(self):
+        return self._insn_spd
+
     @property
-    def refs_to(self): return self._insn_refs_to
+    def comments(self):
+        return self._insn_comments
+
     @property
-    def flow_refs_from(self): return self._insn_flow_refs_from
+    def warnings(self):
+        return self._insn_warnings
+
     @property
-    def flow_refs_to(self): return self._insn_flow_refs_to
+    def errors(self):
+        return self._insn_errors
+
     @property
-    def target(self): return self._insn_target
+    def chunkhead(self):
+        return self._insn_chunkhead
+
+    @property
+    def op(self):
+        return self._insn_op
+
+    @property
+    def labels(self):
+        return self._insn_labels
+
+    @property
+    def insn(self):
+        return self._insn_insn
+
+    def __len__(self):
+        return self._insn_size
+
+    def add_label(self, label):
+        self._insn_labels.append(label)
+
+    def settext(self, text):
+        self._insn_text = text
+
+    @property
+    def refs_from(self):
+        return self._insn_refs_from
+
+    @property
+    def refs_to(self):
+        return self._insn_refs_to
+
+    @property
+    def flow_refs_from(self):
+        return self._insn_flow_refs_from
+
+    @property
+    def flow_refs_to(self):
+        return self._insn_flow_refs_to
+
+    @property
+    def target(self):
+        return self._insn_target
 
     @property
     def labeled_value(self):
@@ -482,6 +591,16 @@ class FuncTailsInsn(object):
                 _label = "loc_{:X}".format(self._insn_ea)
             return "{}: {}".format(_label, self._insn_insn)
         return "{}".format(self._insn_insn)
+
+    @property
+    def labeled_indented(self):
+        if len(self._insn_refs_to) or len(self._insn_labels):
+            if self._insn_labels:
+                _label = self._insn_labels[0]
+            else:
+                _label = "loc_{:X}".format(self._insn_ea)
+            return "{}: {}".format(_label, self._insn_insn)
+        return "    {}".format(self._insn_insn)
 
     # https://stackoverflow.com/questions/40828173/how-can-i-make-my-class-pretty-printable-in-python/66250289#66250289
     def __pprint_repr__(self, *args, **kwargs):
@@ -503,10 +622,10 @@ class FuncTailsInsn(object):
 
 
 def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
-        code=True, patches=None, dead=False, showNops=False, output=None,
-        quiet=False, removeLabels=True, disasm=False, externalTargets=None,
-        returnAddrs=False, returnFormat=None, fmt=None, fmtLabel=None,
-        showComments=True, extra_args=dict()):
+               code=True, patches=None, dead=False, showEa=True, showNops=False, output=None,
+               quiet=False, removeLabels=True, disasm=False, externalTargets=None,
+               returnAddrs=False, returnFormat=None, fmt=None, fmtLabel=None,
+               showComments=True, extra_args=dict()):
     """
     func_tails
 
@@ -529,9 +648,10 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
     else:
         fmt_label = fmtLabel
     errors = []
-    errorl = []
+    errorObjects = []
     decompiled = []
     decompiled_heads = defaultdict(list)
+
     #  decompiled_insns = []
 
     def out(line, head=None, ft_insn=None):
@@ -572,7 +692,7 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
                     if len(v) == 1:
                         tmp = tmp.replace(loc + ':\n', '')
                     elif len(v) == 2:
-                        tmp = tmp.replace('    jmp ' + loc + '\n' + loc + ':\n', '') # re.sub(loc, 'JMP REMOVED', tmp)
+                        tmp = tmp.replace('    jmp ' + loc + '\n' + loc + ':\n', '')  # re.sub(loc, 'JMP REMOVED', tmp)
                     if len(v) > 1:
                         tmp = tmp.replace('    jmp ' + loc + '\n' + loc + ':', loc + ':')
 
@@ -634,9 +754,9 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
      |  
      |  startEA
     """
-        
 
     blockcache = dict()
+
     def get_cached(x, _chunkheads):
         key = x[0]
         if key in blockcache:
@@ -661,22 +781,19 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
             #  self.successors = [get_cached(x, _chunkheads) for x in [chunkheads_perm[y] for y in chunkrefs_from[self.id]]]
             #  self.predecessors = [get_cached(x, _chunkheads) for x in [chunkheads_perm[y] for y in chunkrefs_to[self.id]]]
 
-        def succs(self, found_bbs = []):
+        def succs(self, found_bbs=[]):
 
-
-            
             try:
                 l = _.uniq([chunkheads_perm[y] for y in chunkrefs_to[self.id] if y in chunkheads_perm])
                 v = [Block(x, self._chunkheads) for x in l]
                 if len(v) > 1 and found_bbs:
-                   #  v = _.sortBy(v, lambda x, *a: GetTarget(found_bbs[-1]) == x.id)
-                   e = self.end_ea
-                   e = GetTarget(e)
-                   if e != self.end_ea:
-                       t = [x for x in v if x.id == e]
-                       t.extend([x for x in v if x.id != e])
-                       v = t
-
+                    #  v = _.sortBy(v, lambda x, *a: GetTarget(found_bbs[-1]) == x.id)
+                    e = self.end_ea
+                    e = GetTarget(e)
+                    if e != self.end_ea:
+                        t = [x for x in v if x.id == e]
+                        t.extend([x for x in v if x.id != e])
+                        v = t
 
                 w = [y for y in chunkrefs_to[self.id] if y not in chunkheads_perm]
                 if w:
@@ -689,9 +806,6 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
             return v
             pass
 
-
-
-
     def get_block(blocks, bb):
         for x in blocks:
             if x.id == bb:
@@ -702,18 +816,16 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
         #  function = idaapi.get_func(fva)
         #  blocks = idaapi.FlowChart(function)
         if not quiet:
-            printi("Function {} starting at 0x{:x} consists of {} chunks".format(idc.get_func_name(funcea), funcea, len(blocks)))
-                
+            printi("Function {} starting at 0x{:x} consists of {} chunks".format(idc.get_func_name(funcea), funcea,
+                                                                                 len(blocks)))
+
         start_bb = get_start_bb(blocks)
         return dfs_bbs(start_bb, [])
-
-
 
     def get_start_bb(blocks):
         for bb in blocks:
             if bb.start_ea == funcea:
                 return bb
-
 
     def dfs_bbs(start_bb, found_bbs=[]):
         if start_bb.id in found_bbs:
@@ -738,7 +850,6 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
         return []
         #  return _.without(found_bbs, *already_found_bbs)
 
-
     def bfs_bbs(start_bb, found_bbs):
         q = deque([start_bb])
         while len(q) > 0:
@@ -755,11 +866,9 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
                     q.append(_next.pop())
                 elif len(_next) > 1:
 
-                    for i, n in enumerate(_next): 
+                    for i, n in enumerate(_next):
                         br = dfs_bbs_2(n, found_bbs, found_bbs[:])
 
-
-                        
                         if br:
                             for ea in br:
                                 if ea.id not in chunkheads_perm:
@@ -767,9 +876,8 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
                                 else:
                                     q.append(ea)
             else:
-                printi("[func_tails::bfs_bbs] bfs_bbs ignoring: {:x}".format(current_bb.id))   
+                printi("[func_tails::bfs_bbs] bfs_bbs ignoring: {:x}".format(current_bb.id))
         return found_bbs
-
 
     def format_bb(bb):
         return "start_ea: 0x{:x}  end_ea: 0x{:x}  last_insn: {}".format(bb.start_ea, bb.end_ea, GetDisasm(bb.end_ea))
@@ -835,12 +943,13 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
         if not isAnyJmp(tail) and not isRet(tail) and not call_noret:
             if _.all(heads, lambda x, *a: isNop(x)):
                 badtails.append("    ; [warn] chunkhead {:x} is entirely nopped".format(startea))
-                errorl.append(FuncTailsNoppedChunk(startea))
+                errorObjects.append(FuncTailsNoppedChunk(startea))
 
             if isInterrupt(tail) and not extra_args.get('ignoreInt', None):
-                badtails.append('    ; [error] badtail {} {} {}'.format(node_format(startea), diida(tail), node_format(target)))
+                badtails.append(
+                    '    ; [error] badtail {} {} {}'.format(_node_format(startea), diida(tail), _node_format(target)))
                 chunkheads_badtails[startea] = True
-                errorl.append(FuncTailsBadTail(startea, tail))
+                errorObjects.append(FuncTailsBadTail(startea, tail))
 
         chunkheads[startea] = heads
         chunkheads_perm[startea] = heads
@@ -849,22 +958,18 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
 
         #  ctarget = GetChunkStart(target)
         #  if ctarget != idc.BADADDR:
-            #  chunkrefs_to[startea].append(ctarget)
-            #  chunkrefs_from[ctarget].append(startea)
+        #  chunkrefs_to[startea].append(ctarget)
+        #  chunkrefs_from[ctarget].append(startea)
 
     # allheads = _.uniq(_.flatten(list(_.values(chunkheads))))
     # alltargets = _.uniq(_.flatten(list(_.values(chunkrefs_to))))
     if patches:
         return patches
 
-
-
-    
     if 'debug' in globals() and globals()['debug']:
-
-        printi(re.sub(r"\b[0-9]{8,}\b", lambda x, *a: hex(x.group(0)), "[debug] chunktails:{}, chunkrefs_to:{}, chunkrefs_from:{}".format(
-            pf(chunktails), pf(chunkrefs_to), pf(chunkrefs_from))))
-        
+        printi(re.sub(r"\b[0-9]{8,}\b", lambda x, *a: hex(x.group(0)),
+                      "[debug] chunktails:{}, chunkrefs_to:{}, chunkrefs_from:{}".format(
+                          pf(chunktails), pf(chunkrefs_to), pf(chunkrefs_from))))
 
     # now starting with the start of the function...
     refs = dict()
@@ -876,7 +981,6 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
         start = q.pop(0)
         if start not in chunkheads:
             if start in chunkheads_visited:
-
                 continue
             if start in chunkheads_bad:
                 printi("[func_tails::format_bb] q shouldn't try to jump to chunkheads_bad")
@@ -903,37 +1007,39 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
                 refs[head] = idc.get_name(head)
                 r = xrefs_to_ex(head)
                 for ref in [x for x in r if not IsSameFunc(funcea, x.frm) and x.frm_seg == '.text' \
-                        and string_between('', ' ', x.frm_insn).startswith('j') \
-                        and not string_between('', ' ', x.frm_insn).startswith('jmp') \
-                        and GetInsnLen(x.frm) > 4
-                        ]:
+                                            and string_between('', ' ', x.frm_insn).startswith('j') \
+                                            and not string_between('', ' ', x.frm_insn).startswith('jmp') \
+                                            and GetInsnLen(x.frm) > 4
+                            ]:
 
                     ejmp = False
                     with Commenter(head, 'line') as c:
-                        if c.match("\[ALLOW EJMP]"): 
+                        if c.match("\[ALLOW EJMP]"):
                             ejmp = True
                     if not ejmp and GetTarget(ref.frm) == head:
-                        cmt = '    ; [error] 0x{:x} external reference from {} 0x{:x}: {}'.format(head, GetFuncName(ref.frm), ref.frm, ref.frm_insn)
+                        cmt = '    ; [error] 0x{:x} external reference from {} 0x{:x}: {}'.format(head,
+                                                                                                  GetFuncName(ref.frm),
+                                                                                                  ref.frm, ref.frm_insn)
                         comments[head].append(cmt)
                         errors.append(cmt)
 
-            
             if head in chunkowners and chunkowners[head]:
-                comment = '    ; [warn] additional chunk owner(s) {} for chunk at {:x}'.format(hex(chunkowners[head]), head)
+                comment = '    ; [warn] additional chunk owner(s) {} for chunk at {:x}'.format(hex(chunkowners[head]),
+                                                                                               head)
                 # fix_dualowned_chunk(head)
                 badtails.append(comment)
-                errorl.append(FuncTailsAdditionalChunkOwners(head, chunkowners[head]))
+                errorObjects.append(FuncTailsAdditionalChunkOwners(head, chunkowners[head]))
                 comments[head].append(comment)
 
             if isCall(head):
                 _externalTargets.append(SkipJumps(head))
-            if isJmpOrCall(head):
+            if isAnyJmpOrCall(head):
                 conditional = isConditionalJmp(head)
                 iscall = isCall(head)
                 target = GetTarget(head)
                 ejmp = False
                 with Commenter(target, 'line') as c:
-                    if c.match("\[ALLOW EJMP]"): 
+                    if c.match("\[ALLOW EJMP]"):
                         ejmp = True
                 ctarget = OurGetChunkStart(target, _chunks)
 
@@ -941,13 +1047,11 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
                 if optype in (o_near, o_mem) and not IsValidEA(target):
                     msg = '[error] {}: invalid target: {}'.format(get_name_by_any(head), idc.print_operand(head, 0))
                     comments[head].append((msg))
-                    errorl.append(FuncTailsInvalidTarget(head))
+                    errorObjects.append(FuncTailsInvalidTarget(head))
                     errors.append(msg)
 
                 elif ctarget in chunkheads or ctarget in chunkheads_visited:
 
-
-                    
                     _cs = OurGetChunkStart(head, _chunks)
                     chunkrefs_to[_cs].append(ctarget)
                     chunkrefs_from[ctarget].append(_cs)
@@ -970,18 +1074,21 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
                         if conditional:
                             if target != idc.BADADDR:
                                 if not IsFunc_(target):
-                                    msg = '[error] {}: external conditional jump to {}'.format(get_name_by_any(head), describe_target(target))
-                                    errorl.append(FuncTailsJump(True, head, describe_target(target)))
+                                    msg = '[error] {}: external conditional jump to {}'.format(get_name_by_any(head),
+                                                                                               describe_target(target))
+                                    errorObjects.append(FuncTailsJump(True, head, describe_target(target)))
                                     comments[head].append((msg))
                                     errors.append(msg)
                                 elif not IsFuncHead(target):
-                                    msg = '[error] {}: external conditional jump to {}'.format(get_name_by_any(head), describe_target(target))
-                                    errorl.append(FuncTailsJump(True, head, describe_target(target)))
+                                    msg = '[error] {}: external conditional jump to {}'.format(get_name_by_any(head),
+                                                                                               describe_target(target))
+                                    errorObjects.append(FuncTailsJump(True, head, describe_target(target)))
                                     comments[head].append((msg))
                                     errors.append(msg)
                                 else:
-                                    msg = '[error] {}: external conditional jump to {}'.format(get_name_by_any(head), describe_target(target))
-                                    errorl.append(FuncTailsJump(True, head, describe_target(target)))
+                                    msg = '[error] {}: external conditional jump to {}'.format(get_name_by_any(head),
+                                                                                               describe_target(target))
+                                    errorObjects.append(FuncTailsJump(True, head, describe_target(target)))
                                     comments[head].append((msg))
                                     errors.append(msg)
 
@@ -989,27 +1096,28 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
                         if not conditional and not iscall:
                             if target != idc.BADADDR:
                                 if IsExtern(target):
-                                    msg = '[info] {}: external jump to extern {}'.format(get_name_by_any(head), describe_target(target))
+                                    msg = '[info] {}: external jump to extern {}'.format(get_name_by_any(head),
+                                                                                         describe_target(target))
                                     comments[head].append((msg))
                                 elif not IsFunc_(target):
-                                    msg = '[error] {}: external jump to {}'.format(get_name_by_any(head), describe_target(target))
-                                    errorl.append(FuncTailsJump(False, head, describe_target(target)))
+                                    msg = '[error] {}: external jump to {}'.format(get_name_by_any(head),
+                                                                                   describe_target(target))
+                                    errorObjects.append(FuncTailsJump(False, head, describe_target(target)))
                                     comments[head].append((msg))
                                     errors.append(msg)
                                 elif not IsFuncHead(target):
-                                    msg = '[error] {}: external jump to {}'.format(get_name_by_any(head), describe_target(target))
-                                    errorl.append(FuncTailsJump(False, head, describe_target(target)))
+                                    msg = '[error] {}: external jump to {}'.format(get_name_by_any(head),
+                                                                                   describe_target(target))
+                                    errorObjects.append(FuncTailsJump(False, head, describe_target(target)))
                                     comments[head].append((msg))
                                     errors.append(msg)
                                 else:
-                                    msg = '[info] {}: external jump to {}'.format(get_name_by_any(head), describe_target(target))
+                                    msg = '[info] {}: external jump to {}'.format(get_name_by_any(head),
+                                                                                  describe_target(target))
                                     comments[head].append((msg))
                                     #  errors.append(msg)
 
                             #  q.append(ctarget)
-
-            
-
 
         ordered.extend(heads)
         if not len(q) and append_later:
@@ -1021,15 +1129,16 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
 
         insn_text = diida(ea)
         # (insn_text, insn_addr, insn_di, insn_sp, insn_comment, insn_warnings, insn_errors, insn_chunkhead):
-        disasm.append(FuncTailsInsn(insn_text, ea, insn_text, size=MyGetInstructionLength(ea), 
-            refs_to=set(xrefs_to(ea, filter=lambda x, *a: x.type != fl_F)), comments=comments[ea] if ea in comments else None))
+        disasm.append(FuncTailsInsn(insn_text, ea, insn_text, size=MyGetInstructionLength(ea),
+                                    refs_to=set(xrefs_to(ea, filter=lambda x, *a: x.type != fl_F)),
+                                    comments=comments[ea] if ea in comments else None))
         #  if ea in comments:
-            #  disasm.append({'insn': diida(ea), 'ea': ea,
-                           #  'comment': comments[ea]})
-#  
-        #  else:
-            #  disasm.append({'insn': diida(ea), 'ea': ea})
-#
+        #  disasm.append({'insn': diida(ea), 'ea': ea,
+        #  'comment': comments[ea]})
+    #
+    #  else:
+    #  disasm.append({'insn': diida(ea), 'ea': ea})
+    #
     #  disasm = [dinjasm(x) for x in ordered]
 
     # now we have `ordered` which is a list of addresses, and
@@ -1047,9 +1156,9 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
         _chunkhead = OurGetChunkStart(addr, _chunks)
         #  _chunkhead = None
         #  for chead, caddresses in chunkheads_perm.items():
-            #  if addr in caddresses:
-                #  _chunkhead = addr
-                #  break
+        #  if addr in caddresses:
+        #  _chunkhead = addr
+        #  break
 
         if n < l and ordered[n + 1] in refs:
             # a label is about to hit
@@ -1069,21 +1178,16 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
             else:
                 out(fmt_insn, _chunkhead, o)
 
-
-
-
     #  pp(decompiled_heads)
     #  if 'retn' not in mnemonics and mnemonics[-1] != 'jmp':
-        #  out('    ; [error] noret')
+    #  out('    ; [error] noret')
 
     # fn = file_put_contents('function.asm', '\n'.join(errors))
 
-
     #  refresh_func_tails()
 
-
     #  for k in _.sort(_.keys(decompiled_heads)):
-        #  for line in decompiled_heads[k]:
+    #  for line in decompiled_heads[k]:
 
     chunkheads = chunkheads_perm.copy()
     chunkheads_visited = dict()
@@ -1098,25 +1202,26 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
                 de_flags = obfu._makeFlagFromDi(d[0])
             else:
                 de_flags = 0
-            addrs.extend( [(y, de_flags) for y in range(ip, ip + InsnLen(ip))] )
+            addrs.extend([(y, de_flags) for y in range(ip, ip + InsnLen(ip))])
 
         for line in decompiled_heads[x]:
             decompiled.append(line)
 
         if x in chunkheads:
-
             chunkheads_visited[x] = chunkheads.pop(x)
         #  else:
-            #  if x in chunkheads_visited:
+        #  if x in chunkheads_visited:
 
-            #  else:
-
+        #  else:
 
     #  decompiled = remove_labels(decompiled) if removeLabels else decompiled
     decompiled = _.uniq(decompiled, lambda o, *a: o.ea)
     if not quiet:
         for line in decompiled:
-            printi("0x{:x} {}".format(line.ea, line.labeled_value))
+            if showEa:
+                printi("0x{:x} {}".format(line.ea, line.labeled_value))
+            else:
+                printi("{}".format(line.labeled_indented))
 
     for bt in badtails:
         errors.append(out(bt))
@@ -1126,8 +1231,6 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
             errors.append(out("    ; bad jmp {:x} {:x}".format(src, dst)))
             target = GetTarget(src)
 
-
-            
             while isNop(target):
                 if UnPatch(target, GetInsnLen(target)):
                     target += GetInsnLen(target)
@@ -1135,30 +1238,29 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
                 else:
                     break
 
-
     if chunkheads:
         chunkheads = _.filter(chunkheads, lambda x, *a: not isInterrupt(x))
 
     if chunkheads:
         errors.append(
-                out('    ; [warn] unusedchunks {} {}'.format(len(chunkheads), asHexList(chunkheads)))
+            out('    ; [warn] unusedchunks {} {}'.format(len(chunkheads), asHexList(chunkheads)))
         )
-        errorl.extend([FuncTailsUnusedChunk(x) for x in chunkheads])
+        errorObjects.extend([FuncTailsUnusedChunk(x) for x in chunkheads])
     if nonheadtargets:
         errors.append(
             out('    ; [info] non-chunkhead targets: {}'.format([hex(x) for x in nonheadtargets]))
         )
     #  try:
-        #  for head, heads in chunkheads.items():
-            #  out('    ; [bb] {:x} unusedchunk: {}'.format(head, hex(heads)))
-            #  #  RemoveThisChunk(head)
+    #  for head, heads in chunkheads.items():
+    #  out('    ; [bb] {:x} unusedchunk: {}'.format(head, hex(heads)))
+    #  #  RemoveThisChunk(head)
     #  except TypeError:
 
-        #  raise TypeError("see above")
+    #  raise TypeError("see above")
 
     #  try:
-        #  if isinstance(output, list):
-            #  output[:] = [x.text for x in decompiled]
+    #  if isinstance(output, list):
+    #  output[:] = [x.text for x in decompiled]
     #  except TypeError:
 
     #  if not errors:
@@ -1173,7 +1275,7 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
         if returnOutput == 'buffer':
             sti = CircularList(len(decompiled))
             for i, o in enumerate(_.uniq(decompiled, lambda o, *a: o.ea)):
-                if True: # line.startswith(' '):
+                if True:  # line.startswith(' '):
                     # line = re.sub(';.*', '', line).strip()
                     if returnFormat:
                         line = returnFormat(o)
@@ -1183,7 +1285,8 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
             return sti
         else:
             return "\n".join(decompiled)
-    return errorl if returnErrorObjects else errors
+    return errorObjects if returnErrorObjects else errors
+
 
 def AdvanceToMnemEx(ea, term='retn', iteratee=None, **kwargs):
     start_ea = ea
@@ -1221,7 +1324,8 @@ def AdvanceToMnemEx(ea, term='retn', iteratee=None, **kwargs):
             mnem = diida(ea, mnemOnly=1)
             size = GetInsnLen(ea)
             is_call = isCall(ea)
-            is_follow_call = is_call and getattr(opt, 'follow_calls', 0) and GetTarget(ea, flow=0, calls=1) != idc.BADADDR
+            is_follow_call = is_call and getattr(opt, 'follow_calls', 0) and GetTarget(ea, flow=0,
+                                                                                       calls=1) != idc.BADADDR
             is_any_jmp = isAnyJmp(ea) and idc.get_operand_type(ea, 0) != o_displ
             is_unc_jmp = is_any_jmp and isUnconditionalJmp(ea)
             is_con_jmp = is_any_jmp and not is_unc_jmp
@@ -1279,49 +1383,50 @@ def AdvanceToMnemEx(ea, term='retn', iteratee=None, **kwargs):
                 if next_insn > next_head:
                     if not IsHead(ea):
                         print('{:x} not head'.format(ea))
-                    raise RuntimeError('{:x} somehow next_insn > next_head {:x} != {:x}'.format(ea, next_insn, next_head))
+                    raise RuntimeError(
+                        '{:x} somehow next_insn > next_head {:x} != {:x}'.format(ea, next_insn, next_head))
 
             if next_insn != next_head:
-                raise RuntimeError('{:x} {:x} next_insn != next_head {:x} != {:x}'.format(start_ea, ea, next_insn, next_head))
+                raise RuntimeError(
+                    '{:x} {:x} next_insn != next_head {:x} != {:x}'.format(start_ea, ea, next_insn, next_head))
 
             is_next_flow = next_insn and IsFlow(next_insn)
 
             if iteratee:
                 response = \
                     iteratee(SimpleAttrDict({'label': label,
-                        'insn' : insn.strip(),
-                        'mnem' : mnem,
-                        'insn_de' : insn_de,
-                        'ea' : ea,
-                        'size' : size,
-                        'branch': is_any_jmp and not is_unc_jmp,
-                        'call': is_call,
-                        'label': label,
-                        'next': next_insn if is_next_flow else target,
-                        'target' : target,
-                        'chunk': GetChunkNumber(ea),
-                        'bytes': bytearray([idc.get_wide_byte(x) for x in range(ea, ea+size)]),
-                        'private' : private }))
+                                             'insn': insn.strip(),
+                                             'mnem': mnem,
+                                             'insn_de': insn_de,
+                                             'ea': ea,
+                                             'size': size,
+                                             'branch': is_any_jmp and not is_unc_jmp,
+                                             'call': is_call,
+                                             'label': label,
+                                             'next': next_insn if is_next_flow else target,
+                                             'target': target,
+                                             'chunk': GetChunkNumber(ea),
+                                             'bytes': bytearray([idc.get_wide_byte(x) for x in range(ea, ea + size)]),
+                                             'private': private}))
 
                 if isinstance(response, dict):
                     if 'result' in response:
                         results.append(response['result'])
-                    
-
 
             if label:
                 current_labels.append(label)
                 #  if len(insns) and re.match(r'\s*j\w+ ' + re.escape(label), insns[-1]):
-                    #  insns.pop()
+                #  insns.pop()
                 #  insns.append("{}:".format(label))
 
             if mnem not in (['nop']):
-                insns.append(FuncTailsInsn(insn, ea, "    {}".format(insn), labels=[label] if label else [], refs_from=refs_from[ea], refs_to=refs_to[ea]))
+                insns.append(FuncTailsInsn(insn, ea, "{}".format(insn), labels=[label] if label else [],
+                                           refs_from=refs_from[ea], refs_to=refs_to[ea],
+                                           size=GetInsnLen(ea)))
                 current_labels.clear()
                 #  insns.append("    {}".format(insn))
                 insn_count += 1
                 byte_count += size
-
 
             if label:
                 if len(insns) > 1:
@@ -1353,9 +1458,6 @@ def AdvanceToMnemEx(ea, term='retn', iteratee=None, **kwargs):
             if final_loop:
                 break
 
-
-
-        
     for _to, _from in flow_refs_to.items():
         for _src in _from:
             flow_refs_from[_src].add(_to)
@@ -1372,19 +1474,17 @@ def AdvanceToMnemEx(ea, term='retn', iteratee=None, **kwargs):
         insns.append("; {}".format(unvisited_str))
 
     return AdvanceInsnList(
-            ea=start_ea, 
-            insns=insns,
-            insn_count=insn_count,
-            byte_count=byte_count,
-            results=results,
-            refs_from=refs_from,
-            refs_to=refs_to,
-            flow_refs_from=flow_refs_from,
-            flow_refs_to=flow_refs_to,
-            start_ea=start_ea,
-            end_ea=ea,
+        ea=start_ea,
+        insns=insns,
+        insn_count=insn_count,
+        byte_count=byte_count,
+        results=results,
+        refs_from=refs_from,
+        refs_to=refs_to,
+        flow_refs_from=flow_refs_from,
+        flow_refs_to=flow_refs_to,
+        start_ea=start_ea,
+        end_ea=ea,
     )
-
-
 
 #  \C\<\(chunkhead\|comments\|ea\|errors\|flow_refs_from\|flow_refs_to\|insn\|labeled_value\|labels\|op\|refs_from\|refs_to\|sp\|spd\|text\|warnings\)\>()

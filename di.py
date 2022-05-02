@@ -561,7 +561,7 @@ def get_operand_size_type(size):
     n = log2(size // 8);
     return sizes[n];
 
-def diida(ea = None, length = None, mnemOnly = False, filter=None, iteratee=None, returnLength=False):
+def diida(ea=None, length=None, mnemOnly=False, filter=None, iteratee=None, returnLength=False, labels=False):
     if ea is None:
         ea = ScreenEA()
     if length is None: # Default to 1 instruction
@@ -583,17 +583,24 @@ def diida(ea = None, length = None, mnemOnly = False, filter=None, iteratee=None
                 continue
         insn = diInsn(getCode(ea, length), ea) # .lower()
         insn_de = deCode(getCode(ea, length), ea)
+        insn_label = idc.get_name(ea, ida_name.GN_VISIBLE)
         if insn_de:
             insn_de = insn_de[0]
         else:
             result.append('** ERROR **')
             break
 
-        def getMnem(asm):
-            sp = asm.split(' ')
-            return sp[0].lower().replace('ret', 'retn')
+        def getMnem(asm, _insn_de=None):
+            if asm.startswith('rep'):
+                return asm
+            if _insn_de:
+                mnem = _insn_de.mnemonic.lower()
+                return mnem.replace('ret', 'retn')
+            else:
+                mnem = asm.split(' ')
+                return mnem[0].lower().replace('ret', 'retn')
 
-        mnem = getMnem(insn)
+        mnem = getMnem(insn, insn_de)
         if mnem == '' or mnem.startswith(('rep', 'repne', 'repe')):
             result.append(insn)
             continue
@@ -607,6 +614,7 @@ def diida(ea = None, length = None, mnemOnly = False, filter=None, iteratee=None
         operand_part = string_between(' ', '', insn)
         if not operand_part:
             result.append(mnem)
+            # result.append(string_between('', ' ', insn, repl=mnem))
             continue
 
         operands = operand_part.split(',')
@@ -639,8 +647,14 @@ def diida(ea = None, length = None, mnemOnly = False, filter=None, iteratee=None
             operand = re.sub(regex, lambda m: get_name_or_hex(int(m.group(), 16)), operand, 0, re.IGNORECASE)
             opers.append(operand)
 
-        asm = "{0} {1}".format(mnem, ", ".join(opers))
-        result.append(asm)
+        asm = ""
+        if labels:
+            if insn_label:
+                asm = insn_label + ":\n"
+            asm += "    "
+
+        asm += "{0} {1}".format(mnem, ", ".join(opers))
+        result.append(asm.rstrip())
 
     if returnLength:
         return next_ea - start_ea, '\n'.join(result)
@@ -709,8 +723,12 @@ def diidaIter(ea = None, length = None, code = None, mnemOnly = False, iterate =
     # dprint("[debug] insn_iter, insn_de_iter")
     #  print("[debug] insn_iter:{}, insn_de_iter:{}".format(insn_iter, insn_de_iter))
 
-    def getMnem(asm):
-        mnem = asm.split(' ', 1)
+    def getMnem(asm, _insn_de=None):
+        if _insn_de:
+            mnem = _insn_de.mnemonic.lower()
+            return mnem.replace('ret', 'retn')
+        else:
+            mnem = asm.split(' ', 1)
         if mnem == '' or mnem in ('rep', 'repne', 'repe'):
             return insn.lower()
         return mnem[0].lower().replace('ret', 'retn')
@@ -732,7 +750,7 @@ def diidaIter(ea = None, length = None, code = None, mnemOnly = False, iterate =
             else:
                 out(label_line(addr))
 
-        mnem = getMnem(insn)
+        mnem = getMnem(insn, insn_de)
         if mnem == '' or mnem.startswith('rep'):
             out(insn)
             continue

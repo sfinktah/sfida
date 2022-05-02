@@ -122,7 +122,7 @@ def printi(value, sacrificial=None, depth=None, *args, **kwargs):
 
     g_output = getglobal('g_output', None)
     if g_depth:
-        str = indent(g_depth, value, width=0x70, indentString=indentString)
+        str = indent(g_depth, value, width=0x70, indentString=indentString, n2plus=g_depth+4)
     else:
         str = value
     if isinstance(g_output, list):
@@ -589,7 +589,7 @@ def check_append_func_tail(func, ea1, ea2):
 def FindBadJumps():
     for funcea in idautils.Functions():
         for ea in GetFuncHeads(funcea):
-            if isJmpOrCall(ea):
+            if isAnyJmpOrCall(ea):
                 opType = idc.get_operand_type(ea, 0)
                 if opType in (idc.o_far, idc.o_near, idc.o_mem):
                     target = idc.get_operand_value(ea, 0)
@@ -641,10 +641,10 @@ def SkipJmpChunks():
                     # otherwise specified)
                     targets = _.reverse(jumps[1:])
                     for tgt in targets:
-                        assembled = iassemble(ea, "{} 0x{:x}".format(idc.print_insn_mnem(ea), target))
-                        if len(assembled) <= InsnLen(ea):
-                            PatchBytes(ea, assembled, "SkipJmp")
-                            break
+                        assembled = nassemble(ea, "{} 0x{:x}".format(idc.print_insn_mnem(ea), target))
+                        #  if len(assembled) <= InsnLen(ea):
+                            #  PatchBytes(ea, assembled, "SkipJmp")
+                            #  break
 
 
 def FixAllChunks(leave=None):
@@ -2126,7 +2126,7 @@ def SkipJumps(ea, apply=False, returnJumps=False, returnTarget=False, until=None
         skipShort=False, skipNops=False, iteratee=None, name=None,
         abortOnChunkTarget=False, unpatch=False, *args, **kwargs):
     if isIterable(ea):
-        return [SkipJumps(x, name=name, until=until, untilInclusive=untilInclusive, notPatched=notPatched, skipShort=skipShort, skipNops=skipNops, iteratee=iteratee, apply=apply, *args, **kwargs)
+        return [SkipJumps(x, name=name, returnJumps=returnJumps, returnTarget=returnTarget, until=until, untilInclusive=untilInclusive, notPatched=notPatched, skipShort=skipShort, skipNops=skipNops, iteratee=iteratee, apply=apply, *args, **kwargs)
                 for x in ea]
     if not isInt(ea):
         printi("ea was not int: {}".format(type(ea)))
@@ -2200,8 +2200,11 @@ def SkipJumps(ea, apply=False, returnJumps=False, returnTarget=False, until=None
         if count == 0 and insn.itype == idaapi.NN_call and SkipJumps(_tgt) != _tgt:
             newTarget = SkipJumps(_tgt)
             if apply:
-                printi("performing: nassemble(0x{:x}, \"call 0x{:x}\")".format(target, newTarget))
-                nassemble(target, "call 0x{:x}".format(newTarget), apply=1)
+                printi("performing: iassemble2(0x{:x}, \"call 0x{:x}\")".format(target, newTarget))
+                prevInsnLen = InsnLen(target)
+                assembled = iassemble(target, "call 0x{:x}".format(newTarget), apply=1)
+                if len(assembled) < prevInsnLen:
+                    PatchNops(target + len(assembled), prevInsnLen - len(assembled), "SkipJmp")
             return jumps if returnJumps else newTarget
 
         if IsFunc_(_tgt) and not IsFuncHead(_tgt) and abortOnChunkTarget:
@@ -2248,10 +2251,11 @@ def SkipJumps(ea, apply=False, returnJumps=False, returnTarget=False, until=None
                     
                     if currentTarget != targets[-1]:
                         stmt = "{} 0x{:x}".format(mnem_start if jmp == ea else "jmp", targets[-1])
-                        printi("nassemble(0x{:x}, '{}')".format(jmp, stmt))
-                        nassemble(jmp, stmt, apply=1)
-                else:
-                    skipped -= 1
+                        printi("iassemble1(0x{:x}, '{}')".format(jmp, stmt))
+                        prevInsnLen = InsnLen(jmp)
+                        assembled = iassemble(jmp, stmt, apply=1)
+                        if len(assembled) < prevInsnLen:
+                            PatchNops(jmp + len(assembled), prevInsnLen - len(assembled), "SkipJmp")
 
         if isRet(targets[-1]):
             PatchBytes(ea, "c3")
@@ -2645,7 +2649,7 @@ def colorSubs(subs, colors=[], primary=[]):
 
     return colors
 
-def TruncateThunks():
+def FixThunks():
     # for ea in FunctionsMatching('sub_'):
     with InfAttr(idc.INF_AF, lambda v: v & 0xdfe60008):
         for ea in idautils.Functions():
@@ -2654,8 +2658,10 @@ def TruncateThunks():
                 if mnem and mnem.startswith('jmp'):
                     target = GetTarget(ea)
                     if not IsSameChunk(target, ea):
-                        printi(["TruncateThunks", hex(ea), GetFuncName(ea)])
+                        printi(["FixThunks", hex(ea), GetFuncName(ea)])
                         SetFuncEnd(ea, ea + MyGetInstructionLength(ea))
+
+TruncateThunks = FixThunks
 
 chart2 = list()
 colors = list()
@@ -2952,7 +2958,7 @@ def _isJmp_mnem(mnem): return mnem.startswith("jmp")
 
 def _isAnyJmp_mnem(mnem): return mnem.startswith("j")
 
-def _isJmpOrCall(mnem): return mnem.startswith(("j", "call"))
+def _isAnyJmpOrCall(mnem): return mnem.startswith(("j", "call"))
 
 
 def _isConditionalJmp_mnem(mnem): return mnem.startswith("j") and not mnem.startswith("jmp")
@@ -2970,6 +2976,7 @@ def _isRet_mnem(mnem): return mnem.startswith("ret")
 
 
 def _isPushPop_mnem(mnem): return mnem.startswith("push") or mnem.startswith("pop")
+def _isPop_mnem(mnem): return mnem.startswith("pop")
 
 def _isNop_mnem(mnem): return mnem.startswith("nop") or mnem.startswith("pop")
 
@@ -2985,7 +2992,7 @@ def _unlikely_mnems(): return [
         'ins dword', 'int3', 'int', 'int 3', 'int1', 'iret', 'lahf', 'leave',
         'lodsb', 'lodsd', 'movsb', 'movsd', 'nop', 'out', 'outs', 'sahf',
         'scasb', 'scasd', 'stc', 'std', 'sti', 'stosb', 'stosd', 'wait',
-        'xlat', 'fisttp', 'fbstp', 'fxch4', 'fld', 'fsubr' # 'xlat byte [rbx+al]'
+        'xlat', 'fisttp', 'fbstp', 'fxch4', 'fld', 'fsubr', 'bnd', # 'xlat byte [rbx+al]'
         ]
 def _isUnlikely_mnem(mnem): return mnem in _unlikely_mnems()
 
@@ -3019,7 +3026,7 @@ def isInt(arg): return preprocessIsX(_isInt_mnem, arg)
 def isAnyJmp(arg): return preprocessIsX(_isAnyJmp_mnem, arg)
 def isOffset(arg): return preprocessIsX(_isOffset, arg)
 
-def isJmpOrCall(arg): return preprocessIsX(_isJmpOrCall, arg)
+def isAnyJmpOrCall(arg): return preprocessIsX(_isAnyJmpOrCall, arg)
 
 def isCall(arg): return preprocessIsX(_isCall_mnem, arg)
 
@@ -3065,6 +3072,9 @@ def isConditionalJmp(arg): return preprocessIsX(_isConditionalJmp_mnem, arg)
 def isJmp(arg): return preprocessIsX(_isJmp_mnem, arg)
 
 def isPushPop(arg): return preprocessIsX(_isPushPop_mnem, arg)
+
+def isPop(arg): return preprocessIsX(_isPop_mnem, arg)
+
 
 def isNop(ea): 
     insn = ida_ua.insn_t()
@@ -3160,7 +3170,7 @@ def all_xrefs_(funcea=None, xref_getter=None, key='frm', iteratee=None, filter=N
         xrefs.extend([(
                 getattr(x, key), 
                 diida(x.frm),
-                string_between('(', ')', XrefTypeName(x.type)),
+                string_between('(', ')', XrefTypeNames(x.type)),
                 diida(x.to))
             for x in xref_getter(head)
             if x.type not in (ida_xref.fl_F,)])
@@ -3211,7 +3221,7 @@ def call_refs_to(funcea=None):
         #  ida_xref.fl_F : 'Ordinary_Flow (fl_F)'
     #  }
 #  
-    #  def XrefTypeName(typecode):
+    #  def XrefTypeNames(typecode):
         #  """
         #  Convert cross-reference type codes to readable names
 #  
@@ -3231,7 +3241,7 @@ def call_refs_to(funcea=None):
     #  xrefs = []
     #  for (startea, endea) in Chunks(funcea):
         #  for head in Heads(startea, endea):
-            #  xrefs.extend([(x.to, diida(x.frm) or idc.get_func_name(x.to) or idc.get_name(x.to) or hex(x.to), string_between('(', ')', XrefTypeName(x.type)), diida(x.to)) for x in idautils.XrefsFrom(head) if x.type not in [ida_xref.fl_F]])
+            #  xrefs.extend([(x.to, diida(x.frm) or idc.get_func_name(x.to) or idc.get_name(x.to) or hex(x.to), string_between('(', ')', XrefTypeNames(x.type)), diida(x.to)) for x in idautils.XrefsFrom(head) if x.type not in [ida_xref.fl_F]])
     #  #  xrefs = [x for x in xrefs if idc.get_func_name(x[0]) != functionName]
     #  xrefs = _.chain([iteratee(x) for x in xrefs if filter(x) and idc.get_func_name(x[0]) != functionName]).sort().uniq('sorted').value()
 #  
@@ -3254,14 +3264,28 @@ def call_refs_to(funcea=None):
     19: 'Code_Near_Jump (fl_JN)',
     20: 'Code_User (20)',
     21: 'Ordinary_Flow (fl_F)'})
-def XrefTypeName(typecode):
+def XrefTypeNames(typecode=None, pattern=None):
     """
-    Convert cross-reference type codes to readable names
+    Convert cross-reference type codes to readable names, or
+    return list of typecodes matching regex `.*pattern.*`
+
+    @example: XrefTypeNames('call|jump|data') or XrefTypeNames(17)
 
     @param typecode: cross-reference type code
+    @param pattern: regular expression to be searched
     """
-    assert typecode in XrefTypeName._ref_types, "unknown reference type %d" % typecode
-    return XrefTypeName._ref_types[typecode]
+    if pattern is None and not isinstance(typecode, int):
+        pattern, typecode = typecode, pattern
+    if typecode is not None:
+        assert typecode in XrefTypeNames._ref_types, "unknown reference type %d" % typecode
+        return XrefTypeNames._ref_types[typecode]
+
+    if pattern is not None:
+        if not isListlike(pattern):
+            pattern = [pattern]
+
+        return [x for x, y in XrefTypeNames._ref_types.items() if _.any(pattern, lambda p, *a: not not re.search(p, y, flags=re.I))]
+        
 
 #  def all_xrefs_to(funcea, iteratee = None):
     #  # The first chunk will be the start of the function, from there -- they're sorted in 
@@ -3276,15 +3300,15 @@ def XrefTypeName(typecode):
     #  xrefs = []
     #  for (startea, endea) in Chunks(funcea):
         #  for head in Heads(startea, endea):
-            #  xrefs.extend([(x.frm, idc.get_name(x.frm), XrefTypeName(x.type), diida(x.frm)) for x in idautils.XrefsTo(head) if x.type not in [ida_xref.fl_F]])
+            #  xrefs.extend([(x.frm, idc.get_name(x.frm), XrefTypeNames(x.type), diida(x.frm)) for x in idautils.XrefsTo(head) if x.type not in [ida_xref.fl_F]])
     #  xrefs = _.uniq([iteratee(x[0]) for x in xrefs if x[0] != idc.BADADDR and not ida_funcs.is_same_func(x[0], funcea)])
     #  return xrefs
 
 
-def xrefs_to(ea, iteratee=None, filter=None):
+def xrefs_to(ea, include=None, iteratee=None, filter=None):
     """
     >> for xref in XrefsTo(here(), 0):
-         printi(xref.type, XrefTypeName(xref.type), 'from', hex(xref.frm), 'to', hex(xref.to))
+         printi(xref.type, XrefTypeNames(xref.type), 'from', hex(xref.frm), 'to', hex(xref.to))
     
     21 Ordinary_Flow (fl_F) from 0x140a66258 to 0x140a6625c
         if isinstance(ea, list):
@@ -3292,7 +3316,10 @@ def xrefs_to(ea, iteratee=None, filter=None):
     """
 
     if isinstance(ea, list):
-        return [xrefs_to(x, iteratee=iteratee, filter=filter) for x in ea]
+        return [xrefs_to(x, include=include, iteratee=iteratee, filter=filter) for x in ea]
+
+    if include:
+        filter = lambda x: x.type in XrefTypeNames(include)
 
     ea = eax(ea)
     def collect(ea):
@@ -3353,7 +3380,7 @@ def xrefs_to_ex(ea=None, flow=1, iteratee=None, filter=None):
         xrefs = [SimpleAttrDict({
             'frm': x.frm, 
             'frm_insn': 'offset' if IsOff0(x.frm) else diida(x.frm), 
-            'type': string_between('(', ')', XrefTypeName(x.type)), 
+            'type': string_between('(', ')', XrefTypeNames(x.type)), 
             'type_code': x.type,
             'to': x.to,
             'to_insn': diida(x.to),
@@ -3405,6 +3432,29 @@ def GetFuncHeads(funcea=None):
 
     return heads
 
+def CheckFuncSpDiffs(funcea=None, value=None):
+    """
+    CheckFuncSpDiffs
+
+    @param funcea: any address in the function
+    """
+    if isinstance(funcea, list):
+        return [CheckFuncSpDiffs(x) for x in funcea]
+
+    funcea = eax(funcea)
+    func = ida_funcs.get_func(funcea)
+
+    if not func:
+        return 0
+    else:
+        funcea = func.start_ea
+
+    for start, end in idautils.Chunks(funcea):
+        for head in idautils.Heads(start, end):
+            if value is not None:
+                SetSpDiffEx(head, value)
+            else:
+                SetSpDiffEx(head, GetSpDiff(head))
 
 def GetDisasmFuncHeads(funcea=None):
     """
@@ -4984,12 +5034,13 @@ def modify_chunks(funcea, chunks, keep=None, remove=None):
                 msg = "can't trim start of head chunk: {}".format(describe_target(subs[0].start))
                 raise ChunkFailure(msg)
 
-            if len(subs) == 1 and subs[0].last == cend or subs[0].start == cstart:
+            if len(subs) == 1 and subs[0].trend == cend or subs[0].start == cstart:
                 # might be more efficient to process this seperately, as we can
                 # trim a chunk in one op
                 start, end = subs[0].chunk()
 
                 if end == cend and start == cstart:
+                    if debug: printi("idc.remove_fchunk(0x{:x}, 0x{:x})".format(funcea, start))
                     if not idc.remove_fchunk(funcea, start):
                         printi("[warn] cannot remove whole fchunk {}".format(describe_chunk(start, end)))
                         globals()['warn'] += 1
@@ -4997,6 +5048,7 @@ def modify_chunks(funcea, chunks, keep=None, remove=None):
                         if debug: printi("[info] removed whole fchunk {:#x} - {:#x}".format(start, end))
                 elif end == cend:
                     # same end, different start
+                    if debug: printi("ida_funcs.set_func_end(0x{:x}, 0x{:x})".format(cstart, start))
                     if not ida_funcs.set_func_end(cstart, start): # and not SetFuncEnd(start, start):
                         printi("[warn] (1) cannot change end of {} to {:#x}".format(describe_chunk(cstart, cend), start))
                         globals()['warn'] += 1
@@ -5005,12 +5057,13 @@ def modify_chunks(funcea, chunks, keep=None, remove=None):
                         printi("[info] (1) changed end of {} to {:#x}".format(describe_chunk(cstart, cend), start))
                 elif start == cstart:
                     # end's cannot match
-                    if not ida_funcs.set_func_start(cstart, end):
-                        printi("[warn] (2) cannot change start of {} to {:#x}".format(describe_chunk(cstart, cend), end))
+                    if debug: printi("ida_funcs.set_func_start(0x{:x}, 0x{:x})".format(cstart, end + 1))
+                    if ida_funcs.set_func_start(cstart, end + 1):
+                        printi("[warn] (2) cannot change start of {} to {:#x}".format(describe_chunk(cstart, cend), end + 1))
                         globals()['warn'] += 1
                         return False
                     else:
-                        printi("[info] (2) changed start of {} to {:#x}".format(describe_chunk(cstart, cend), end))
+                        printi("[info] (2) changed start of {} to {:#x}".format(describe_chunk(cstart, cend), end + 1))
 
                 continue
             
@@ -5395,7 +5448,7 @@ def RefsTo(ea = None):
         ea = idc.get_screen_ea()
 
     for xref in XrefsTo(here(), 0):                          
-        printi(xref.type, XrefTypeName(xref.type),            
+        printi(xref.type, XrefTypeNames(xref.type),            
                   'from', hex(xref.frm), 'to', hex(xref.to))
 
     refs = [x for x in XrefsTo(ea, 0)]
@@ -8106,6 +8159,58 @@ def describe_target(ea=None):
 
     target_obj = TargetDescriptor(ea)
     return target_obj
+
+def auto_name_common_functions():
+    for ea in later:
+        if Name(ea).startswith(('sub_', 'common:')): print(name_common_function(ea))
+
+def name_common_function(ea=None):
+    """
+    name_common_function
+
+    @param ea: linear address
+    """
+    if isinstance(ea, list):
+        return [x for x in [name_common_function(x) for x in ea] if x is not None]
+
+    ea = eax(ea)
+    if idc.get_name(ea).startswith(("__", "return")):
+        return
+    #  if not IsFuncStart(ea):
+        #  return "Is not function start: {}".format(describe_target(ea))
+    
+    target = ea
+    if idc.get_segm_name(target) == '.text':
+        refs = xrefs_to(target, include='call|jump')
+        refNames = _.uniq(_.sort([string_between(['_actual', '_ACTUAL'], '', x, inclusive=1, repl='') for x in GetFuncName(refs) if _.contains(x, ['::_0x', '___0x']) and not x.startswith(('common:', 'return_', 'nullsub_'))]) , True)
+        otherNames = _.uniq(_.sort([x for x in GetFuncName(refs) if x and not _.contains(x, ['::_0x', '___0x'])]), True)
+        #  callrefs = _.uniq(GetFuncStart([ea for ea in list(CallRefsTo(target)) if idc.get_segm_name(ea) == '.text' and IsFunc_(ea) and IsNiceFunc(ea)]))
+        #  jmprefs =  _.uniq(GetFuncStart([ea for ea in list(JmpRefsTo(target)) if idc.get_segm_name(ea) == '.text' and IsFunc_(ea) and IsNiceFunc(ea) and GetInsnLen(ea) > 2]))
+        #  if e.conditional and len(callrefs + jmprefs) == 0:
+            #  idc.del_func(target)
+            #  patched += 1
+        if len(refNames) == 1 and len(otherNames) == 0:
+            label = "{}_helper".format(refNames[0])
+            LabelAddressPlus(target, label)
+            Commenter(target, 'line').remove('[ALLOW EJMP]')
+            return ea, label
+
+        if refNames:
+            label = "common:" + ":".join(refNames)
+            if otherNames:
+                label += ":_{}_others".format(len(otherNames))
+            LabelAddressPlus(target, label)
+            Commenter(target, 'line').add('[ALLOW EJMP]')
+            return ea, label
+
+def diStripNatives():
+    for ea in m + l:
+        ea = SkipJumps(ea)
+        if IsFuncHead(ea):
+            for cs, ce in idautils.Chunks(ea):
+                diStrip(cs)
+
+
     
 def fix_func_tails(l, extra_args=dict()):
     printi("[fix_func_tails] ")
@@ -8122,18 +8227,18 @@ def fix_func_tails(l, extra_args=dict()):
                         #  self.to = to
                 target = e.to.ea
                 if idc.get_segm_name(target) == '.text':
-                    if e.conditional:
+                    callrefs = _.uniq(GetFuncStart([ea for ea in list(CallRefsTo(target)) if idc.get_segm_name(ea) == '.text' and IsFunc_(ea) and IsNiceFunc(ea)]))
+                    jmprefs =  _.uniq(GetFuncStart([ea for ea in list(JmpRefsTo(target)) if idc.get_segm_name(ea) == '.text' and IsFunc_(ea) and IsNiceFunc(ea) and GetInsnLen(ea) > 2]))
+                    if e.conditional and len(callrefs + jmprefs) == 0:
                         idc.del_func(target)
                         patched += 1
                     else:
-                        callrefs = _.uniq(GetFuncStart([ea for ea in list(CallRefsTo(target)) if idc.get_segm_name(ea) == '.text' and IsFunc_(ea) and IsNiceFunc(ea)]))
-                        jmprefs =  _.uniq(GetFuncStart([ea for ea in list(JmpRefsTo(target)) if idc.get_segm_name(ea) == '.text' and IsFunc_(ea) and IsNiceFunc(ea) and GetInsnLen(ea) > 2]))
                         refs = _.uniq(callrefs + jmprefs)
                         ref_names = GetFuncName(refs)
                         if not e.to.func_ea:
                             if len(ref_names) > 1:
                                 if not HasUserName(target):
-                                    LabelAddressPlus(target, "common:" + ":".join(ref_names))
+                                    LabelAddressPlus(target, "common:" + ":".join([x for x in ref_names if not x.startswith('sub_')]))
                             else:
                                 if not e.to.name:
                                     LabelAddressPlus(target, idc.get_name(e.frm))
@@ -8311,7 +8416,7 @@ def SuperJump(funcea=None):
             if isUnconditionalJmpOrCall(ea):
                 SkipJumps(ea, apply=1)
 
-def process_balance(ea=None):
+def process_balance(ea=None, compact=False):
     """
     process_balance
 
@@ -8323,31 +8428,31 @@ def process_balance(ea=None):
     if ea is None and IsFunc_(here()):
         ea = here()
     ea = eax(ea)
-    sti = CircularList(AdvanceToMnemEx(ea))
+    sti = CircularList(AdvanceToMnemEx(ea, inclusive=True))
         # in func_tails(ea=ea, quiet=1, returnOutput='buffer', returnFormat=lambda o: o) if not x.insn.startswith(('nop', 'jmp'))])
     setglobal('sti', sti)
     # sti = func_tails(returnOutput='buffer')
-    if False:
-        m = sti.multimatch([
-            r'({push}push.*)**',
-            r'lea rsp, .*',
-            r'(movupd .*)**',
-            r'push 0x10',
-            #  r'test rsp, 0xf',
-            #  r'jnz .*',
-            #  r'push 0x18',
-            #  r'(add|sub) rsp, .*',
-            r'call ({call}.*)',
-            r'(add|lea) rsp, \[rsp\+8\]',
-            r'(movupd .*)**',
-            r'lea rsp, \[rsp\+({rspdiff}[^\]]+)\]',
-            r'(pop.*)**',
-            r'({extra}.*)**',
-            #  r'retn',
-            ], groupiter=lambda o: o, gettext=lambda o: o.insn, predicate=lambda o: not o.insn.startswith('jmp'))
-        if m:
-            return m
-
+    #  if False:
+        #  m = sti.multimatch([
+            #  r'({push}push.*)**',
+            #  r'lea rsp, .*',
+            #  r'(movupd .*)**',
+            #  r'push 0x10',
+            #  #  r'test rsp, 0xf',
+            #  #  r'jnz .*',
+            #  #  r'push 0x18',
+            #  #  r'(add|sub) rsp, .*',
+            #  r'call ({call}.*)',
+            #  r'(add|lea) rsp, \[rsp\+8\]',
+            #  r'(movupd .*)**',
+            #  r'lea rsp, \[rsp\+({rspdiff}[^\]]+)\]',
+            #  r'(pop.*)**',
+            #  r'({extra}.*)**',
+            #  #  r'retn',
+            #  ], groupiter=lambda o: o, gettext=lambda o: o.insn, predicate=lambda o: not o.insn.startswith('jmp'))
+        #  if m:
+            #  return m
+#  
     m = sti.multimatch([
         r'({push}push.*)**',
         r'lea rsp, .*',
@@ -8362,16 +8467,19 @@ def process_balance(ea=None):
         ], groupiter=lambda o: o, gettext=lambda o: o.insn, predicate=lambda o: not o.insn.startswith('jmp'))
 
     if m:
-        if False:
+        if compact:
+            setglobal('_m', m)
             setglobal('sti', sti)
             #  if len(m.get('extra', [])) == 1 and m.get('extra')[0].insn.startswith('ret'): m['extra'] = []
             if 'extra' in m and 'push' in m:
-                if len(m.push) > 8 and len(m.extra) == 1 and m.extra[0].strip() == 'retn':
+                #  len(m.extra) == 1 and m.extra[0].strip() == 'retn':
+                if len(m.push) > 8 and len(m.extra):
                     nop = []
                     for r in m.default:
-                        printi("[process_balance] nopping {:x}: {}".format(r.ea, r))
-                        for ea in range(r.ea, r.ea + len(r)):
-                            nop.append(ea)
+                        if r not in m.extra:
+                            printi("[process_balance] nopping {:x}: {}".format(r.ea, r))
+                            for ea in range(r.ea, r.ea + len(r)):
+                                nop.append(ea)
                     nopRanges = GenericRanger(nop, sort=0, outsort=0)
                     printi("[process_balance] nopRanges: {}".format(nopRanges, nop))
                     for r in nopRanges:
@@ -8379,15 +8487,25 @@ def process_balance(ea=None):
                         
                         PatchNops(r.start, r.length, "compacted stack balance")
                     printi("[patch_stack_align] assembling at {:x}".format(m.push[0].ea))
-                    nassemble(m.push[0].ea,
-                        """
-                        push    rbp
-                        sub     rsp, 32
-                        {}
-                        add     rsp, 32
-                        pop     rbp
-                        ret
-                        """.format(m.call[0]), apply=1)
+                    if m.extra[0].insn == 'retn':
+                        assembled = nassemble(m.push[0].ea,
+                            #  push    rbp
+                            #  sub     rsp, 32
+                            """
+                            {}
+                            {}
+                            """.format(m.call[0], "\n".join(_.pluck(m.extra, 'labeled_value'))), apply=1)
+                    else:
+                        assembled = nassemble(m.push[0].ea,
+                            #  push    rbp
+                            #  sub     rsp, 32
+                            """
+                            {}
+                            jmp 0x{:x}
+                            """.format(m.call[0], SkipJumps(m.extra[0].ea)), apply=1)
+                    SetFuncOrChunkEnd(m.push[0].ea, m.push[0].ea + len(assembled)) # , m.push[0].ea + len(assembled))
+                        #  add     rsp, 32
+                        #  pop     rbp
                 else:
                     printi("[patch_stack_align] len(push) or len(extra) wrong")
                     # dprint("[process_balance] len(m.push) > 8, len(m.extra) == 1, m.extra[0] == 'retn'")

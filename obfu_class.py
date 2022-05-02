@@ -432,7 +432,7 @@ class Obfu(object):
                 raise
 
             # dprint("[process_replacement] _search, _repl")
-            if obfu_debug: printi("[process_replacement] tuple: _search:{}, _repl:{}".format(listAsHex(_search), listAsHex(_repl)))
+            if obfu_debug: printi("[process_replacement] tuple: _search:{}, _repl:{}".format(listAsHexIfPossible(_search), listAsHexIfPossible(_repl)))
 
             if -1 in _repl:
                 for i in range(len(search)):
@@ -703,6 +703,7 @@ class Obfu(object):
                 raise ValueError("ea is {}".format(ea))
 
             original = [idc.get_wide_byte(x) for x in addressList]
+
             repl = replFunc(search, repl, original, ea, addressList, patternComment,
                             addressListWithNops=addressListWithNops, addressListFull=addressListFull, context=context)
             if not repl:
@@ -713,7 +714,8 @@ class Obfu(object):
             # 141057f05 Search|Replace (A): 21|('0x15', ['<generator object recursive_map at 0x0000021AAAFC8F48>', '<generator object recursive_map at 0x0000021AAAFC8F48>'])
             #          jmp via push rbp, xchg, lea rsp, jmp rsp-8
             printi("{:x} replFunc: Search: {}\n                   Replace: {}\n                   Comment: {}"
-                    .format(ea, listAsHex(search), 
+                    .format(ea, 
+                        listAsHex(search), 
                         repl, 
                         patternComment)) # listAsHex(search), 
 
@@ -1273,7 +1275,9 @@ class Obfu(object):
                 results = []
                 while q and not count:
                     pat = q.pop(0)
-                    if obfu_debug: printi("len(addressList): {}".format(len(addressList)))
+                    if obfu_debug: printi("len(addressList): {}".format(addrLen))
+                    if obfu_debug: printi("addressList: {}".format(hex(addressList)))
+
                     result = self.replace_pattern_ex(tuple(pat.search), tuple(pat.repl), pat.replFunc, pat.searchIndex, pat.brief,
                                                      list(addressList), ea, list(addressListWithNops), list(addressListFull), pat.safe, context=context, pat=pat)
                     if result:

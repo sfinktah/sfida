@@ -605,10 +605,10 @@ def checksummers(*args, **kwargs):
     global sp;
     #  read_set.clear()
 
-    color = False
+    color = True
     tag = False
     comment = True
-    patch = True
+    patch = False
 
 
     max_count = 0
@@ -661,19 +661,19 @@ def checksummers(*args, **kwargs):
                         memcpy_count += len(r)
                         healed_by[r].add(fnName)
 
-                        filename = ddir + '/memcpy/memcpy_{:x}_{:x}_{}.bin'.format(r.start, r.last - r.start + 1, fnName)
+                        filename = ddir + '/memcpy/memcpy_{:x}_{:x}_{}.bin'.format(r.start, r.length, fnName)
                         if not file_exists(filename):
-                            if comment: Commenter(r.start, 'line').add("{} bytes healed by {}".format(fnName, r.last - r.start + 1)).commit()
-                            if patch: PatchBytes(r.start, helper.getEmuBytes(r.start, r.last - r.start + 1), "Patched by {}".format(fnName))
-                            file_put_contents_bin(filename, helper.getEmuBytes(r.start, r.last - r.start + 1))
+                            if comment: Commenter(r.start, 'line').add("{} bytes healed by {}".format(fnName, r.length)).commit()
+                            if patch: PatchBytes(r.start, helper.getEmuBytes(r.start, r.length), "Patched by {}".format(fnName))
+                            file_put_contents_bin(filename, helper.getEmuBytes(r.start, r.length))
 
                             for head in idautils.Heads(r.start, r.last):
                                 if IsFuncHead(head):
                                     fheads.add(head)
                                     if tag:
                                         AddTag(head, 'healed')
-                                if color:
-                                    set_healed_col(head)
+                            if color:
+                                set_healed_col(r.start, r.trend)
                 if comment:
                     for head in fheads:
                         Commenter(head).add("[ARXAN-HEALED;{:x}] by {}".format(fnStart, fnName))
@@ -685,18 +685,18 @@ def checksummers(*args, **kwargs):
                     read_count += len(r)
 
                     if r.start > 0x140000000:
-                        filename = ddir + '/read/read_{:x}_{:x}_{}.bin'.format(r.start, r.last - r.start + 1, fnName)
+                        filename = ddir + '/read/read_{:x}_{:x}_{}.bin'.format(r.start, r.length, fnName)
                         if not file_exists(filename):
-                            if comment: Commenter(r.start, 'line').add("{} bytes read by {}".format(fnName, r.last - r.start + 1)).commit()
-                            file_put_contents_bin(filename, helper.getEmuBytes(r.start, r.last - r.start + 1))
+                            if comment: Commenter(r.start, 'line').add("{} bytes read by {}".format(fnName, r.length)).commit()
+                            file_put_contents_bin(filename, helper.getEmuBytes(r.start, r.length))
 
                             for head in idautils.Heads(r.start, r.last):
                                 if IsFuncHead(head):
                                     fheads.add(head)
                                     if tag:
                                         AddTag(head, 'read')
-                                if color:
-                                    set_checked_col(head)
+                            if color:
+                                set_checked_col(r.start, r.trend)
                 if comment:
                     for head in fheads:
                         Commenter(head).add("[ARXAN-CHECKED;{:x}] by {}".format(fnStart, fnName))
@@ -709,19 +709,19 @@ def checksummers(*args, **kwargs):
                     written_count += len(r)
 
                     if r.start > 0x140000000:
-                        filename = ddir + '/written/written_{:x}_{:x}_{}.bin'.format(r.start, r.last - r.start + 1, fnName)
+                        filename = ddir + '/written/written_{:x}_{:x}_{}.bin'.format(r.start, r.length, fnName)
                         if not file_exists(filename):
-                            if comment: Commenter(r.start, 'line').add("{} bytes written by {}".format(fnName, r.last - r.start + 1)).commit()
-                            if patch: PatchBytes(r.start, helper.getEmuBytes(r.start, r.last - r.start + 1), "Patched(W) by {}".format(fnName))
-                            file_put_contents_bin(filename, helper.getEmuBytes(r.start, r.last - r.start + 1))
+                            if comment: Commenter(r.start, 'line').add("{} bytes written by {}".format(fnName, r.length)).commit()
+                            if patch: PatchBytes(r.start, helper.getEmuBytes(r.start, r.length), "Patched(W) by {}".format(fnName))
+                            file_put_contents_bin(filename, helper.getEmuBytes(r.start, r.length))
 
                             for head in idautils.Heads(r.start, r.last):
                                 if IsFuncHead(head):
                                     fheads.add(head)
                                     if tag:
                                         AddTag(head, 'written')
-                                if color:
-                                    set_healed_col(head)
+                            if color:
+                                set_healed_col(r.start, r.trend)
                 if comment:
                     for head in fheads:
                         Commenter(head).add("[ARXAN-WRITTEN;{:x}] by {}".format(fnStart, fnName))
@@ -817,7 +817,10 @@ def hldchk_msk(c): return (eac(c)) & (0x280128 | 0x140128 | 0x010128 | 0x410128)
 def hldchk_invmsk(c): return (eac(c)) & ~(0x280128 | 0x140128 | 0x010128 | 0x410128)
 def is_hldchk_msk(c): return hldchk_msk(c) & 0xffff == 0x128
 
-def set_healed_col(ea):
+def set_healed_col(ea, end=None):
+    if end is not None:
+        return [set_healed_col(x) for x in range(ea, end)]
+
     c = eac(ea)
     if not is_hldchk_msk(c):
         return idc.set_color(ea, idc.CIC_ITEM, _col_healed)
@@ -827,7 +830,10 @@ def set_healed_col(ea):
     if nc != c:
         return idc.set_color(ea, idc.CIC_ITEM, nc)
 
-def set_checked_col(ea):
+def set_checked_col(ea, end=None):
+    if end is not None:
+        return [set_checked_col(x) for x in range(ea, end)]
+
     c = eac(ea)
     if not is_hldchk_msk(c):
         return idc.set_color(ea, idc.CIC_ITEM, _col_checked)

@@ -216,6 +216,12 @@ def listAsHex(l):
         print("listasHex: TypeError: {}; l was {}".format(e, l))
         raise e
 
+def listAsHexIfPossible(l):
+    try:
+        listAsHex(l)
+    except TypeError as e:
+        return ", ".join([str(x) for x in _.flatten([l])])
+
 def listAsHexWith0x(l):
     return " ".join(map(lambda x: ("0x%02x" % x) if isinstance(x, (integer_types, bytearray)) else x, list(l)))
 
@@ -829,7 +835,7 @@ def contig_ranges(addressList, startIndex = 0, length = None):
 
     return result
 
-def kassemble(string, ea=None, arch=None, mode=None, syntax=None, apply=False):
+def kassemble(string, ea=None, apply=False, arch=None, mode=None, syntax=None):
     """ assemble with keypath
     """
     if type(ea) is str:
@@ -847,7 +853,7 @@ def kassemble(string, ea=None, arch=None, mode=None, syntax=None, apply=False):
     # failed
     return result
 
-def iassemble(string, ea=None, arch=None, mode=None, syntax=None, apply=False):
+def iassemble(string, ea=None, apply=False, arch=None, mode=None, syntax=None):
     """ try to assemble with keypath, then ida, then nasm
     """
     if type(ea) is str:

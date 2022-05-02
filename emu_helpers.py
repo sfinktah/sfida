@@ -3,7 +3,7 @@ import idc, idaapi, ida_ida, ida_funcs, ida_bytes
 from bisect import bisect_left, bisect_right, bisect
 from choose_multi import *
 from execfile import execfile, make_refresh
-refresh_emu = make_refresh(os.path.abspath(__file__))
+refresh_emu_helpers = make_refresh(os.path.abspath(__file__))
 refresh = make_refresh(os.path.abspath(__file__))
 import lzma
 import re
@@ -143,12 +143,75 @@ def read_emu_glob(fn, path=None):
 
     fns = os.path.normpath(os.path.join(match_emu._path, 'memcpy/*/*/*' + fn + '*.bin'))
     globbed = list(glob(fns))
-    print('globbing... {}'.format(fns)
+    print('globbing... {}'.format(fns))
     fns = os.path.normpath(os.path.join(match_emu._path, 'written/*/*/*' + fn + '*.bin'))
     globbed.extend(list(glob(fns)))
-    print('globbing... {}'.format(fns)
+    print('globbing... {}'.format(fns))
     print('globbed: {}'.format(globbed))
     read_emu(globbed)
+
+def make_native_patchfile(ea=None, outFilename=None, noImport=False, width=76):
+    import base64
+    """ 
+    eg: read_emu(glob('r:/data/memcpy/*_ArxanFunction_140000000.bin'))
+
+    @param fn: filename or [fn1, fn2, ...]
+
+    """
+    if not noImport:
+        result = [
+                "def base64_patch_tmp():",
+                "    import idc, ida_ida",
+                "    from base64 import b64decode", 
+                "    from ida_bytes import put_bytes",
+                "    from lzma import decompress",
+                "    min_ea = ida_ida.cvar.inf.min_ea & ~0xffff",
+                "    max_ea = (ida_ida.cvar.inf.max_ea + 1) & ~0xffff",
+                "    unbase = lambda ea: ea - 0x140000000 + min_ea",
+                "    put64  = lambda ea, b64: put_bytes(unbase(ea), b64decode(b64))",
+                "    lzp64  = lambda ea, b64: put_bytes(unbase(ea), decompress(b64decode(b64)))",
+                "    nativ  = lambda ea, lbl: idc.set_name(unbase(ea), lbl, idc.SN_AUTO | idc.SN_NOWARN)",
+                ""
+                ]
+    else:
+        result = []
+    
+
+    if not noImport and not isinstance(ea, list):
+        ea = [ea]
+    if isinstance(ea, list):
+        [ result.extend(make_native_patchfile(x, noImport=1, width=width)) for x in ea if IsFuncHead(x) ]
+        result.extend([
+            "",
+            "base64_patch_tmp()"
+            ])
+        if outFilename:
+            return file_put_contents(outFilename, "\n".join(result))
+        return result
+
+    result.append('    nativ(0x{:x}, "{}")'.format(ea, idc.get_name(ea, 0)))
+    for base, end in idautils.Chunks(ea):
+        b = ida_bytes.get_bytes(base, end - base)
+        cmd = 'put64'
+        if len(b) > 128:
+            b = lzma.compress(b)
+            cmd = 'lzp64'
+        if b:
+            b64 = base64.b64encode(b).decode('raw_unicode_escape')
+            if len(b64) < (width - 22 - 4):
+                bout = '    {}(0x{:x}, "{}")'.format(cmd, base, b64)
+                result.append(bout)
+            else:
+                bout = '    {}(0x{:x}, """'.format(cmd, base) + b64
+                bout = indent(8, bout, width=width, joinWith=None, skipFirst=True)
+                result.extend(bout)
+                if len(result[-1]) < (width - 3 - 4):
+                    result[-1] += '""")'
+                else:
+                    result.append('        """)')
+            #  result.append('')
+
+    return result 
 
 def make_emu_patchfile(fn=None, noImport=False, width=76):
     import base64
@@ -164,8 +227,11 @@ def make_emu_patchfile(fn=None, noImport=False, width=76):
                 "    from base64 import b64decode", 
                 "    from ida_bytes import put_bytes",
                 "    from lzma import decompress",
-                "    put64 = lambda ea, b64: put_bytes(ea, b64decode(b64))",
-                "    lzp64 = lambda ea, b64: put_bytes(ea, decompress(b64decode(b64)))",
+                "    min_ea = ida_ida.cvar.inf.min_ea & ~0xffff",
+                "    max_ea = (ida_ida.cvar.inf.max_ea + 1) & ~0xffff",
+                "    unbase = lambda ea: ea - 0x140000000 + min_ea",
+                "    put64 = lambda ea, b64: put_bytes(unbase(ea), b64decode(b64))",
+                "    lzp64 = lambda ea, b64: put_bytes(unbase(ea), decompress(b64decode(b64)))",
                 ""
                 ]
     else:

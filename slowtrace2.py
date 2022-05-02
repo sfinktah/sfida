@@ -70,6 +70,7 @@ _refresh_slowtrace_helpers = make_refresh(os.path.abspath(__file__.replace('2', 
 def refresh_slowtrace2():
     _refresh_slowtrace_helpers()
     _refresh_slowtrace2()
+    refresh_func_tails()
 
 check_for_update_1 = make_auto_refresh(os.path.abspath(__file__.replace('2', '_helpers')))
 check_for_update_2 = make_auto_refresh(os.path.abspath(__file__))
@@ -617,7 +618,7 @@ def retrace(address=None, color="#280c01", retails=False, redux=False, unpatchFi
 
     # printi("[retrace] args:{}, kwargs:{}".format(args, kwargs))
     
-        address = eax(address)
+        address = SkipJumps(eax(address))
         start_address = address
         #  depth = kwargs.get('depth', 0)
         if not 'last_retrace' in globals() or isinstance(globals()['last_retrace'], int):
@@ -747,7 +748,7 @@ def retrace(address=None, color="#280c01", retails=False, redux=False, unpatchFi
                 printi("func_tails returned {}".format(len(ft)))
                 if ft:
                     # ft = func_tails(ft)
-                    printi("fix_func_tails({}, {})".format(ft, extra_args))
+                    printi("fix_func_tails({}, {})".format(pph(ft), extra_args))
                     ft_patches += fix_func_tails(ft, extra_args)
                     printi("fix_func_tails returned")
                 if _old_hash == _new_hash and rv != 0:
@@ -784,7 +785,8 @@ def retrace(address=None, color="#280c01", retails=False, redux=False, unpatchFi
                     elif spdList:
                         #  spd = _fix_spd_auto(SkipJumps(ea)) != 0
                         for r in range(100):
-                            printi("_fix_spd(spdList) attempt {}".format(r))
+                            if r > 10:
+                                printi("_fix_spd(spdList) attempt {}".format(r))
                             if not _fix_spd(spdList):
                                 break
                     
@@ -829,38 +831,42 @@ def retrace(address=None, color="#280c01", retails=False, redux=False, unpatchFi
                 #  self.exc_info = sys.exc_info()
                 pass
             except RelocationStackError as e:
-                printi("slowtrace threw {} {}".format(string_between('.', "'", str(type(e))), e))
+                printi("[retrace] slowtrace threw {}: {}".format(e.__class__.__name__, str(e)))
                 if once:
-                    
                     return -1
                 # unconditional jmp to another sub 0x143abfbe2, retn rsp of 88
                 # dprint("[debug] type(e.args)")
-                m = re.search(r"unconditional jmp to another sub ([^,]+), retn rsp of ([-0-9a-f]+)", e.args[0])
+                #  m = re.search(r"unconditional jmp to another sub ([^,]+), retn rsp of ([-0-9a-f]+)", e.args[0])
+                m = re.search(r"\((0x[0-9a-fA-F]+)\) which has no stack", str(e))
                 if m:
-                    printi("checking called function")
-                    retrace(eax(m.group(1)), once=1, forceRemoveChunks=1, **kwargs)
-                tb = traceback.format_exc()
-                printi(tb)
+                    if count == 0:
+                        printi("checking offending function")
+                        retrace(eax(m.group(1)), once=1, forceRemoveChunks=1, **kwargs)
+                #  if re.search(r"isRealFunc: jmpRef: more than 1 ref", str(e)):
+                    #  if count == 0:
+                        #  TruncateThunks()
+                #  tb = traceback.format_exc()
+                #  printi(tb)
                 pass
             except RelocationInvalidStackError as e:
-                printi("slowtrace threw {} {}".format(string_between('.', "'", str(type(e))), e))
+                printi("[retrace] slowtrace threw {}: {}".format(e.__class__.__name__, str(e)))
                 
                 return -1
             except RelocationTerminalError as e:
-                printi("slowtrace threw {} {}".format(string_between('.', "'", str(type(e))), e))
+                printi("[retrace] slowtrace threw {}: {}".format(e.__class__.__name__, str(e)))
                 tb = traceback.format_exc()
                 printi(tb)
                 FixChunks(ea, leave=ea)
                 #  ZeroFunction(ea)
                 pass
             except RelocationPatchedError as e:
-                printi("slowtrace threw {} {}".format(string_between('.', "'", str(type(e))), e))
+                printi("[retrace] slowtrace threw {}: {}".format(e.__class__.__name__, str(e)))
                 tb = traceback.format_exc()
                 printi(tb)
                 count_limit = min(10, count_limit + 1)
                 pass
             except ChunkFailure as e:
-                printi("slowtrace threw {} {}".format(string_between('.', "'", str(type(e))), e))
+                printi("[retrace] slowtrace threw {}: {}".format(e.__class__.__name__, str(e)))
                 tb = traceback.format_exc()
                 printi(tb)
                 FixChunks(ea, leave=ea)
@@ -1186,6 +1192,7 @@ def slowtrace2(ea=None,
     byteHexArray = []
     disasmArray = []
     tmpLimit = BADADDR
+    obfu.combed.clear()
     if ea is BADADDR:
         return 0
 
@@ -1318,7 +1325,7 @@ def slowtrace2(ea=None,
             try:
                 end = EaseCode(new, forceStart=1) 
             except AdvanceFailure as e:
-                printi("slowtrace threw {} {}".format(string_between('.', "'", str(type(e))), e))
+                printi("slowtrace threw {}: {}".format(e.__class__.__name__, str(e)))
                 sb = string_between('advance past ', '', str(e))
                 if sb:
                     sbi = int(sb, 16)
@@ -1928,7 +1935,7 @@ def slowtrace2(ea=None,
 
         tmpLimit = BADADDR
 
-        if 1:
+        if 0:
             if hasglobal('m') and isinstance(getglobal('m'), (list, set)):
                 if fnLoc in getglobal('m'):
                     tmpLimit = fnLoc
@@ -2046,7 +2053,7 @@ def slowtrace2(ea=None,
                             retrace(fnLoc, once=1, forceRemoveChunks=1, depth=depth+1, max_depth=max_depth)
                     printi("[annoying] depth:{}, hex(fnLoc):{}, IsCode_(idc.prev_not_tail(fnLoc)):{}, IsFunc_(idc.prev_not_tail(fnLoc)):{}".format(depth, hex(fnLoc), IsCode_(idc.prev_not_tail(fnLoc)), IsFunc_(idc.prev_not_tail(fnLoc))))
                     
-                    msg = ("{:x}: jmp to {} (isRealFunc: {}) retn rsp of {}".format(ea, describe_target(fnLoc), reason[0], slvars.rsp))
+                    msg = ("{:x}: jmp to {} which has no stack (isRealFunc: {}) retn rsp of {}".format(ea, describe_target(fnLoc), reason[0], slvars.rsp))
                     if not vim: raise RelocationStackError(msg)
                 if not skipAddRsp:
                     slvars.retSps.add(slvars.rsp)
@@ -2285,13 +2292,14 @@ def slowtrace2(ea=None,
                                         #  sti[-2] == "call __alloca_probe" and \
                                         #  sti[-3].startswith("mov eax, "):
                             #  s = sti[-3]
-                            spd = 0 - int(s[len("mov eax, "):].rstrip('h'), 16)
+                            spd = 0 - int(str(s)[len("mov eax, "):].rstrip('h'), 16)
                             slvars.rsp = slvars.rsp - spd
-                            SetSpDiff(idc.next_head(ea), spd)
+                            print("Setting spd at {:x}".format(sti[-1].ea + GetInsnLen(sti[-1].ea)))
+                            SetSpDiff(sti[-1].ea + GetInsnLen(sti[-1].ea), spd)
 
-                            cmt = "[SSSPD=%s]" % hex(spd)
-                            Commenter(ea, "line").remove_matching(r'^\[SSSPD=')
-                            Commenter(ea, "line").add(cmt)
+                            cmt = "[SPD=%s;ALLOCA]" % hex(spd)
+                            Commenter(sti[-1].ea, "line").remove_matching(r'.*SPD.*')
+                            # Commenter(sti[-1].ea, "line").add(cmt)
                             #  if not Commenter(ea, "line").match(r'^\[SPD='):
                     except IndexError:
                         pass
@@ -2848,7 +2856,7 @@ def slowtrace2(ea=None,
             fnLoc = LocByName(fnName)
             fnFlags = ida_bytes.get_flags(fnLoc)
             slvars.name = Name(ea)
-            if isJmpOrCall(ea):
+            if isAnyJmpOrCall(ea):
                 target = GetTarget(ea) # target = GetOperandValue(ea, 0)
                 if not ida_funcs.func_does_return(target):
                     printi("*** {:x} non-returning function: {}".format(ea, describe_target(target)))
@@ -3230,7 +3238,7 @@ def slowtrace2(ea=None,
 
                         Commenter(ea).add("{:x} {}".format(balanceLoc, "TheBalancer"))
                         printi("{:x} {}".format(balanceLoc, "TheBalancer"))
-                        assert IsCode_(balanceLoc)
+                        assert IsCode_(balanceLoc), hex(balanceLoc)
 
                         push_count, new_ea, unused2 = CountConsecutiveMnem(balanceLoc, ["push", "pushf", "pushfq"])
                         #  Commenter(ea).add(sprint("ArxanStackBalance: push_count: " + str(push_count)))
@@ -3245,11 +3253,11 @@ def slowtrace2(ea=None,
                             assert _extra, hex(balanceLoc)
                             if 'extra' in _extra and _extra['extra']:
                                 _extra = _extra['extra']
+                                setglobal('_extra', _extra)
                                 _extra = AdvanceInsnList(ea=balanceLoc, insns=_extra, start_ea=balanceLoc, byte_count=_.sum(_extra, lambda v, *a: len(v)))
                                 if _extra.insns[-1].insn.startswith('ret'):
                                     printi("removing trailing ret from _extra")
                                     _extra.insns.pop()
-                                setglobal('_extra', _extra)
                                 Commenter(ea).add("ArxanBalance EXTRA: {}".format("; ".join(
                                     _extra.values()
                                     #  _.pluck(_extra.insns, 'insn')
@@ -3415,11 +3423,18 @@ def slowtrace2(ea=None,
                                                     remaining = cave_end - cave_start
                                                     cave_pos = cave_start
 
-                                                    _locations = _.pluck(
+                                                    _locations = SkipJumps(_.pluck(
                                                                         _.sortBy(
-                                                                            _.filter(_stackMut, lambda x, *a: not x['mnem'].startswith('ret')), 
+                                                                            #  _.filter(_stackMut, lambda x, *a: not x['mnem'].startswith('ret')), 
+                                                                            _stackMut,
                                                                         lambda x, *a: x['offset']), 
-                                                                    'location')
+                                                                    'location'), skipNops=1)
+
+                                                    #  _locations = _.sortBy(_stackMut, lambda x, *a: x['offset'])
+                                                    #  _locations_used = _.map(_locations, lambda x, *a: not x['mnem'].startswith('ret')) 
+                                                    #  _locations = _.pluck(_locations, 'location')
+                                                    #  # _.filter(_stackMut, lambda x, *a: not x['mnem'].startswith('ret')), 
+                                                    
                                                     printi("*#*# not_retracing {}".format(hex(_locations)))
                                                     #  _retrace = [retrace(addr, depth=depth+1, max_depth=depth+1) for addr in _locations]
                                                     #  printi("[Target Retracings] {}".format(pfh(_retrace)))
@@ -3429,7 +3444,7 @@ def slowtrace2(ea=None,
                                                     if _extra:
                                                         sections = [_extra]
                                                         printi("[Section-Extra] {}".format("; ".join(_extra.values())))
-                                                    elif len(_locations) == 1:
+                                                    elif False and len(_locations) == 1:
                                                         printi("[ArxanQuickJump] {:x} -> {:x}".format(ea, _locations[0]))
                                                         Commenter(ea, 'line').add("[ArxanQuickJump] {:x} -> {:x}".format(ea, _locations[0]))
                                                         nassemble(ea, "{} 0x{:x}".format(arxanJmpOrCall, _locations[0]), apply=1)
@@ -3453,8 +3468,36 @@ def slowtrace2(ea=None,
                                                     #            'location')]
                                                     #    sizes = [len(x[1]) for x in r2]
 
+                                                    if 5 + sum(sizes) < remaining:
+                                                        printi("[ArxanFiller] can fit all 0x{:x} bytes in cave".format(sum(sizes)))
+                                                        # this should probably only be used for 4-deep (call) arxan routines, since it returns at the end
+                                                        _filler = _.flatten(_.pluck(sections, 'labeled_values')) + ['retn']
+                                                        # _filler = _.filter(_filler, lambda x, *a: not re.match('\s*jmp \w*(locret|nullsub)', x))
+                                                        printi("[Cave Assembling] {}".format(pfh(_filler)))
+                                                        printi("[Cave Location] {:x}".format(cave_pos))
+                                                        setglobal('debug', 1)
+                                                        asm2 = nassemble(cave_pos, _filler, apply=0)
+                                                        asm2_len = len(asm2)
+                                                        idc.del_items(balanceLoc, idc.DELIT_EXPAND, asm_len + asm2_len)
+                                                        printi("[ArxanFiller] assembled 0x{:x} bytes: {}".format(asm2_len, listAsHex(asm2)))
+                                                        # EaseCode(cave_pos, forceStart=1)
+                                                        #  idc.add_func(cave_pos, cave_pos + asm_len)
+                                                        PatchBytes(cave_pos, asm2, 'Cave for destination of original Arxan Function')
+                                                        printi("[Cave Preserve] {}".format(diida(cave_pos, length=asm2_len)))
+                                                        PatchBytes(balanceLoc, asm, 'Marker for original Arxan function')
+                                                        printi("[Cave Preserve] {}".format(diida(balanceLoc, length=asm_len)))
+                                                        #  idc.add_func(balanceLoc, cave_pos)
+                                                        printi("[BalanceLoc] {:x}".format(balanceLoc))
+                                                        # idc.auto_wait()
+                                                        # EaseCode(balanceLoc)
+                                                        # idc.auto_wait()
+                                                        setglobal('debug', 0)
+                                                        # PatchBytes(cave_start, _.flatten([x[1] for x in r2]), 'ArxanReturnCode')
+                                                        # dprint("[cave_pos] cave_pos, sum(sizes), sizes")
+                                                        cave_pos += asm_len
+                                                        printi("[cave_pos] cave_pos:{:x}, sum(sizes[0:-1]) sizes:{}".format(cave_pos, sum(sizes[0:-1]), sizes))
 
-                                                    if 5 + sum(sizes[0:-1]) < remaining:
+                                                    elif 5 + sum(sizes[0:-1]) < remaining:
                                                         printi("[ArxanFiller] can fit some 0x{:x} bytes in cave".format(sum(sizes)))
                                                         _filler = _.flatten(_.pluck(sections[0:-1], 'labeled_values')) + ["{} 0x{:x}".format(arxanJmpOrCall, sections[-1].ea)]
                                                         _filler = _.filter(_filler, lambda x, *a: not re.match('\s*jmp \w*(locret|nullsub)', x))
@@ -3491,6 +3534,9 @@ def slowtrace2(ea=None,
                                                     else:
                                                         raise ArxanFailure("Couldn't fit all this arxan shit in")
 
+                                                    # this was a rubbish idea
+                                                    #   if len(sizes) > 2 and sizes[-1] == 0:
+                                                    #       arxanJmpOrCall = 'call'
                                                     nassemble(ea, "{} 0x{:x}".format(arxanJmpOrCall, cave_start), apply=1)
                                                     SkipJumps(ea, apply=1)
                                                     SetFuncEnd(ea, ea + 5)
@@ -3992,8 +4038,10 @@ def slowtrace2(ea=None,
 
                 n = idc.get_sp_delta(ea_next)
                 if idc.is_flow(ida_bytes.get_flags(ea_next)) and not isFlowEnd(ea) and n:
-                    if not ida_disasm.endswith('__alloca_probe') and not Commenter(ea, "line").match(r'\[\w*SPD=', re.I):
-                        sprint("fixing unexpected stack change from: {}".format(diida(ea_next)))
+                    ida_disasm_next = string_between(';', '', idc.GetDisasm(ea_next), inclusive=1, repl='').rstrip()
+
+                    if not '__alloca_probe' in ida_disasm and not Commenter(ea, "line").match(r'\[.*SPD=', re.I) and not Commenter(ea_next, "line").match(r'\[.*SPD=', re.I):
+                        sprint("fixing unexpected stack change from: {} | {}".format(ida_disasm_next, ida_disasm))
                         # user stkpnt will stay around, auto stkpnt will quickly disappear
                         SetSpDiffEx(ea, None)
                         SetSpDiff(ea_next, 0)
@@ -4185,7 +4233,9 @@ def slowtrace2(ea=None,
             if slvars.rsp is None:
                 slvars.rsp = -9999
             if not skipAddRsp:
-                if not silent or slvars.rsp: sprint("0x%x: break - adding retn slvars.rsp of %i" % (ea, slvars.rsp))
+                next_ea = ea + GetInsnLen(ea)
+
+                if not silent or slvars.rsp: sprint(("0x%x: break - adding retn slvars.rsp of 0x%x: {}" % (ea, slvars.rsp)).format(diida(next_ea)))
                 slvars.retSps.add(slvars.rsp)
 
         aborted = -1
@@ -4561,6 +4611,7 @@ def slowtrace2(ea=None,
             _chunks = [x for x in idautils.Chunks(slvars.startLoc)]
             chunks = GenericRanger([GenericRange(x[0], trend=x[1])           for x in _chunks],            sort = 1)
             keep   = GenericRanger([GenericRange(a, trend=a + GetInsnLen(a)) for a in slvars.justVisited], sort = 1)
+            if debug: sprint("chunks: {}".format(keep))
             if debug: sprint("keep: {}".format(keep))
             remove = difference(chunks, keep)
             if debug:

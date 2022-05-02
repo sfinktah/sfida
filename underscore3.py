@@ -65,29 +65,29 @@ def oget(obj, key, default=None, call=False):
     return r
 
 # https://stackoverflow.com/questions/42095393/python-map-a-function-over-recursive-iterables
-def recursive_map(seq, func):
+def _recursive_map(seq, func):
     for item in seq:
         if isinstance(item, Sequence):
-            yield type(item)(recursive_map(item, func))
+            yield type(item)(_recursive_map(item, func))
         else:
             yield func(item)
 
-def recursive_obj_map(seq, func):
+def _recursive_obj_map(seq, func):
     for key, item in _.items(seq):
         if isinstance(item, Sequence):
-            yield key, type(item)(recursive_map(item, func))
+            yield key, type(item)(_recursive_map(item, func))
         elif isinstance(item, Collection):
-            yield key, type(item)(recursive_map(item, func))
+            yield key, type(item)(_recursive_map(item, func))
         else:
             yield func(item)
 
-def recursive_obj_map_wrapper(seq, func):
-    return type(seq)(next(recursive_obj_map(seq, func)))
+def _recursive_obj_map_wrapper(seq, func):
+    return type(seq)(next(_recursive_obj_map(seq, func)))
 
 
 def _makeSequenceMapper(f):
     def fmap(seq, iteratee):
-        return recursive_map(seq, iteratee)
+        return _recursive_map(seq, iteratee)
     def function(item):
         if str(type(item)) == "<class 'generator'>":
             return [f(x) for x in item]
@@ -96,7 +96,25 @@ def _makeSequenceMapper(f):
         return [f(item)]
     return function
 
-_asList = _makeSequenceMapper(lambda x: x)
+# An iterable object is an object that implements __iter__, which is expected
+# to return an iterator object.
+def _isIterable(o):
+    return hasattr(o, '__iter__') and not hasattr(o, 'ljust')
+
+
+
+__asList = _makeSequenceMapper(lambda x: x)
+def _asList(o):
+    l = []
+    if _isIterable(o):
+        l = [x for x in o]
+    else:
+        l = __asList(o)
+
+    if not isinstance(l, list) or len(l) == 1 and l[0] == o:
+        return [o]
+    return l
+
 
 def Array(o):
     if o is None:
@@ -572,7 +590,7 @@ class underscore(object):
         self.antmp = False
 
         def testEach(value, index, *args):
-            if func(value, index, *args) is True:
+            if func(value, index, *args):
                 self.antmp = True
                 return "breaker"
 
@@ -582,13 +600,15 @@ class underscore(object):
 
     def include(self, target):
         """
-        Determine if a given value is included in the
+        Determine if a given value(s) is included in the
         array or object using `is`.
         """
+        target = _asList(target)
+
         if self._clean.isDict():
-            return self._wrap(target in self.obj.values())
+            return self._wrap(_.any(target, lambda x, *a: x in self.obj.values()))
         else:
-            return self._wrap(target in self.obj)
+            return self._wrap(_.any(target, lambda x, *a: x in self.obj))
     contains = include
 
     def invoke(self, method, *args):
@@ -1787,8 +1807,12 @@ class underscore(object):
     def isDictlike(self):
         return self._wrap(_.all(_.getmanyattr(self.obj, 'items', 'values', 'keys', 'get', None), lambda x, *a: callable(x)))
 
+    @staticmethod
+    def _isListlike(obj):
+        return _.all(_.getmanyattr(obj, 'append', 'remove', '__len__', None), lambda x, *a: callable(x))
+
     def isListlike(self):
-        return self._wrap(_.all(_.getmanyattr(self.obj, 'append', 'remove', '__len__', None), lambda x, *a: callable(x)))
+        return self._wrap(self._isListlike(self.obj))
 
     def join(self, glue=" "):
         """ Javascript's join implementation

@@ -32,10 +32,20 @@ def patch_stack_align(_search, replace, original, ea, addressList, patternCommen
     # this can't work because it's not being passed the latest instruction
     # circular list, and even if it were, it would still not contain
     # yet-to-be-parsed instructions required for completion
-    if context and 'slvars2' in context and 'instructions' in context['slvars2']:
-        sti = context['slvars2']['instructions']
-
-        m = sti.multimatch([
+    #  if context and 'slvars2' in context and 'instructions' in context['slvars2']:
+        #  sti = context['slvars2']['instructions']
+#  
+        #  m = sti.multimatch([
+            #  #  r'({push}push.*)**',
+            #  #  r'lea rsp, .*',
+            #  #  r'(movupd .*)**',
+            #  #  r'push 0x10',
+            #  #  r'call ({call}.*)',
+            #  #  r'(lea|add) rsp, .*',
+            #  #  r'(movupd .*)**',
+            #  #  r'lea rsp, \[rsp\+({rspdiff}[^\]]+)\]',
+            #  #  r'(pop.*)**',
+            #  #  r'({extra}.*)',
             #  r'({push}push.*)**',
             #  r'lea rsp, .*',
             #  r'(movupd .*)**',
@@ -46,45 +56,35 @@ def patch_stack_align(_search, replace, original, ea, addressList, patternCommen
             #  r'lea rsp, \[rsp\+({rspdiff}[^\]]+)\]',
             #  r'(pop.*)**',
             #  r'({extra}.*)',
-            r'({push}push.*)**',
-            r'lea rsp, .*',
-            r'(movupd .*)**',
-            r'push 0x10',
-            r'call ({call}.*)',
-            r'(lea|add) rsp, .*',
-            r'(movupd .*)**',
-            r'lea rsp, \[rsp\+({rspdiff}[^\]]+)\]',
-            r'(pop.*)**',
-            r'({extra}.*)',
-            ], groupiter=lambda o: o, gettext=lambda o: o.insn, predicate=lambda o: not o.insn.startswith('jmp'))
-        
-        if m:
-            printi(pfh(m))
-            if 'extra' in m and 'push' in m:
-                if len(m.push) > 8 and len(m.extra) == 1 and m.extra[0] == 'retn':
-                    printi("[patch_stack_align] assembling at {:x}".format(m.push[0].ea))
-                    nassemble(m.push[0].ea,
-                        """
-                        push    rbp
-                        mov     rbp, rsp
-                        sub     rsp, 32
-                        {}
-                        leave
-                        ret
-                        """.format(m.call[0]), apply=1)
-                else:
-                    printi("[patch_stack_align] len(push) or len(extra) wrong")
-            else:
-                printi("[patch_stack_align] extra or push not in m")
-            return []
-
-        else:
-            printi("[patch_stack_align] multimatch didn't")
-            printi(pfh(sti))
-            setglobal('osti', sti)
-
-    else:
-        printi("[patch_stack_align] no context.slvars2.instructions")
+            #  ], groupiter=lambda o: o, gettext=lambda o: o.insn, predicate=lambda o: not o.insn.startswith('jmp'))
+        #  
+        #  if m:
+            #  printi(pfh(m))
+            #  if 'extra' in m and 'push' in m:
+                #  if len(m.push) > 8 and len(m.extra) == 1 and m.extra[0] == 'retn':
+                    #  printi("[patch_stack_align] assembling at {:x}".format(m.push[0].ea))
+                    #  nassemble(m.push[0].ea,
+                        #  """
+                        #  push    rbp
+                        #  mov     rbp, rsp
+                        #  sub     rsp, 32
+                        #  {}
+                        #  leave
+                        #  ret
+                        #  """.format(m.call[0]), apply=1)
+                #  else:
+                    #  printi("[patch_stack_align] len(push) or len(extra) wrong")
+            #  else:
+                #  printi("[patch_stack_align] extra or push not in m")
+            #  return []
+#  
+        #  else:
+            #  printi("[patch_stack_align] multimatch didn't")
+            #  printi(pfh(sti))
+            #  setglobal('osti', sti)
+#  
+    #  else:
+        #  printi("[patch_stack_align] no context.slvars2.instructions")
 
     return ["push 0x10", diida(addressList[21+3]), "add rsp, 8"]
 
@@ -159,7 +159,7 @@ def mark_sp_factory(mark):
     return patch
 
 
-def set_sp_factory(mark):
+def set_sp_factory(mark, offset=0):
     """
     Typical Input:
                48 8d a5[30 02 00 00]                lea rsp, [rbp+0x230]    ; will be passed as set_sp_factory input
@@ -197,12 +197,25 @@ def set_sp_factory(mark):
             printi("[debug] _spd:{}, value:{}, disp:{}, spd:{}".format(_spd, value, disp, spd))
 
         # printi("[debug] _spd:{}, value:{}, disp:{}, spd:{}".format(_spd, value, disp, spd))
-        idc.add_user_stkpnt(ea + len(search), _spd)
+        dst = idc.get_item_head(ea + len(search))
+        printi("dst started: {:x}".format(dst))
+        move_to_next = False
+        if isNop(idc.prev_head(dst)):
+            while isNop(dst):
+                move_to_next = True
+                dst = GetTarget(dst, failnone=True) or idc.next_head(dst)
+
+        printi("dst finished: {:x}".format(dst))
+        if move_to_next:
+            dst = idc.next_head(dst)
+            printi("dst move to next_head: {:x}".format(dst))
+        # idc.add_user_stkpnt(ea + len(search), _spd)
+        idc.add_user_stkpnt(dst, _spd + offset)
 
         # cmt = "[SPD={}] '{}'".format( hex(_spd), mark )
-        cmt = "[SPD={:x}] '{}' ({:x} + {:x} - {:x})".format(_spd, mark, value, disp, spd)
-        Commenter(ea, "line").remove_matching(r'^\[SPD=')
-        Commenter(ea, "line").add(cmt).commit()
+        cmt = "[SPD={:x}] '{}' ({:x} + {:x} - {:x} ({}))".format(_spd, mark, value, disp, spd, offset if offset is not None else "")
+        Commenter(dst, "line").remove_matching(r'^\[SPD=')
+        Commenter(dst, "line").add(cmt).commit()
 
     return patch
 
@@ -763,6 +776,7 @@ def obfu_append_patches():
     obfu.append("", "lea r11, [rsp+????????h]",
                                              hex_pattern("4c 8d 9c 24 ?? ?? ?? ??") or nassemble("lea r11, [rsp+]"), [], mark_sp_factory('mov_r11_rsp'))
     obfu.append("", "mov rsp, r11",          hex_pattern("49 8b e3")       or nassemble("mov rsp, r11"),             [], set_sp_factory('mov_r11_rsp'))
+    obfu.append("", "push r11; pop rsp",     hex_pattern("41 53 5c")       or nassemble("push r11; pop rsp"),        [], set_sp_factory('mov_r11_rsp', 8))
 
     obfu.append("""
             0:  48 8d 64 24 f8          lea    rsp, [rsp-0x8]
@@ -1283,8 +1297,9 @@ def obfu_append_patches():
             ]),
             safe=1,
             resume=1,
-            #  replFunc = patch_stack_align
-            #  lambda _search, replace, original, ea, addressList, patternComment, addressListWithNops, **kwargs: \ ["push 0x10", diida(addressList[21+3]), "lea rsp, [rsp+8]"]
+            replFunc = lambda _search, replace, original, ea, addressList, patternComment, addressListWithNops, **kwargs: \
+                    ["push 0x10", diida(addressList[21+3]), "lea rsp, [rsp+8]"]
+            # patch_stack_align
 
     )
 
@@ -2404,34 +2419,35 @@ def obfu_append_patches():
             resume=1,
             )
 
-    obfu.append("arxan_check misdirection", "arxan misdirection #1",
-            hex_pattern([
-                "8b 85 ?? 00 00 00 85 c0 0f 85 ?? ?? ?? ??",
-                "48 8b 45 ?? 48 85 c0 0f ?? ?? ?? ?? 8b 85 ?? 00 00 00",
-                "85 c0 0f 85 ?? ?? ?? ??",
-            ]),
-            hex_pattern([
-                "8b 85 ?? 00 00 00 85 c0 90 e9 ?? ?? ?? ??",
-                "?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ??",
-                "?? ?? ?? ?? ?? ?? ?? ??",
-            ]),
-            safe=1,
-            resume=1,
-            )
-    obfu.append("arxan_check misdirection", "arxan misdirection #2",
-            hex_pattern([
-                "8b 85 ?? 00 00 00 85 c0 0f 84 ?? ?? ?? ??",
-                "8b 85 ?? 00 00 00 8b 55 30 3b c2 0f 8d ?? ?? ?? ??"
-            ]),
-            hex_pattern([
-                "8b 85 ?? 00 00 00",
-                "85 c0",
-                "90 e9 ?? ?? ?? ??",
-                "?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ??"
-            ]),
-            safe=1,
-            resume=1,
-            )
+    if False:
+        obfu.append("arxan_check misdirection", "arxan misdirection #1",
+                hex_pattern([
+                    "8b 85 ?? 00 00 00 85 c0 0f 85 ?? ?? ?? ??",
+                    "48 8b 45 ?? 48 85 c0 0f ?? ?? ?? ?? 8b 85 ?? 00 00 00",
+                    "85 c0 0f 85 ?? ?? ?? ??",
+                ]),
+                hex_pattern([
+                    "8b 85 ?? 00 00 00 85 c0 90 e9 ?? ?? ?? ??",
+                    "?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ??",
+                    "?? ?? ?? ?? ?? ?? ?? ??",
+                ]),
+                safe=1,
+                resume=1,
+                )
+        obfu.append("arxan_check misdirection", "arxan misdirection #2",
+                hex_pattern([
+                    "8b 85 ?? 00 00 00 85 c0 0f 84 ?? ?? ?? ??",
+                    "8b 85 ?? 00 00 00 8b 55 30 3b c2 0f 8d ?? ?? ?? ??"
+                ]),
+                hex_pattern([
+                    "8b 85 ?? 00 00 00",
+                    "85 c0",
+                    "90 e9 ?? ?? ?? ??",
+                    "?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ??"
+                ]),
+                safe=1,
+                resume=1,
+                )
 
     obfu.append("""
         Text description, and copy of output from dissasembly with offsets usually goes here.
@@ -3302,9 +3318,31 @@ TheJudge_0_0_0:
        mov al, 1         ; will return true                    
        add rsp, 0x28     ; perfectly balanced                  
        retn                                                    
-
+---
+54                            	push rsp            
+58                            	pop rax             
+48 89 58 08                   	mov [rax+8], rbx    
+48 89 70 10                   	mov [rax+0x10], rsi 
+48 89 78 18                   	mov [rax+0x18], rdi # vim: set ts=4 sts=4 sw=4 et:
+55                            	push rbp            
+41 54                         	push r12            
+41 55                         	push r13            
+41 56                         	push r14            
+41 57                         	push r15            
+54                            	push rsp            
+5d                            	pop rbp             
+48 83 ec 70                   	sub rsp, 0x70       
+4c 8d 5c 24 70                	lea r11, [rsp+0x70] 
+49 8b 5b 30                   	mov rbx, [r11+0x30] 
+49 8b 73 38                   	mov rsi, [r11+0x38] 
+49 8b 7b 40                   	mov rdi, [r11+0x40] 
+41 53                         	push r11            
+5c                            	pop rsp             
+41 5f                         	pop r15             
+41 5e                         	pop r14             
+41 5d                         	pop r13             
+41 5c                         	pop r12             
+5d                            	pop rbp             
+c3                            	retn                
 
 """
-
-
-# vim: set ts=4 sts=4 sw=4 et:

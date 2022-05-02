@@ -1451,6 +1451,7 @@ def create_insns(ea1, ea2):
         ea += n
 
 def hotkey_patch():
+    obfu.combed.clear()
     chunkStart, chunkEnd = get_selection_or_ea()
     if chunkStart + MyGetInstructionLength(chunkStart) >= chunkEnd:
         print("single patch at {:x}", chunkStart)
@@ -1479,13 +1480,17 @@ def hotkey_patch():
 def hotkey_edit_nasm():
     chunkStart, chunkEnd = get_selection_or_ea()
     if chunkStart + MyGetInstructionLength(chunkStart) >= chunkEnd:
-        _asm = diida(chunkStart)
+        _asm = diida(chunkStart, labels=True)
     elif chunkEnd > chunkStart and chunkEnd < BADADDR and chunkEnd - chunkStart < 8192:
-        _asm = diida(chunkStart, chunkEnd)
+        _asm = diida(chunkStart, chunkEnd, labels=True)
 
-    _new_asm = idaapi.ask_text(0x10000, _asm, "Edit Disassembly")
-    if _new_asm:
-        nassemble(chunkStart, _new_asm, apply=True)
+    _new_asm = "start:\n" + _asm
+    while True:
+        _new_asm = idaapi.ask_text(0x10000, _new_asm, "Edit Disassembly")
+        if _new_asm:
+            if not nassemble(chunkStart, _new_asm, apply=True):
+                continue
+        break
 
 def hotkey_unpatch():
     chunkStart, chunkEnd = get_selection_or_ea()
@@ -1566,9 +1571,11 @@ def hotkey_join_to_parent():
 def MakeJmpUnconditional(ea):
     # dprint("[MakeJmpUnconditional] ea")
     print("[MakeJmpUnconditional] ea:{:x}".format(ea))
-    if not isAnyJmp(ea):
+    if isCall(ea):
+        nassemble(ea, "jmp 0x{:x}".format(GetTarget(ea)), apply=1)
+    elif not isAnyJmp(ea):
         raise IndexError("No jump at this location {:x}".format(ea))
-    if not isConditionalJmp(ea):
+    elif not isConditionalJmp(ea):
         raise IndexError("Jump already conditional at this location {:x}".format(ea))
     nassemble(ea, "jmp 0x{:x}".format(GetTarget(ea)), apply=1)
 
@@ -1597,7 +1604,9 @@ def hotkey_switch_jumptype(shift=0):
             idc.patch_byte(ea + 1, idc.get_wide_byte(ea + 1) ^ 1)
     # Shift-J Swaping between jmp and jz (or whatever)
     else:
-        if isAnyJmp(ea):
+        if isCall(ea):
+            nassemble(ea, "jmp 0x{:x}".format(GetTarget(ea)), apply=1)
+        elif isAnyJmp(ea):
             if isConditionalJmp(ea):
                 hotkey_switch_jumptype.last_ea = ea
                 hotkey_switch_jumptype.last_asm = dii(ea, 6)
