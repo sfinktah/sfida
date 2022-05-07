@@ -1,7 +1,7 @@
 ## The Generic Rangertte
 
 import os
-from execfile import make_refresh
+from exectools import make_refresh
 refresh_ranger = make_refresh(os.path.abspath(__file__))
 refresh = make_refresh(os.path.abspath(__file__))
 """ 

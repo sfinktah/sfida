@@ -1,7 +1,7 @@
 import os
 import idaapi
 
-from execfile import make_refresh, make_auto_refresh, execfile
+from exectools import make_refresh, make_auto_refresh, execfile
 refresh_hexrayfucker = make_refresh(os.path.abspath(__file__))
 refresh = make_refresh(os.path.abspath(__file__))
 check_for_update = make_auto_refresh(os.path.abspath(__file__))
@@ -126,7 +126,7 @@ class FuncArgs:
                 fnName, returnType = returnType, fnName
 
             if fnPtr:
-                print("    We have a void (__fastcall *name)(__int64 a1, ...) situation...")
+                print("[FuncArgs::parse] We have a void (__fastcall *name)(__int64 a1, ...) situation: {}".format(re_res))
                 decl = "{} {}{}".format(returnType, string_between('*', ')', fnPtr).strip('*'), fnArgs)
                 return
 

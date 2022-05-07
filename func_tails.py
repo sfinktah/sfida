@@ -4,7 +4,7 @@
 #     ida_bytes.patch_bytes(int(k), v)
 #     forceCode(int(k), len(v))
 
-#  from execfile import make_refresh
+#  from exectools import make_refresh
 import os
 import re
 import ida_funcs, idc, ida_bytes, idautils
@@ -14,7 +14,7 @@ from collections import deque
 if not idc:
     from idb.idapython import idautils
     from di import diida
-    from execfile import make_refresh
+    from exectools import make_refresh
     #  from function_address_export import _node_format
     from helpers import UnPatch
     from python3.idc_bc695 import GetFunctionName
@@ -142,6 +142,11 @@ class AdvanceInsnList(object):
             start_ea
             end_ea
         """
+        if isinstance(ea, GenericRange):
+            insns=[FuncTailsInsn(x) for x in idautils.Heads(ea.start, ea.trend)]
+            ea = start_ea = ea.start
+
+
         self._list_insns = insns
         self._list_insn_count = insn_count
         self._list_byte_count = byte_count
@@ -197,6 +202,10 @@ class AdvanceInsnList(object):
     @property
     def ea(self):
         return self._list_ea
+
+    @property
+    def target(self):
+        return self._list_insns[-1].target
 
     def __pprint_repr__(self, *args, **kwargs):
         if isinstance(kwargs, dict):
@@ -329,6 +338,20 @@ class FuncTailsInsn(object):
         :insn_errors: @todo
 
         """
+        if insn is None or isinstance(insn, int):
+            if ea is None:
+                ea = insn
+            insn=diida(ea)
+            text=insn
+            size=MyGetInstructionLength(ea)
+            refs_to=set(xrefs_to(ea, filter=lambda x, *a: x.type != fl_F))
+            
+            if IsRef(ea):
+                label = idc.get_name(ea)
+                if label.startswith("0x"):
+                    label = "loc_" + string_between('0x', '', label, inclusive=1)
+                labels = [label]
+
         self._insn_text = text
         self._insn_ea = ea
         self._insn_sp = sp
@@ -348,6 +371,7 @@ class FuncTailsInsn(object):
         self._insn_flow_refs_to = flow_refs_to
 
         self._insn_target = None
+
 
         if (isAnyJmpOrCall(ea)):
             self._insn_target = GetTarget(ea)
@@ -622,7 +646,7 @@ class FuncTailsInsn(object):
 
 
 def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
-               code=True, patches=None, dead=False, showEa=True, showNops=False, output=None,
+               code=True, patches=None, dead=False, showEa=True, showUnused=False, showNops=False, output=None,
                quiet=False, removeLabels=True, disasm=False, externalTargets=None,
                returnAddrs=False, returnFormat=None, fmt=None, fmtLabel=None,
                showComments=True, extra_args=dict()):
@@ -977,6 +1001,7 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
     ordered = list()
     nonheadtargets = set()
     append_later = list()
+
     while len(q):
         start = q.pop(0)
         if start not in chunkheads:
@@ -1120,6 +1145,7 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
                             #  q.append(ctarget)
 
         ordered.extend(heads)
+
         if not len(q) and append_later:
             q.extend(append_later)
 
@@ -1246,6 +1272,10 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
             out('    ; [warn] unusedchunks {} {}'.format(len(chunkheads), asHexList(chunkheads)))
         )
         errorObjects.extend([FuncTailsUnusedChunk(x) for x in chunkheads])
+        if showUnused:
+            for head in chunkheads:
+                for insn in AdvanceToMnemEx(head):
+                    print("{}".format(insn.labeled_indented))
     if nonheadtargets:
         errors.append(
             out('    ; [info] non-chunkhead targets: {}'.format([hex(x) for x in nonheadtargets]))

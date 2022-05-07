@@ -11,13 +11,13 @@ import idc
 from idc import BADADDR, LocByName, MakeNameEx, Wait, SegName, Demangle, Qword, GetTrueName
 from idc import SEARCH_NOSHOW, SEARCH_NEXT, SEARCH_DOWN, SEARCH_CASE, DEMNAM_FIRST
 #  from underscoretest import _
-from execfile import _import
+from exectools import _import
 #  from sfida.sf_common import isStringish
 #  from sfida.sf_is_flags import IsFuncHead, HasUserName
 #  from sfida.sf_string_between import string_between
 
 #  retrace = lambda ea, *a, **k: unpatch_func(ea)
-from execfile import make_refresh
+from exectools import make_refresh
 refresh_membrick = make_refresh(os.path.abspath(__file__))
 refresh = make_refresh(os.path.abspath(__file__))
 
@@ -281,6 +281,65 @@ def find_checksummers3():
 
     return [e for e in FindInSegments(pattern, '.text', None, predicate_checksummers)]
 
+
+def find_checksummers6():
+    """
+    48 8b 05 ?? ?? ?? ?? 
+    48 89 45 68 
+    48 8d 05 ?? ?? ?? ?? 
+    48 89 45 48 
+    48 8b 05 ?? ?? ?? ?? 
+    48 f7 d8 
+    48 03 45 48 
+    48 89 45 48 
+    48 8b 45 48
+
+    48 8b 05 ?? ?? ?? ??
+    48 89 45 ??
+    48 8d 05 ?? ?? ?? ??
+    48 89 45 ??
+    48 8b 05 ?? ?? ?? ??
+    48 f7 d8
+    48 03 45 ??
+    48 89 45 ??
+    48 8b 45 ??
+
+
+
+    """
+
+    """
+    00  48 8B 05 9A 28 35 01                          mov     rax, cs:o_imagebase_189
+    07  48 89 45 68                                   mov     [rbp+68h], rax
+    11  48 8D 05 B1 E2 6A 00                          lea     rax, ArxanChecksumCallsGetNextRange_235
+    18  48 89 45 48                                   mov     [rbp+48h], rax
+    22  48 8B 05 E2 5C 8A FD                          mov     rax, cs:o_arxanchecksumcallsgetnextrange_235
+    29  48 F7 D8                                      neg     rax
+    32  48 03 45 48                                   add     rax, [rbp+48h]
+    36  48 89 45 48                                   mov     [rbp+48h], rax
+    40  48 8B 45 48                                   mov     rax, [rbp+48h]
+    """
+    def predicate_checksummers(ea):
+        o_rel = 14
+        o_abs = 25
+        rel = mem(ea).add(o_rel).rip(4).val()
+        abso = idc.get_qword(mem(ea).add(o_abs).rip(4).val())
+        #  fnName = nameIfContainsElse(abso, "Arxan", "Decider", "ArxanDecider")
+        if rel == abso:
+            #  mem(ea).add(o_abs).rip(4).label("p{}_AbsAddressSelf".format(fnName))
+            #  mem(ea).add(o_rel).rip(4).label(fnName)
+            #  mem(abso).label(fnName)
+            mem(abso).label('ArxanChecksumActual6')
+            return abso
+        else:
+            print("{:x}: rel: {:x}, abso: {:x}".format(ea, rel, abso))
+        return False
+
+    pattern = '48 8b 05 ?? ?? ?? ?? 48 89 45 ?? 48 8d 05 ?? ?? ?? ?? 48 89 45'
+
+    return [e for e in FindInSegments(pattern, '.text', None, predicate_checksummers)]
+
+
 def find_trace_hooks():
     patterns=[
         # Hook Tracing
@@ -296,6 +355,7 @@ def find_trace_hooks():
         # Hook Detection
         "80 39 ff 74 0e 8a 01 04 17 41 3a c5 76 05 80 39 90",
     ]
+    return [FindInSegments(x) for x in patterns]
 
 
 def find_checksummers4():
@@ -638,6 +698,7 @@ def find_all_checksummers():
     cs = find_checksummers()
     cs.extend( find_checksummers2() )
     cs.extend( find_checksummers3() )
+    cs.extend( find_checksummers6() )
     return cs
 
 debug = 0
@@ -670,15 +731,18 @@ def find_shifty_stuff():
     # retrace_list(r)
     r = {}
     cs1 = find_checksummers()
-    print("checksummers: {}".format(hex(r)))
+    print("checksummers: {}".format(hex(cs1)))
     cs2 = find_checksummers2()
-    print("checksummers2: {}".format(hex(r)))
+    print("checksummers2: {}".format(hex(cs2)))
+    cs6 = find_checksummers6()
+    print("checksummers6: {}".format(hex(cs6)))
     cs3 = find_checksummers3()
-    results['cs'] = [cs0, cs1, cs2, cs3]
-    print("checksummers...")
-    print([idc.get_func_name(x) for x in r])
-    LabelManyAddresses(r, "ArxanChecksumTest", force=1)
-    retrace_list(r)
+    print("checksummers3: {}".format(hex(cs3)))
+    results['cs'] = [cs0, cs1, cs2, cs3, cs6]
+    #  print("checksummers...")
+    #  print([idc.get_func_name(x) for x in r])
+    #  LabelManyAddresses(r, "ArxanChecksumTest", force=1)
+    #  retrace_list(r)
     print("{}".format("lame_memcpys"))
     results['memcpy'] = find_lame_memcpys()
     # retrace_list(r)
@@ -1000,6 +1064,8 @@ def FindInSegments(searchstr, segments=None, limit=None, predicate=None, iterate
                 pr = predicate(r)
                 if not pr:
                     skip = True
+                elif isinstance(pr, int) and pr > ida_ida.cvar.inf.min_ea:
+                    r = pr
             if not skip:
                 if iteratee and callable(iteratee):
                     r = iteratee(r)
@@ -1217,6 +1283,7 @@ class membrick_memo(object):
         """
         self.chained = False
         self.errored = False
+        self.errors = []
         # self.object = getattr(obj, 'obj') if 'membrick_memo' in str(type(obj)) else obj
         #  print('obj: {}: {}'.format(type(obj), obj))
         self.object = getattr(obj, 'obj') if hasattr(obj, 'obj') else obj
@@ -1291,10 +1358,19 @@ class membrick_memo(object):
         """
         return membrick_memo(self.obj, self.pattern)
 
-    def error_return_chained(self):
+    def print_error(self, reason):
+        print("[membrick::error] {}".format(reason))
+
+    def error_return_chained(self, reason=None):
+        if reason:
+            self.print_error(reason)
+            self.errors.append(reason)
         return self
 
-    def error_return(self):
+    def error_return(self, reason=None):
+        if reason:
+            self.print_error(reason)
+            self.errors.append(reason)
         return not self.errored
 
     def in_error(self):
@@ -1364,9 +1440,7 @@ class membrick_memo(object):
         found = -1
         results = []
         if self.pattern is None:
-            print("self.pattern is None")
-            self.errored = True
-            return self.error_return()
+            return self.error_return("self.pattern is None")
 
         while True:
             if found > -1:
@@ -1383,18 +1457,14 @@ class membrick_memo(object):
         pos = 0
         found = -1
         if self.pattern is None:
-            print("self.pattern is None")
-            self.errored = True
-            return self.error_return_chained()
+            return self.error_return_chained("self.pattern is None")
 
         while found < index:
             if found > -1:
                 pos += 11
             pos = self.pattern.find("?? ?? ?? ??", pos);
             if pos == -1:
-                print("?? ?? ?? ?? x {} not found".format(index))
-                self.errored = True
-                return self.error_return_chained()
+                return self.error_return_chained("?? ?? ?? ?? x {} not found".format(index))
             found += 1
 
         print(".add({}).rip(4)".format(pos // 3))
@@ -1404,9 +1474,7 @@ class membrick_memo(object):
         return self
         results = FindInSegments(self.original_object)
         if len(results) != num:
-            print("pattern({}) [{}] found {} times instead of {}".format(self.original_object, name, len(results), num))
-            self.errored = True
-            return self.error_return()
+            return self.error_return("pattern({}) [{}] found {} times instead of {}".format(self.original_object, name, len(results), num))
         self.results = results
         return self
 
@@ -1416,9 +1484,7 @@ class membrick_memo(object):
         if num < len(self.results):
             return self._wrap(self.results[num])
         else:
-            print("result {} not found ({} results exist)".format(num, len(self.results)))
-            self.errored = True
-            return self.error_return()
+            return self.error_return("result {} not found ({} results exist)".format(num, len(self.results)))
 
     #  ti = idaapi.tinfo_t()
     #  ti.deserialize(None, t[0], t[1])
@@ -1429,8 +1495,12 @@ class membrick_memo(object):
             return idc.get_type(self.val())
         if not type:
             return self
+        if not IsHead(self.val()):
+            return self.error_return_chained("cannot set type on non-head at 0x{:x}".format(self.val()))
+        if not IsFuncHead(self.val()) and not IsData(self.val()):
+            return self.error_return_chained("cannot set type on non-data and non-func-head at 0x{:x}".format(self.val()))
         if not idc.SetType(self.val(), type):
-            print("error setting type at '0x{:x}' from {} to {}".format(self.val(), idc.get_type(self.val()), type))
+            return self.error_return_chained("could not set type at 0x{:x} from {} to {}".format(self.val(), idc.get_type(self.val()), type))
         return self
 
     def As(self, type):

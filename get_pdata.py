@@ -1,7 +1,8 @@
 import os, re, itertools
+import idc
 from glob import glob
 from string_between import string_between
-from execfile import execfile, make_refresh
+from exectools import execfile, make_refresh
 refresh_pdata = make_refresh(os.path.abspath(__file__))
 refresh = make_refresh(os.path.abspath(__file__))
 from JsonStoredList import JsonStoredDict, json_save_safe
@@ -9,6 +10,7 @@ from pprint import PrettyPrinter
 from mypprint import MyPrettyPrinter
 pp = MyPrettyPrinter(indent=4).pprint
 pf = MyPrettyPrinter(indent=4).pformat
+
 
 native_structs = """
     typedef int Hash;
@@ -207,7 +209,7 @@ def skip_to_pdata(ea, limit=None):
             raise RuntimeError("ea was none")
         if ea == limit:
             return -1
-        return len(seg_refs_to(ea, '.pdata')) > 0
+        return len(seg_refs_to(ea, '.pdata')) > 0 and _.any(get_unwind_info(ea))
     r = SkipJumps(ea, until=is_pdata, untilInclusive=True)
     if r == limit:
         return 0

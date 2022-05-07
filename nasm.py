@@ -2,7 +2,7 @@ import os
 import re
 import subprocess
 import idc
-from execfile import _find as find
+from exectools import _find as find
 # from hotkey_utils import bytes_as_hex
 # from idc_bc695 import GetIdbPath, GetInputFile
 # from obfu_helpers import PatchBytes
@@ -12,7 +12,7 @@ from execfile import _find as find
 # from start import debug, home
 
 
-from execfile import make_refresh
+from exectools import make_refresh
 refresh_nasm = make_refresh(os.path.abspath(__file__))
 refresh = make_refresh(os.path.abspath(__file__))
 

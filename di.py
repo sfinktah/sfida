@@ -13,7 +13,7 @@ from string_between import string_between
 from idc import *
 
 try:
-    from execfile import make_refresh, execfile, _import
+    from exectools import make_refresh, execfile, _import
     #  _import("from sfida.sf_common import asBytes, isInt")
     #  _import("from sftools import eax")
     #  _import("from sfida.sf_string_between import string_between")

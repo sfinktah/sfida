@@ -6,7 +6,7 @@ import itertools
 from underscoretest import _
 from braceexpand import braceexpand
 from collections import defaultdict
-from execfile import make_refresh
+from exectools import make_refresh
 from attrdict1 import SimpleAttrDict
 import pickle
 

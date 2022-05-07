@@ -475,7 +475,7 @@ def sig_maker_auto_zmq(ea, colorise=False, force=False, special=False):
         # this will make subs or globals or smth
         #  get_instructions_chunked(fnStart, fnEnd, 1024, _globals = _old_globals)
         #  _subs = sig_subs(fnStart, filter=lambda fnLoc, fnName: not ignore_function_name(fnName))
-        _globals = sig_globals(fnStart)
+        _globals = sig_globals(fnStart, fullFuncTypes=True)
 
         pattern = " ".join(make_sig(get_bytes_chunked(fnStart, fnEnd, 128), fnStart))
         #  pattern = pattern[0:(3*64)-1]
@@ -524,7 +524,16 @@ def sig_maker_auto_zmq(ea, colorise=False, force=False, special=False):
                 desc = "_" + idc.get_func_name(ea)
             else:
                 desc = TagRemoveSubstring(fnName)
-            _globals = sig_globals(fnStart)
+            _globals = sig_globals(fnStart, fullFuncTypes=True)
+            # added to try and stop SetType(ea, 'int __fastcall(arg, arg') -- i.e. no func name
+            # # untested
+            for _g in _globals:
+                if _g['type'].endswith(')'):
+                    _g['type'] = _g['type'].replace('void (*)(', 'void (*) fn(')
+                    # dprint("[sig_maker_auto_zmq] _g")
+                    print("[sig_maker_auto_zmq] _g:{}".format(_g))
+                    
+
             req = {'cmd':'aob', 'version':local_version,
                 'pattern':pattern, 'description':desc, 'address':_exists or ea,
                 'decl':decl, 'globals':_globals, 'subs':[],
@@ -591,6 +600,7 @@ def sig_maker_all(pattern=None, colorise=False):
                 while pattern and not re.match(pattern, fnName):
                     ea = next(iter)
                     fnName = idc.get_func_name(ea)
+                print('matched pattern with {}'.format(fnName))
             else:
                 ea = next(iter)
             if getglobal('m', None, list) and getglobal('l', None, list):
@@ -664,7 +674,7 @@ def ping(port = 5558):
     message = socket.recv()
     print(("%s" % message))
 
-def zmclient(_host=None, _port=None, pattern=None):
+def zmclient(pattern=None, _host=None, _port=None):
     global host
     if _host:
         host = _host

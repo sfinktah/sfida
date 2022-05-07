@@ -2,8 +2,8 @@ import os, sys
 from idc import *
 import idaapi
 import idautils
-from execfile import _import
-_import("from execfile import execfile")
+from exectools import _import
+_import("from exectools import execfile")
 
 _cwd = os.path.dirname(os.path.realpath(os.curdir))
 _ourname = sys.argv[0]
@@ -17,7 +17,7 @@ home = scriptDir
 
 # debug = 0
 
-from execfile import execfile, _import, _require
+from exectools import execfile, _import
 refresh_obfu = make_refresh(os.path.abspath(__file__))
 refresh = make_refresh(os.path.abspath(__file__))
 

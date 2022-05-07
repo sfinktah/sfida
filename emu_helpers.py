@@ -10,7 +10,7 @@ import re
 from glob import glob
 
 try:
-    from execfile import execfile, make_refresh
+    from exectools import execfile, make_refresh
     refresh_emu_helpers = make_refresh(os.path.abspath(__file__))
     refresh = make_refresh(os.path.abspath(__file__))
 except ModuleNotFoundError:
@@ -154,7 +154,7 @@ def read_emu_glob(fn, path=None):
     globbed.extend(list(glob(fns)))
     print('globbing... {}'.format(fns))
     print('globbed: {}'.format(globbed))
-    read_emu(globbed)
+    return read_emu(globbed)
 
 def make_native_patchfile(ea=None, outFilename=None, noImport=False, width=76):
     import base64
@@ -300,6 +300,13 @@ def read_emu(fn=None):
             if diffs:
                 patch_bytes(base, b)
 
+            idc.create_insn(base)
+            if 'EaseCode' in globals():
+                try:
+                    EaseCode(base)
+                except AdvanceFailure:
+                    pass
+
             return fn.split('_', 3)[3], len(b), diffs
 
     return 0
@@ -356,23 +363,23 @@ def match_emu(ea=None, size=None, path=None, retnAll=False):
         if file_exists(pickle_fn):
             match_emu._files = pickle.loads(file_get_contents_bin_spread(pickle_fn))
         else:
-            print("database being generated, this make take some times...")
+            print("database being generated, this only happens once, but may take a few minutes...")
             # generate new list
             for _subdir in subdirs:
                 for fn in glob("{0}/{1}/*/*/*.bin".format(path.rstrip('/'), _subdir)):
                     bn = os.path.basename(fn)
                     addr,  bn = string_between_splice('_',   '_', bn, repl='')
-                    size,  bn = string_between_splice('__',  '_', bn, repl='')
-                    arxan, bn = string_between_splice('___', '.', bn, repl='')
+                    _size,  bn = string_between_splice('__',  '_', bn, repl='')
+                    arxan, bn = string_between_splice('___', '.', bn, repl='', greedy=1)
 
                     addr = parseHex(addr, 0)
-                    size = parseHex(size, 0)
+                    _size = parseHex(_size, 0)
 
-                    if min_ea <= addr <= max_ea and size > 0:
-                        match_emu._files["maxsize"] = max(match_emu._files["maxsize"], size)
+                    if min_ea <= addr <= max_ea and _size > 0:
+                        match_emu._files["maxsize"] = max(match_emu._files["maxsize"], _size)
                         if addr not in match_emu._files[_subdir]:
                             match_emu._files[_subdir][addr] = defaultdict(list)
-                        match_emu._files[_subdir][addr][size].append(arxan)
+                        match_emu._files[_subdir][addr][_size].append(arxan)
 
             print("pickling files")
             file_put_contents_bin(pickle_fn, pickle.dumps(match_emu._files))
@@ -429,6 +436,12 @@ def check_emu(ea=None, size=None, path=None, auto=None):
 
     if isinstance(ea, list):
         return [check_emu(x) for x in ea]
+
+    if ea is None:
+        ea, end_ea = get_selection_or_ea()
+        size = end_ea - ea
+        if size < GetInsnLen(ea):
+            size = GetInsnLen(ea)
 
     results = dict()
     ea = eax(ea)
@@ -569,7 +582,11 @@ def spread_files(path):
     if not dir_exists(dn):
         print("Error - dir does not exist")
         return
+    count = len(os.listdir(path))
+    p = ProgressBar(count, count)
+    good = bad = 0
     for fn in os.listdir(path):
+        p.update(good, bad)
         if fn.endswith(".bin"):
             subdirs = []
             hash = joaat(fn);
@@ -577,7 +594,15 @@ def spread_files(path):
                 part = hash & (64 - 1)
                 hash >>= 6
                 subdirs.append("{:02}".format(part))
-            dstpath = os.path.join(dn, os.sep.join(subdirs))
+            dstpath = os.path.join(dn, os.sep.join(subdirs)).replace('written2', 'written')
             os.makedirs(dstpath, exist_ok=True)
-            if not file_exists(os.path.join(dstpath, fn)):
-                os.rename(os.path.join(path, fn), os.path.join(dstpath, fn))
+            dstname = os.path.join(dstpath, fn)
+            srcname = os.path.join(path, fn)
+            if not file_exists(dstname):
+                good += 1
+                os.rename(srcname, dstname)
+            else:
+                bad += 1
+                os.unlink(srcname)
+        else:
+            bad += 1

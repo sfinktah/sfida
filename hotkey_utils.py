@@ -43,7 +43,7 @@ if not idc:
     from start import *
     from string_between import string_between, string_between
 
-from execfile import make_refresh
+from exectools import make_refresh
 refresh_hotkey_utils = make_refresh(os.path.abspath(__file__))
 refresh = make_refresh(os.path.abspath(__file__))
 
@@ -106,7 +106,7 @@ class MyHotkeys(object):
         #  print("[helpers::load_hotkeys] shortcut:{}, 'func_name':{}, ctx:{}".format(hotkey.shortcut, 'func_name', not not ctx))
         if ctx:
             if ida_kernwin.del_hotkey(ctx):
-                print("[+] Removed previous binding: %s to %s" % (func_name, shortcut))
+                # print("[+] Removed previous binding: %s to %s" % (func_name, shortcut))
                 pass
             else:
                 print("[-] Couldn't remove previous binding: %s to %s" % (func_name, shortcut))
@@ -123,7 +123,7 @@ class MyHotkeys(object):
         self._remove(hotkey)
         new_ctx = ida_kernwin.add_hotkey(shortcut, func)
         if new_ctx:
-            print("[+] Bound %s to %s" % (func_name, shortcut))
+            # print("[+] Bound %s to %s" % (func_name, shortcut))
             hotkey.ctx = new_ctx
             hotkey.active = True
         else:
@@ -613,39 +613,39 @@ def make_sig_from_comb(_chunks, addresses, ripRelAsQuad=False, replValues=None):
     return newchunks
 
 
-def sig_subs(ea=None, sig='', offset=0, filter=None):
-    sent = set()
-    if ea is None:
-        ea = idc.get_screen_ea()
-    ea = GetFuncStart(ea)
-    results = []
-    for (startea, endea) in Chunks(ea):
-        for head in Heads(startea, endea):
-            d = de(head)
-            if d and isinstance(d, list):
-                d = d[0]
-                if d.mnemonic in ('JMP', 'CALL') and d.usedRegistersMask == 0:
-                    sub = d.operands[0].value
-                    if HasUserName(sub):
-                        name = idc.get_name(sub)
-                        if filter and not filter(sub, name):
-                            continue
-                        if name.startswith('?'):
-                            continue
-                        if sub not in sent:
-                            sent.add(sub)
-                            if sig:
-                                print(sig_protectscan(sig, head - ea + 1 + offset, 4, sig_type_fn(sub), idc.get_name(sub), func=1))
-                            results.append( \
-                                    { 'ea': sub,
-                                      'name': TagRemoveSubstring(idc.get_name(sub)),
-                                      'path': [('offset', head - ea + 1 + offset), ('is_mnem', idc.print_insn_mnem(head)), ('rip', 4), ('name', TagRemoveSubstring(idc.get_name(sub))), ('type', idc.get_type(sub))],
-                                      'sub' : True,
-                                      'type': idc.get_type(sub) })
-    return results
+#  def sig_subs(ea=None, sig='', offset=0, filter=None):
+    #  sent = set()
+    #  if ea is None:
+        #  ea = idc.get_screen_ea()
+    #  ea = GetFuncStart(ea)
+    #  results = []
+    #  for (startea, endea) in Chunks(ea):
+        #  for head in Heads(startea, endea):
+            #  d = de(head)
+            #  if d and isinstance(d, list):
+                #  d = d[0]
+                #  if d.mnemonic in ('JMP', 'CALL') and d.usedRegistersMask == 0:
+                    #  sub = d.operands[0].value
+                    #  if HasUserName(sub):
+                        #  name = idc.get_name(sub)
+                        #  if filter and not filter(sub, name):
+                            #  continue
+                        #  if name.startswith('?'):
+                            #  continue
+                        #  if sub not in sent:
+                            #  sent.add(sub)
+                            #  if sig:
+                                #  print(sig_protectscan(sig, head - ea + 1 + offset, 4, sig_type_fn(sub), idc.get_name(sub), func=1))
+                            #  results.append( \
+                                    #  { 'ea': sub,
+                                      #  'name': TagRemoveSubstring(idc.get_name(sub)),
+                                      #  'path': [('offset', head - ea + 1 + offset), ('is_mnem', idc.print_insn_mnem(head)), ('rip', 4), ('name', TagRemoveSubstring(idc.get_name(sub))), ('type', idc.get_type(sub))],
+                                      #  'sub' : True,
+                                      #  'type': idc.get_type(sub) })
+    #  return results
 
 
-def sig_globals(ea=None, sig='', sig_offset=0):
+def sig_globals(ea=None, sig='', sig_offset=0, fullFuncTypes=False):
     sent = set()
     if ea is None:
         ea = idc.get_screen_ea()
@@ -695,12 +695,18 @@ def sig_globals(ea=None, sig='', sig_offset=0):
                             _rip = instruction_length - offset
                             _type = str(idc.get_type(global_address))
                             if isinstance(_type, str):
-                                _type = _type.replace("__fastcall", "(*)").replace("__stdcall", "(*)").replace("None", "void*")
+                                if fullFuncTypes:
+                                    _type = _type.replace("__fastcall", "(*)").replace("__stdcall", "(*)").replace("None", "void*").replace("(*)", "(*) func")
+                                else:
+                                    _type = _type.replace("__fastcall", "(*)").replace("__stdcall", "(*)").replace("None", "void*")
+                                # dprint("[sig_globals] _type")
+                                print("[sig_globals] _type:{} fullFuncTypes:{}".format(_type, fullFuncTypes))
+                                
 
                             sent.add(global_address)
                             print(
                                 sig_protectscan(sig, _offset, _rip,
-                                                _type, idc.get_name(global_address), func=IsFuncHead(global_address)))
+                                                _type, idc.get_name(global_address), func=IsFuncHead(global_address), fullFuncTypes=fullFuncTypes))
                             found += 1
                             results.append( \
                                     { 'ea': global_address,
@@ -864,7 +870,7 @@ def sig_maker_chunked(ea=None):
     print("\n".join(make_sig(get_bytes_chunked(), ea or idc.SelStart())))
 
 
-def sig_protectscan(pattern, add=0, rip=-1, type_="void*", name=None, rtg=True, func=False):
+def sig_protectscan(pattern, add=0, rip=-1, type_="void*", name=None, rtg=True, func=False, fullFuncTypes=False):
     if add:
         while pattern[0:3] == "?? " and len(pattern):
             pattern = pattern[3:]

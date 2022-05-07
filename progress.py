@@ -5,6 +5,9 @@
 """
 
 import ida_kernwin
+#  from exectools import _import, _from
+#  _from('slowtrace_helpers import make_transpose_fn')
+#  _from('hex import asList')
 
 def _get_console_width():
     output_window_title = "Output window"

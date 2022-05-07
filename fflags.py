@@ -5,7 +5,9 @@ __version__ = ",".join(map(lambda x: str(x), __version_info__))
 # &
 # &.update_file(__file__)
 
-from execfile import make_refresh
+import os
+from idc import *
+from exectools import make_refresh
 refresh_fflags = make_refresh(os.path.abspath(__file__))
 refresh = make_refresh(os.path.abspath(__file__))
 

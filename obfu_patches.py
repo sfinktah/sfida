@@ -198,6 +198,9 @@ def set_sp_factory(mark, offset=0):
 
         # printi("[debug] _spd:{}, value:{}, disp:{}, spd:{}".format(_spd, value, disp, spd))
         dst = idc.get_item_head(ea + len(search))
+        cmt = "[SPD={:x}] '{}' ({:x} + {:x} - {:x} ({}))".format(_spd, mark, value, disp, spd, offset if offset is not None else "")
+        Commenter(idc.prev_head(dst), "line").remove_matching(r'^\[SPD=')
+        Commenter(idc.prev_head(dst), "line").add(cmt).commit()
         printi("dst started: {:x}".format(dst))
         move_to_next = False
         if isNop(idc.prev_head(dst)):
@@ -213,9 +216,6 @@ def set_sp_factory(mark, offset=0):
         idc.add_user_stkpnt(dst, _spd + offset)
 
         # cmt = "[SPD={}] '{}'".format( hex(_spd), mark )
-        cmt = "[SPD={:x}] '{}' ({:x} + {:x} - {:x} ({}))".format(_spd, mark, value, disp, spd, offset if offset is not None else "")
-        Commenter(dst, "line").remove_matching(r'^\[SPD=')
-        Commenter(dst, "line").add(cmt).commit()
 
     return patch
 

@@ -7,10 +7,11 @@ import json
 import os
 import idc
 import circularlist
+from static_vars import *
 from attrdict1 import SimpleAttrDict
 #  import pydot.src.pydot
 
-from execfile import make_refresh
+from exectools import make_refresh
 refresh_helpers = make_refresh(os.path.abspath(__file__))
 
 """
@@ -21,7 +22,7 @@ See: help2()
 
 def helpers():
     print("""
-    EA()      short for ScreenEA (return current address)
+    EA()      short for idc.get_screen_ea (return current address)
     pos()     return/show position in hex with label name
     down()    move down one line
     up()    move up one line
@@ -32,7 +33,7 @@ def helpers():
 
 EA_circular = circularlist.CircularList(64)
 def EA():
-    ea = ScreenEA()
+    ea = idc.get_screen_ea()
     EA_circular.append(ea)
     return ea
 
@@ -40,10 +41,10 @@ def EAhist():
     for ea in EA_circular:
         print("{:x} {}".format(ea, idc.get_name(ea)))
 
-def F(ea = ScreenEA()):
+def F(ea = idc.get_screen_ea()):
     return idc.get_full_flags(ea)
     
-def pos(ea = ScreenEA()):
+def pos(ea = idc.get_screen_ea()):
     if type(ea) is tuple:
         ea = eval(ea[0])
     # print("type(ea): {0}, ea: {1}".format(type(ea), ea))
@@ -53,7 +54,7 @@ def pos(ea = ScreenEA()):
 def traversalFactory(*args):
     def traversalFn(ea = None):
         if ea is None:
-            ea = ScreenEA()
+            ea = idc.get_screen_ea()
         targets = [x for x in [x(ea) for x in args] if x != idc.BADADDR]
         for target in targets:
             if not IsCode_(target):
@@ -163,7 +164,7 @@ def PrevMakeHead(ea=None):
 def smartTraversalFactory(fn1, direction = -1):
     def next(ea = None, noJump = False):
         if ea is None:
-            ea = ScreenEA()
+            ea = idc.get_screen_ea()
         target = fn1(ea)
         idc.create_insn(ea)
         idc.create_insn(target)
@@ -340,7 +341,7 @@ def alpha(byte):
 
 
 strings = set()
-def autoStringBlocks(ea = ScreenEA()):
+def autoStringBlocks(ea = idc.get_screen_ea()):
     skipped = 0
     counter = 0
     while alpha(Byte(ea)) or skipped < 1000:
@@ -355,7 +356,7 @@ def autoStringBlocks(ea = ScreenEA()):
         ea = ea + 0x10
     print("Count: %i" % counter)
 
-def autoMakeQwords(ea = ScreenEA, count = -1):
+def autoMakeQwords(ea = idc.get_screen_ea, count = -1):
     plausibleStart = idaapi.cvar.inf.minEA
     plausibleEnd = idaapi.cvar.inf.maxEA
     if count > 0:
@@ -379,7 +380,7 @@ def autoMakeQwords(ea = ScreenEA, count = -1):
             return
         ea += 8
 
-def makeQwords(ea = ScreenEA(), count = 1):
+def makeQwords(ea = idc.get_screen_ea(), count = 1):
     end = ea + 8 * count
     while ea < end:
         if not idc.is_code(F(ea)):
@@ -416,7 +417,7 @@ def colorPopularFunctions():
                 for ref in (crefs + drefs):
                     SetColor(ref, CIC_ITEM, DEFCOLOR)
 
-def trace_back_to_label(ea = None, fn1 = PrevNotTail):
+def trace_back_to_label(ea = None, fn1 = idc.prev_not_tail):
     if ea is None:
         ea = idc.get_screen_ea()
     
@@ -436,7 +437,7 @@ def trace_back_to_label(ea = None, fn1 = PrevNotTail):
         pass
     return ea
 
-def trace_forward(ea = ScreenEA(), fn1 = NextNotTail):
+def trace_forward(ea = idc.get_screen_ea(), fn1 = idc.next_not_tail):
     start = ea
     try:
         nextEA = ea
@@ -454,7 +455,7 @@ def trace_forward(ea = ScreenEA(), fn1 = NextNotTail):
         pass
     return ea
 
-def CheckCode(ea = ScreenEA()):
+def CheckCode(ea = idc.get_screen_ea()):
     mnem = GetMnem(ea)
     if mnem in ['in', 'out']:
         start = trace_back_to_label(ea)
@@ -465,7 +466,7 @@ def CheckCode(ea = ScreenEA()):
     return 0
         
 
-def MakeCodeRepeatedly(ea = ScreenEA()):
+def MakeCodeRepeatedly(ea = idc.get_screen_ea()):
     start = ea
     result = MakeCodeAndWait(ea)
     while result:
@@ -1612,6 +1613,7 @@ class prevpath(object):
         # this should be the flow ref (if such exists)
         if len(xrefs) == 1:
             n = xrefs.pop()
+            self.prev = self.ea
             self.ea = n.frm
             self.extra = n
             return self
@@ -1646,6 +1648,31 @@ class prevpath(object):
 def pprev(ea=None, data=0, stop=None, depth=0, show=0):
     results = []
 
+    def get_unwind_info(offset):
+        record = [0, 0, '']
+        if not offset:
+            return record
+        if offset > ida_ida.cvar.inf.min_ea:
+            offset -= ida_ida.cvar.inf.min_ea
+        for ref in XrefsTo(ida_ida.cvar.inf.min_ea + offset):
+            ea = ref.frm
+            if idc.get_segm_name(ea) == '.pdata':
+                unwind_info = ([x + ida_ida.cvar.inf.min_ea for x in struct.unpack('lll', get_bytes(ea, 12))])
+                if offset + ida_ida.cvar.inf.min_ea == unwind_info[0]:
+                    unwind_info_addr = unwind_info[2]
+                    unwind_info_count = struct.unpack('BBBB', get_bytes(unwind_info_addr, 4))[2]
+                    unwind_bytes = get_bytes(unwind_info_addr, 4 + unwind_info_count * 2)
+                    unwind_hex = hex_string(unwind_bytes) or ''
+                    # record = [hex(ea - ida_ida.cvar.inf.min_ea)[2:], hex(unwind_info_addr - ida_ida.cvar.inf.min_ea)[2:], unwind_hex]
+                    record = [hex(ea - ida_ida.cvar.inf.min_ea)[2:], 0, unwind_hex]
+                    break
+        return record
+
+    def is_pdata(ea):
+        if ea is None or ea is idc.BADADDR:
+            raise RuntimeError("ea was invalid")
+        return len(seg_refs_to(ea, '.pdata')) > 0 and _.any(get_unwind_info(ea), lambda x, *a: not not x)
+
     def history(path):
         return path.start_ea, path.ea, path.insn_history
         history = []
@@ -1678,7 +1705,8 @@ def pprev(ea=None, data=0, stop=None, depth=0, show=0):
             if ea is None:
                 deadpaths.append(path)
                 #  paths.remove(path)
-            elif stop and callable(stop) and stop(ea):
+            elif is_pdata(ea) or stop and callable(stop) and stop(ea):
+                print("pdata! {:3} {:32} {:x} {}".format(path.depth, GetFuncName(path.ea), path.ea, diida(path.ea)))
                 if show:
                     results.append(history(path))
                     graph_results(results)
@@ -1686,15 +1714,23 @@ def pprev(ea=None, data=0, stop=None, depth=0, show=0):
                 return ea
             if ea:
                 if idc.print_insn_mnem(ea) == 'call' and GetTarget(ea) in visited:
-                    print("call:  {:3} {:x} {:32} {}".format(path.depth, path.ea, GetFuncName(path.ea), diida(path.ea)))
+                    print("call:  {:3} {:32} {:x} {}".format(path.depth, GetFuncName(path.ea), path.ea, diida(path.ea)))
                 if isSegmentInXrefsTo(ea, '.pdata') and get_pdata_fnStart(ea) == ea:
-                    print("pdata: {:3} {:x} {:32} {}".format(path.depth, path.ea, GetFuncName(path.ea), diida(path.ea)))
+                    print("pdata: {:3} {:32} {:x} {}".format(path.depth, GetFuncName(path.ea), path.ea, diida(path.ea)))
                 paths.append(path)
 
     for path in deadpaths:
         # if not ida_funcs.is_same_func(path.ea, start_ea):
         if path.terminated == 'branch':
-            print("depth: {:3} {:x} {:16} {:20} {}".format(path.depth, path.ea, GetFuncName(path.ea), diida(path.start_ea), get_name_or_hex(path.history[1]) if len(path.history) > 1 else ''))
+            print("depth: {:3} {:32} {:x} {:20} {}".format(
+                path.depth, 
+                GetFuncName(path.start_ea), 
+                path.start_ea, 
+                diida(path.start_ea), 
+                diida(GetTarget(path.start_ea)),
+                # diida(path.prev),
+                # get_name_or_hex(path.history[1]) if len(path.history) > 1 else ''
+            ))
             if show:
                 results.append(history(path))
                 #  for h in history(path):

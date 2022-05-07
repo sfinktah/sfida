@@ -7,7 +7,7 @@ import ida_kernwin
 import ida_lines
 from PyQt5.QtCore import QTimer
 # -----------------------------------------------------------------------
-from execfile import execfile, _import, make_refresh
+from exectools import execfile, _import, make_refresh
 refresh_ftview = make_refresh(os.path.abspath(__file__))
 refresh = make_refresh(os.path.abspath(__file__))
 

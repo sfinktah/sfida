@@ -5,7 +5,7 @@ import flare_emu
 import itertools
 from braceexpand import braceexpand
 from collections import defaultdict
-from execfile import make_refresh
+from exectools import make_refresh
 from attrdict1 import SimpleAttrDict
 import pickle
 import ida_dbg
@@ -819,6 +819,8 @@ def is_hldchk_msk(c): return hldchk_msk(c) & 0xffff == 0x128
 
 def set_healed_col(ea, end=None):
     if end is not None:
+        [idc.set_color(x, idc.CIC_ITEM, 0x280128) for x in range(ea, end)]
+        return
         return [set_healed_col(x) for x in range(ea, end)]
 
     c = eac(ea)

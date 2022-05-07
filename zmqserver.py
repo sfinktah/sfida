@@ -225,9 +225,9 @@ def zmserver():
                     }
                     """
 
-                    if 'globals' in request and request['globals']:
-                        if isinstance(request['globals'], list):
-                            for item in request['globals']:
+                    if 'globals' in response and response['globals']:
+                        if isinstance(response['globals'], list):
+                            for item in response['globals']:
                                 if item['type']:
                                     failed_types.extend(get_decl_args(item['type']))
 
@@ -276,8 +276,8 @@ def zmserver():
                                             #  m = getattr(m, method)(arg)
                                             #  #  print("mb.{}({}): {}".format(method, arg, m))
 
-                    if 'request_type' in response and isinstance(response['request_type'], list):
-                        if failed_types:
+                    if failed_types:
+                        if 'request_type' in response and isinstance(response['request_type'], list):
                             response['request_type'].extend(failed_types)
                         else:
                             response['request_type'] = failed_types

@@ -1,6 +1,6 @@
 import re, xmltodict
 
-from execfile import make_refresh
+from exectools import make_refresh
 refresh_structmaker = make_refresh(os.path.abspath(__file__))
 refresh = make_refresh(os.path.abspath(__file__))
 ###

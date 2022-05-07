@@ -17,7 +17,7 @@ in each checker which I call `ArxanGetNextRange(uint8_t* guide, arxan_range *ran
 figured from there.
 """
 
-from execfile import make_refresh
+from exectools import make_refresh
 refresh_checksummer = make_refresh(os.path.abspath(__file__))
 refresh = make_refresh(os.path.abspath(__file__))
 
@@ -286,7 +286,7 @@ class arxan_range:
         if self._start == _uint32(-1):
             print("[arxan_range] **** start == -1 ****")
         else:
-            print("[arxan_range] start {:08x}".format(self._start))
+            print("[arxan_range] start {:08x}".format(0x140000000 + self._start))
         return self._start
 
     @property

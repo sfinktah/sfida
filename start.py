@@ -50,9 +50,9 @@ import ida_xref
 from idc import BADADDR
 from superglobals import *
 from underscoretest import _
-from execfile import unload
+from exectools import unload
 unload('execfile')
-from execfile import execfile, make_refresh, make_auto_refresh, _import, _from, _require
+from exectools import execfile, make_refresh, make_auto_refresh, _import, _from
 from pprint import PrettyPrinter
 from mypprint import MyPrettyPrinter
 #  _import("from sfida.sf_is_flags import *")

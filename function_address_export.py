@@ -2,7 +2,7 @@ from idc import *
 import idautils, os, sys, re
 from collections import defaultdict
 
-from execfile import make_refresh
+from exectools import make_refresh
 refresh_function_address_export = make_refresh(os.path.abspath(__file__))
 refresh = make_refresh(os.path.abspath(__file__))
 funclist = dict()
@@ -330,6 +330,41 @@ def get_func_heads_chunk_order(funcea, tailCheck=None):
 
 
     
+def json_save_names(fn):
+    skip = 0
+    numLocs = len(list(idautils.Names()))
+    count = 0
+    lastPercent = 0
+
+    for x in Segments():
+        if SegName(x) != ".text":
+            continue
+
+        for ea, fnName in idautils.Names():
+            count = count + 1
+
+            #  if not HasName(ea): continue
+            #  fnName = idc.get_name(ea, ida_name.GN_VISIBLE)
+            ## need to re-run from 0 to getNearestPlayerToEntity
+            #  if fnName == "getNearestPlayerToEntity":
+            if fnName == "networkEarnFromJob":
+                skip = 0
+            if skip:
+                #  print("skipping: %s" % fnName)
+                continue
+            chunks = list(idautils.Chunks(ea))
+
+            funclist[fnName] = ea - 0x140000000;
+            
+            percent = (100 * count) // numLocs
+            # if percent > lastPercent:
+            # print("%i%%" % percent)
+            if percent > lastPercent:
+                lastPercent = percent
+                print("0x%0x: %s (%i%%)" % (ea, fnName, percent))
+
+    json_save_safe(fn, funclist)
+
 
 def json_save_functions():
     skip = 0
@@ -356,7 +391,6 @@ def json_save_functions():
             if skip:
                 #  print("skipping: %s" % fnName)
                 continue
-            fnFlags = idaapi.get_flags(ea)
             chunks = list(idautils.Chunks(ea))
 
             my_add_func(ea, chunks)
@@ -371,3 +405,4 @@ def json_save_functions():
 
 print("json_save_functions()")
 print("save()")
+print("json_save_names()")

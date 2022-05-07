@@ -19,22 +19,22 @@ else:
     # POSIX rename() is always atomic
     from os import rename as replace
 
-from execfile import make_refresh
+from exectools import make_refresh
 refresh_JsonStoredList = make_refresh(os.path.abspath(__file__))
 refresh = make_refresh(os.path.abspath(__file__))
 
 
-def json_load(_fn, _default=None):
+def json_load(_fn, default=None):
     if _fn.startswith("http"):
         return json.loads(requests.get(_fn).text)
     try:
         with open(_fn, 'r') as f:
             return json.load(f)
     except IOError:
-        if not _default:
+        if default is None:
             raise IOError
-        print("file not found '{}' or some such, making empty object".format(os.path.realpath(_fn)))
-        return _default
+        print("file not found '{}' or some such, making empty {}".format(os.path.realpath(_fn), type(default)))
+        return default
 
 def json_save_safe(dst, json_object):
     if dst.startswith("http"):
@@ -87,20 +87,12 @@ class JsonStoredList(object):
             json_save_safe(self.fn, list(self.d))
 
     def load(self):
-        self.d = self.loadjson(self.fn)
+        self.d = json_load(self.fn, [])
         try:
             self.hash_value = self._hash()
         except TypeError:
             self.hash_value = 0
     
-    def loadjson(self, _fn):
-        try:
-            with open(_fn, 'r') as f:
-                return json.load(f)
-        except IOError:
-            print("file not found '{}' or some such, making empty list".format(os.path.realpath(_fn)))
-            return []
-
 class JsonStoredSet(JsonStoredList):
     def __init__(self, _fn):
         #  cwd = GetIdbPath()
@@ -122,7 +114,7 @@ class JsonStoredSet(JsonStoredList):
             self.hash_value = new_hash
 
     def load(self):
-        self.d = set(self.loadjson(self.fn))
+        self.d = set(json.load(self.fn, set()))
         self.hash_value = self._hash()
     
 class JsonStoredDict(object):
@@ -145,11 +137,8 @@ class JsonStoredDict(object):
         json_save_safe(self.fn, self.d)
 
     def load(self):
-        self.d = self.loadjson(self.fn)
+        self.d = json_load(self.fn, dict())
     
-    def loadjson(self, _fn):
-        return json_load(_fn, dict())
-
 class JsonStoredDefaultDictList(object):
     def __init__(self, _fn):
         #  self.fn = _fn
@@ -167,18 +156,10 @@ class JsonStoredDefaultDictList(object):
 
     def load(self):
         self.d = defaultdict(list)
-        data = self.loadjson(self.fn)
+        data = json_load(self.fn, dict())
         for k, v in data.items():
             self.d[k].extend(v)
     
-    def loadjson(self, _fn):
-        try:
-            with open(_fn, 'r') as f:
-                return json.load(f)
-        except IOError:
-            print("file not found '{}' or some such, making empty dict".format(os.path.realpath(_fn)))
-            return defaultdict(list)
-
 
 # print("JsonStoredList loaded")
 

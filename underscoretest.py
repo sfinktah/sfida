@@ -383,7 +383,7 @@ class underscore(object):
         """ Return the results of applying the iterator to each element.
         """
         newlist = {}
-        for k, v in self._clean.items():
+        for k, v in self.items():
             # if k not in values:  # use indexof to check identity
             k2, v2 = func(v, k, self.obj)
             newlist[k2] = v2
@@ -472,7 +472,7 @@ class underscore(object):
         return self._wrap(type(self.obj)(v for k, v in self.items() if func(v, k, self._clean.obj)))
 
 
-    def filter(self, func):
+    def filter(self, func=lambda x, *a: not not x):
         """ Return all the elements that pass a truth test.
         """
         return self._wrap(list(filter(func, self.obj)))
@@ -553,11 +553,9 @@ class underscore(object):
         """
         return self._wrap(list(filter(lambda val: not func(val), self.obj)))
 
-    def all(self, func=None):
+    def all(self, func=lambda x, *a: not not x):
         """ Determine whether all of the elements match a truth test.
         """
-        if func is None:
-            func = lambda x, *args: x
         self.altmp = True
 
         def testEach(value, index, *args):
@@ -580,13 +578,11 @@ class underscore(object):
         
 
 
-    def any(self, func=None):
+    def any(self, func=lambda x, *a: not not x):
         """
         Determine if at least one element in the object
         matches a truth test.
         """
-        if func is None:
-            func = lambda x, *args: x
         self.antmp = False
 
         def testEach(value, index, *args):

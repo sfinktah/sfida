@@ -925,7 +925,7 @@ class Obfu(object):
 
             # TODO: add these to lists where we need to maximise available bytes to write to
             if Byte(ip) == 0xcc:  # int3
-                if obfu_debugComments: Commenter(ip, "line").add("[obfu::comb] int3")
+                if debugComments: Commenter(ip, "line").add("[obfu::comb] int3")
                 break
             insLen = MakeCodeAndWait(ip, 1, comment=GetFunctionName(ea))
             if idc.is_tail(flags) or not idc.is_code(flags):
@@ -945,7 +945,7 @@ class Obfu(object):
                     raise ObfuFailure("0x%x: comb: still at tail: 0x%x" % (ea, ip))
             else:
                 if ip in self.visited or ip in visited:
-                    if obfu_debugComments: Commenter(ip, "line").add("[obfu::comb] already visited")
+                    if debugComments: Commenter(ip, "line").add("[obfu::comb] already visited")
                     break
 
             # idaapi.set_item_color(ip, 0x222222)
@@ -956,7 +956,7 @@ class Obfu(object):
             if not insLen:
                 printi(("0x%x: 0x%x: Couldn't make any more code... %s" % (ea, ip, GetDisasm(ip))))
                 # raise ObfuFailure("Couldn't make more stuff...")
-                if obfu_debugComments: Commenter(ip, "line").add("[obfu::comb] End of code")
+                if debugComments: Commenter(ip, "line").add("[obfu::comb] End of code")
                 break
 
                 #  while not insLen and count < 15: # and idc.next_head(ip) != NextNotTail(ip):
@@ -981,19 +981,19 @@ class Obfu(object):
             if b == 0xc2 or b == 0xc3 or mnem == "retn":  # retn
                 #  printi("Adding %x" % b)
                 addressList += list(range(ip, ip + insLen))
-                if obfu_debugComments: Commenter(ip, "line").add("[obfu::comb] retn")
+                if debugComments: Commenter(ip, "line").add("[obfu::comb] retn")
                 break
 
 
             elif b == 0xe8 or mnem == "call":  # ff 15 xx xx xx xx
                 addressList += list(range(ip, ip + insLen))
-                if obfu_debugComments: Commenter(ip, "line").add("[obfu::comb] call")
+                if debugComments: Commenter(ip, "line").add("[obfu::comb] call")
                 ip += insLen
                 continue
 
             elif mnem == "jmp":  # b == 0xe9 or b == 0xeb or mnem == "jmp":
                 #  addressList += range(ip, ip + insLen)
-                if obfu_debugComments: Commenter(ip, "line").add("[obfu::comb] unconditional jump")
+                if debugComments: Commenter(ip, "line").add("[obfu::comb] unconditional jump")
                 oldIp = ip
                 if b == 0xe9:
                     ip += idaapi.as_signed(Dword(ip + 1), 32) + 5
@@ -1004,13 +1004,13 @@ class Obfu(object):
                     # the end of a sequence anyway, and it will be matched
                     # against certain patterns for disguising retn
                     addressList += list(range(ip, ip + insLen))
-                    if obfu_debugComments: Commenter(ip, "line").add("[obfu::comb] silly jump")
+                    if debugComments: Commenter(ip, "line").add("[obfu::comb] silly jump")
                     break
                 else:
                     raise ObfuFailure("0x%x: unknown jump type %02x (%s)" % (ip, b, mnem))
 
                 if flags == 0:
-                    if obfu_debugComments: Commenter(oldIp, "line").add("[obfu::comb] invalid jump")
+                    if debugComments: Commenter(oldIp, "line").add("[obfu::comb] invalid jump")
                     break
                 continue
 
@@ -1030,12 +1030,12 @@ class Obfu(object):
             flowRefs = allRefs - jmpRefs
 
             if not len(allRefs):
-                if obfu_debugComments: Commenter(ip, "line").add("[obfu::comb] end of all flow")
+                if debugComments: Commenter(ip, "line").add("[obfu::comb] end of all flow")
                 break
             if not len(flowRefs):
                 ip = list(jmpRefs)[0]
                 if idc.get_full_flags(ip) == 0:
-                    if obfu_debugComments: Commenter(ip, "line").add("[obfu::comb] Invalid Jump")
+                    if debugComments: Commenter(ip, "line").add("[obfu::comb] Invalid Jump")
                     break
             else:
                 ip = list(flowRefs)[0]

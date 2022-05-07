@@ -2,7 +2,7 @@ from idc import *
 import re
 import os
 import sys
-from execfile import _import, _from
+from exectools import _import, _from
 #  _import("from idarest.idarest_client import IdaRestClient")
 
 file_dir = os.path.dirname(__file__)
@@ -12,12 +12,12 @@ sys.path.append(file_dir)
 #  from fuzzywuzzy import fuzz
 #  from fuzzywuzzy import process
 
-BatchMode = _require('BatchMode').BatchMode
+#  BatchMode = _require('BatchMode').BatchMode
 
 __class_maker_struct = []
 __class_maker_member_names = []
 
-from execfile import make_refresh
+from exectools import make_refresh
 refresh_classmaker = make_refresh(os.path.abspath(__file__))
 refresh = make_refresh(os.path.abspath(__file__))
 

@@ -8,7 +8,7 @@ import ida_bytes
 import idaapi
 from idc import *
 
-from execfile import execfile, unload, _import
+from exectools import execfile, unload, _import
 # execfile('di', globals())
 
 # from slowtrace_helpers import eax, get_ea_by_any

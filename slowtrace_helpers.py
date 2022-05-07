@@ -10,7 +10,7 @@ from attrdict1 import SimpleAttrDict
 from collections import defaultdict
 from string_between import string_between
 try:
-    from execfile import _import, _from, execfile
+    from exectools import _import, _from, execfile
 except ModuleNotFoundError:
     from exectools import _import, _from, execfile
 #  _import('from circularlist import CircularList')
@@ -1163,7 +1163,7 @@ def IsSameChunk(ea1, ea2):
     owners1 = set(GetChunkOwners(ea1))
     owners2 = set(GetChunkOwners(ea2))
     # dprint("[IsSameChunk] owners1, owners2")
-    printi("[IsSameChunk] owners1:{}, owners2:{}".format(owners1, owners2))
+    printi("[IsSameChunk] owners1:{:x}, owners2:{:x}".format(owners1, owners2))
     
     if owners1 == owners2 and len(owners1):
         for owner in owners1:
@@ -2147,7 +2147,10 @@ def SkipJumps(ea, apply=False, returnJumps=False, returnTarget=False, until=None
     match_NN_initial = [idaapi.NN_jmp]
     mnem_start = MyGetMnem(ea)
     if conditional:
-        match_NN_initial.extend(range(idaapi.NN_ja, idaapi.NN_jz + 1))
+        if isConditionalJmp(ea):
+            match_NN_initial.extend(range(idaapi.NN_ja, idaapi.NN_jz + 1))
+        else:
+            conditional = False
     if callable(iteratee):
         iteratee(ea, -1, *args, **kwargs)
     while target != idc.BADADDR and not IsUnknown(target):
@@ -2257,7 +2260,8 @@ def SkipJumps(ea, apply=False, returnJumps=False, returnTarget=False, until=None
                         if len(assembled) < prevInsnLen:
                             PatchNops(jmp + len(assembled), prevInsnLen - len(assembled), "SkipJmp")
 
-        if isRet(targets[-1]):
+        if not conditional and isRet(targets[-1]):
+            raise exception("boo2")
             PatchBytes(ea, "c3")
             SetFuncEnd(ea, ea + 1)
 
@@ -8164,7 +8168,7 @@ def auto_name_common_functions():
     for ea in later:
         if Name(ea).startswith(('sub_', 'common:')): print(name_common_function(ea))
 
-def name_common_function(ea=None):
+def name_common_function(ea=None, dryRun=False):
     """
     name_common_function
 
@@ -8174,33 +8178,38 @@ def name_common_function(ea=None):
         return [x for x in [name_common_function(x) for x in ea] if x is not None]
 
     ea = eax(ea)
+    if not IsFuncHead(ea):
+        return
     if idc.get_name(ea).startswith(("__", "return")):
         return
     #  if not IsFuncStart(ea):
         #  return "Is not function start: {}".format(describe_target(ea))
     
-    target = ea
-    if idc.get_segm_name(target) == '.text':
-        refs = xrefs_to(target, include='call|jump')
-        refNames = _.uniq(_.sort([string_between(['_actual', '_ACTUAL'], '', x, inclusive=1, repl='') for x in GetFuncName(refs) if _.contains(x, ['::_0x', '___0x']) and not x.startswith(('common:', 'return_', 'nullsub_'))]) , True)
+    if idc.get_segm_name(ea) == '.text':
+        refs = xrefs_to(ea, include='call|jump')
+        refNames = _.uniq(_.sort([string_between(re.compile('_actual', flags=re.I), '', x, inclusive=1, repl='') for x in GetFuncName(refs) if _.contains(x, ['::_0x', '___0x']) and not x.startswith(('common:', 'return_', 'nullsub_'))]) , True)
+        if not refNames:
+            refNames = _.uniq(_.sort([string_between(re.compile('_actual', flags=re.I), '', x, inclusive=1, repl='') for x in GetFuncName(refs) if _.contains(x, ['::_0x', '___0x']) and not x.startswith(('return_', 'nullsub_'))]) , True)
         otherNames = _.uniq(_.sort([x for x in GetFuncName(refs) if x and not _.contains(x, ['::_0x', '___0x'])]), True)
-        #  callrefs = _.uniq(GetFuncStart([ea for ea in list(CallRefsTo(target)) if idc.get_segm_name(ea) == '.text' and IsFunc_(ea) and IsNiceFunc(ea)]))
-        #  jmprefs =  _.uniq(GetFuncStart([ea for ea in list(JmpRefsTo(target)) if idc.get_segm_name(ea) == '.text' and IsFunc_(ea) and IsNiceFunc(ea) and GetInsnLen(ea) > 2]))
+        #  callrefs = _.uniq(GetFuncStart([ea for ea in list(CallRefsTo(ea)) if idc.get_segm_name(ea) == '.text' and IsFunc_(ea) and IsNiceFunc(ea)]))
+        #  jmprefs =  _.uniq(GetFuncStart([ea for ea in list(JmpRefsTo(ea)) if idc.get_segm_name(ea) == '.text' and IsFunc_(ea) and IsNiceFunc(ea) and GetInsnLen(ea) > 2]))
         #  if e.conditional and len(callrefs + jmprefs) == 0:
-            #  idc.del_func(target)
+            #  idc.del_func(ea)
             #  patched += 1
         if len(refNames) == 1 and len(otherNames) == 0:
             label = "{}_helper".format(refNames[0])
-            LabelAddressPlus(target, label)
-            Commenter(target, 'line').remove('[ALLOW EJMP]')
+            if not dryRun:
+                LabelAddressPlus(ea, label)
+                Commenter(ea, 'line').remove('[ALLOW EJMP]')
             return ea, label
 
         if refNames:
             label = "common:" + ":".join(refNames)
             if otherNames:
                 label += ":_{}_others".format(len(otherNames))
-            LabelAddressPlus(target, label)
-            Commenter(target, 'line').add('[ALLOW EJMP]')
+            if not dryRun:
+                LabelAddressPlus(ea, label)
+                Commenter(ea, 'line').add('[ALLOW EJMP]')
             return ea, label
 
 def diStripNatives():
@@ -8305,7 +8314,7 @@ def xxd(dump):
     return hexdump.hexdump(asBytes(dump))
 
 
-def GetBase64String(ea=None, length = -1, strtype = STRTYPE_C, hex=False):
+def GetBase64String(ea=None, length = -1, strtype = 0, hex=False):
     import base64
     """
     Get base64 decoded value from string contents
@@ -8415,6 +8424,21 @@ def SuperJump(funcea=None):
         for ea in idautils.Heads(cs, ce):
             if isUnconditionalJmpOrCall(ea):
                 SkipJumps(ea, apply=1)
+
+def join_helper_functions():
+    global later2
+    for ea in later2:
+        if IsFuncStart(ea):
+            refs = xrefs_to(ea)
+            if len(refs) == 1:
+                Commenter(ea, 'line').remove('[ALLOW EJMP]')
+                ref = refs[0]
+                if not IsFuncHead(ref):
+                    print("considering: {:x} -> {:x}".format(ref, ea))
+                    if isAnyJmp(ref): #  and not len(all_xrefs_from(ea, filter=lambda x: not x[2].startswith('fl_'))):
+                        print("trying: {:x}".format(ea)) 
+                        retrace(ref, once=1)
+                        if not IsFuncStart(ea): print("joined {:x}".format(ea))
 
 def process_balance(ea=None, compact=False):
     """
@@ -9021,4 +9045,117 @@ network___network_has_game_been_altered_actual:
 # seed6
 
 """
+
+
+from collections import Sequence
+import six
+from six.moves import builtins
+
+
+def isgenerator(iterable):
+    return hasattr(iterable,'__iter__') and not hasattr(iterable,'__len__')
+def isflattenable(iterable):
+    return hasattr(iterable,'__iter__') and not isinstance(iterable, six.string_types)
+
+# https://stackoverflow.com/questions/42095393/python-map-a-function-over-recursive-iterables
+def recursive_map(seq, func):
+    for item in seq:
+        #  if isinstance(item, six.string_types):
+            #  yield func(long(item, 0))
+        #  if str(type(item)) in ("<class 'generator'>", "<class 'range'>") and getattr(item, '__iter__', None):
+        if isgenerator(item) or isinstance(item, (six.moves.range)):
+            # print("recurse_map isgen")
+            yield func([x for x in item])
+        elif isinstance(item, six.string_types):
+            yield func(item)
+        elif isinstance(item, Sequence):
+            # print("recurse_map {} {}".format(item, type(item)))
+            yield type(item)(recursive_map(item, func))
+        else:
+            yield func(item)
+
+
+def _makeSequenceMapper(f, pre=None, post=None):
+    def _identity(o): 
+        return o
+    pre = pre or _identity
+    post = post or _identity
+    def fmap(seq, func):
+        return recursive_map(seq, func)
+    def function(item):
+        # if str(type(item)) in ("<class 'generator'>", "<class 'range'>"):
+        if isgenerator(item) or isinstance(item, (six.moves.range,)):
+            # print("_makeSequenceMapper isgen")
+            return post(type([])(fmap(item, f)))
+            #  return [f(x) for x in item]
+        elif isinstance(item, six.string_types):
+            return post(f(item))
+        elif isinstance(item, Sequence):
+            return post(type(item)(fmap(item, f)))
+        return post(f(item))
+    return function
+
+def hexmap(seq):
+    return recursive_map(seq, hex)
+
+def hex_callback(item):    
+    """
+    hex(...)
+        hex([number|list]) -> string
+        
+        Return the hexadecimal representation of [list of] integer or long integer.
+    """
+    def builtin_hex(number):
+        result = builtins.hex(number)
+        return result.rstrip('L')
+
+    if isinstance(item, six.string_types):
+        try:
+            result = builtin_hex(six.integer_types[-1](item, 0))
+            return result
+        #  except TypeError: return item
+        except ValueError:
+            return item
+    elif isinstance(item, six.integer_types):
+        return builtin_hex(item)
+    #  if isgenerator(item) or isinstance(item, (six.moves.range, range)):
+        #  return [hex(x) for x in item]
+    #  if isinstance(item, set):
+        #  return type(item)(hexmap(list(item)))
+    #  if isinstance(item, Sequence):
+        #  return type(item)(hexmap(item))
+    else:
+        return item
+
+
+def ahex(item):
+    if isinstance(item, six.integer_types):
+        if item > 9:
+            return hex(item)
+    return str(item)
+
+def listComp(item):
+    return [x for x in item] if isgenerator(item) or isinstance(item, (six.moves.range, range)) else item
+
+_asList = _makeSequenceMapper(listComp, pre=None) # , post=A)
+def asList(o):
+    def isIterable(o):
+        return hasattr(o, '__iter__') and not hasattr(o, 'ljust')
+
+    l = []
+    if isIterable(o):
+        l = [x for x in o]
+    else:
+        l = _asList(o)
+
+    if not isinstance(l, list) or len(l) == 1 and l[0] == o:
+        return [o]
+    return l
+
+hex = _makeSequenceMapper(hex_callback)
+
+def asHexList(o):
+    return [hex(x) for x in asList(o)]
+
+
 # vim: set ts=8 sts=4 sw=4 et:

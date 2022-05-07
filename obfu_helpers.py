@@ -10,7 +10,7 @@ import itertools
 from keypatch import Keypatch_Asm
 kp = Keypatch_Asm(KS_ARCH_X86, KS_MODE_64)
 
-from execfile import make_refresh
+from exectools import make_refresh
 refresh_obfu_helpers = make_refresh(os.path.abspath(__file__))
 refresh = make_refresh(os.path.abspath(__file__))
 

@@ -5,7 +5,7 @@ from string_between import string_between
 #  from sftools import A
 from collections import defaultdict
 
-from execfile import execfile, _import, _require, make_refresh
+from exectools import execfile, _import, make_refresh
 _import('from underscoretest import _')
 refresh_commenter = make_refresh(os.path.abspath(__file__))
 

@@ -18,13 +18,14 @@ def _A(o):
         return [o]
 
 def _find(filenames, test=os.path.isfile):
+    filename = 'None'
     for filename in _A(filenames):
         if os.path.isabs(filename):
             if test(filename):
                 return filename
         else:
-            for dir in ['.'] + sys.path:
-                fn = os.path.join(dir, filename)
+            for path in ['.'] + sys.path:
+                fn = os.path.join(path, filename)
                 if test(fn):
                     return fn
     raise ExecFileError("Can't _find file {}".format(filename))
@@ -48,6 +49,15 @@ def unload(pattern):
     for x in [x for x in sys.modules.keys() if re.match(pattern, x)]:
         print("unloading {}".format(x))
         del sys.modules[x]
+
+def unload_by_path(pattern):
+    for x in [x for x in sys.modules.keys() if re.match(pattern, os.path.abspath( getattr(sys.modules[x], '__file__', '')  ).replace("\\", "/"))]:
+        print("unloading {}".format(x))
+        del sys.modules[x]
+
+def lsmod():
+    for x in [x for x in sys.modules.keys()]:
+        print("{:<64} {}".format(x, len(dir(sys.modules[x]))))
 
 def module_match(pattern):
     return [x for x in sys.modules.keys() if re.match(pattern, x)]
@@ -127,7 +137,7 @@ def _isflattenable(iterable):
 
 def execfile(filename, _globals=None, args=[]):
     if _isflattenable(filename):
-        return [_execfile(x, _globals, args) for x in filename]
+        return [execfile(x, _globals, args) for x in filename]
 
     filenames = [filename]
     fn, ext = os.path.splitext(filename)

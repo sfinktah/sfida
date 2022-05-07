@@ -64,7 +64,7 @@ get_byte = idc.get_wide_byte
     #  compile(f.read().replace('__BASE__', os.path.basename(__file__).replace('.py', '')).replace('__FILE__', __file__),
             #  __file__, 'exec'))
 
-from execfile import execfile, make_refresh
+from exectools import execfile, make_refresh
 _refresh_slowtrace2 = make_refresh(os.path.abspath(__file__))
 _refresh_slowtrace_helpers = make_refresh(os.path.abspath(__file__.replace('2', '_helpers')))
 def refresh_slowtrace2():
@@ -618,6 +618,10 @@ def retrace(address=None, color="#280c01", retails=False, redux=False, unpatchFi
 
     # printi("[retrace] args:{}, kwargs:{}".format(args, kwargs))
     
+
+        funcea = GetFuncStart(address)
+        if funcea != idc.BADADDR:
+            address = funcea
         address = SkipJumps(eax(address))
         start_address = address
         #  depth = kwargs.get('depth', 0)
@@ -625,9 +629,6 @@ def retrace(address=None, color="#280c01", retails=False, redux=False, unpatchFi
             globals()['last_retrace'] = [hex(address)]
         else:
             globals()['last_retrace'].insert(0, indent(_depth, ' ', hex(address)))
-        funcea = GetFuncStart(address)
-        if funcea != idc.BADADDR:
-            address = funcea
         if not IsFuncHead(address) and not ForceFunction(address) and not IsFuncHead(address):
             printi("[retrace] [warn] couldn't force function at {:x}".format(address))
             
@@ -1991,7 +1992,7 @@ def slowtrace2(ea=None,
                     sprint((_file, 'is_real_func'), "jmpRef: {}".format(idc.GetDisasm(r)))
         elif not noPdata and isSegmentInXrefsTo(fnLoc, '.pdata') and get_pdata_fnStart(ea) == fnLoc:
             isRealFunc = setIsRealFunc("0x%x: legitimate function (in .pdata): 0x%x: %s" % (ea, fnLoc, fnName))
-        elif idc.get_wide_byte(target) == 0xc3:
+        elif idc.get_wide_byte(target) == 0xc3 and not isConditionalJmp(ea):
             if debug: sprint((_file, 'is_real_func'), "target is retn")
             nassemble(ea, 'retn', apply=1)
         elif fnName.startswith("Arxan") and not isSameFunc:
@@ -2268,6 +2269,30 @@ def slowtrace2(ea=None,
                 mnem = idc.print_insn_mnem(ea)
                 if mnem and (mnem == "nop" or Word(ea) == 0x9066 or isAnyJmp(mnem)):
                     pass
+                elif noObfu:
+                    slvars2.instructions.append(FuncTailsInsn(disasm, ea, disasm, size=MyGetInstructionLength(ea), sp=slvars.rsp, spd=slvars.rsp_diff))
+                    # slvars.rspMarks[disasm] = slvars.rsp
+                    sti = slvars2.instructions
+                    #  if disasm.startswith('mov rsp'):
+                    globals()['sti'] = sti
+                    try:
+                        # intentionally dumbing this down to match IDA's new capability
+                        # which applies the SPD to the `call _alloca_probe` not the
+                        # subsequent sub slvars.rsp.
+                            #  push rbp
+                            #  lea rbp, [rel sub_1417DBB0C]
+                            #  xchg [rsp], rbp
+                            #  retn
+                        if sti[-1] == 'retn' and sti[-2] == 'xchg [rsp], rbp' and sti[-4] == 'push rbp':
+                            printi("[feel] jump: {}".format(sti[-3]))
+                            target = eax(string_between('[rel ', ']', str(sti[-3])) or string_between(', ', '', str(str[-3])))
+                            printi("[feel] target: {}".format(hex(target)))
+                            ea = AdvanceHead(ea, target)
+                            continue
+                    except IndexError:
+                        pass
+
+
                 elif not noObfu:
                     # (self, insn=None, ea=None, text=None, size=None,
                     # comments=None, sp=None, spd=None, warnings=None,
@@ -2297,9 +2322,9 @@ def slowtrace2(ea=None,
                             print("Setting spd at {:x}".format(sti[-1].ea + GetInsnLen(sti[-1].ea)))
                             SetSpDiff(sti[-1].ea + GetInsnLen(sti[-1].ea), spd)
 
-                            cmt = "[SPD=%s;ALLOCA]" % hex(spd)
+                            cmt = "[SPD:ALLOCA=%s]" % hex(spd)
                             Commenter(sti[-1].ea, "line").remove_matching(r'.*SPD.*')
-                            # Commenter(sti[-1].ea, "line").add(cmt)
+                            Commenter(sti[-1].ea, "line").add(cmt)
                             #  if not Commenter(ea, "line").match(r'^\[SPD='):
                     except IndexError:
                         pass
@@ -3875,6 +3900,9 @@ def slowtrace2(ea=None,
 
             if isAnyJmp(mnem):
                 target = GetTarget(ea) # target = GetOperandValue(ea, 0)
+                if target == idc.BADADDR:
+                    raise AdvanceFailure("Couldn't advance from ea (should be jump) (0x{:x})".format(ea))
+
                 #  o_void     = ida_ua.o_void      # No Operand                           ----------
                 #  o_reg      = ida_ua.o_reg       # General Register (al,ax,es,ds...)    reg
                 #  o_mem      = ida_ua.o_mem       # Direct Memory Reference  (DATA)      addr
@@ -4040,8 +4068,8 @@ def slowtrace2(ea=None,
                 if idc.is_flow(ida_bytes.get_flags(ea_next)) and not isFlowEnd(ea) and n:
                     ida_disasm_next = string_between(';', '', idc.GetDisasm(ea_next), inclusive=1, repl='').rstrip()
 
-                    if not '__alloca_probe' in ida_disasm and not Commenter(ea, "line").match(r'\[.*SPD=', re.I) and not Commenter(ea_next, "line").match(r'\[.*SPD=', re.I):
-                        sprint("fixing unexpected stack change from: {} | {}".format(ida_disasm_next, ida_disasm))
+                    if not '__alloca_probe' in ida_disasm and not Commenter(ea, "line").match(r'\[.*SPD=', re.I): #  and not Commenter(ea_next, "line").match(r'\[.*SPD=', re.I):
+                        sprint("fixing unexpected stack change from: {} | {}".format(ida_disasm, ida_disasm_next))
                         # user stkpnt will stay around, auto stkpnt will quickly disappear
                         SetSpDiffEx(ea, None)
                         SetSpDiff(ea_next, 0)
@@ -4154,7 +4182,7 @@ def slowtrace2(ea=None,
                 if slvars.rsp is None:
                     slvars.rsp = -9999
                 if not skipAddRsp:
-                    if not silent or slvars.rsp: sprint("%s: adding retn rsp of %i" % (ida_disasm, slvars.rsp))
+                    if not silent or slvars.rsp: sprint("%s: adding retn rsp of 0x%x" % (ida_disasm, slvars.rsp))
                     slvars.retSps.add(slvars.rsp)
                 if len(callStack) < 1:
                     line = output("\t; call stack is empty; END OF BRANCH")
