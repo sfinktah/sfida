@@ -88,7 +88,7 @@ class FuncArgs:
     def __init__(self, text=None):
         self.returnType = ''
         self.fnPtr = ''
-        self.fnName = ''
+        self.fnName = 'fn'
         self.fnArgs = []
         if text:
             self.parse(text)
@@ -605,7 +605,7 @@ def get_lvar_type(src, ea, vu=None):
             print("type of {} is {}".format(lvars[0].name, lvars[0].tif))
             return str(lvars[0].tif)
         else:
-            print("couldn't find var '{}'".format(src))
+            print("[get_lvar_type] couldn't find var '{}'".format(src))
     return False
 
 def set_lvar_type(src, t, ea, vu=None):
@@ -630,7 +630,7 @@ def set_lvar_type(src, t, ea, vu=None):
             print("changing type of {} to {}".format(lvars[0].name, t))
             return vu.set_lvar_type(lvars[0], t)
         else:
-            print("couldn't find var {}".format(src))
+            print("[set_lvar_type] couldn't find var {}".format(src))
     return False
 
 def map_lvar(src, dst, ea, vu=None):
@@ -952,20 +952,63 @@ def stripped_lines(source_code):
 
     return result
 
+def find_in_path(name, paths=None):
+    if paths is None:
+        paths = os.environ['PATH'].split(os.pathsep)
+    elif not isinstance(paths, list):
+        paths = [paths]
+    for path in paths:
+        if os.path.isfile(os.path.join(path, name)):
+            return os.path.join(root, name)
+
+#  # And this will find all matches:
+#  
+#  def find_all_in_path(name, path):
+    #  result = []
+    #  for root, dirs, files in os.walk(path):
+        #  if name in files:
+            #  result.append(os.path.join(root, name))
+    #  return result
+#  
+#  # And this will match a pattern:
+#  
+#  def find_pattern_in_path(pattern, path):
+    #  import fnmatch
+    #  result = []
+    #  for root, dirs, files in os.walk(path):
+        #  for name in files:
+            #  if fnmatch.fnmatch(name, pattern):
+                #  result.append(os.path.join(root, name))
+    #  return result
+
+
+
+#  find('*.txt', '/path/to/dir')
+
+#  def find(name, path):
+    #  # https://stackoverflow.com/questions/1724693/find-a-file-in-python
+    #  _path = os.environ['PATH'].split(os.path.sep)
+    #  for root, dirs, files in os.walk(path):
+        #  if name in files:
+            #  return os.path.join(root, name)
 def clangformat(source_code):
     #  idc.batch(0)
     import glob
-    clang_paths = glob.glob(r"C:\Program Files (x86)\Microsoft Visual Studio\20*\*\Common7\IDE\VC\vcpackages\clang-format.exe")
-    if clang_paths:
-        if len(clang_paths) > 1:
-            print("{} possible locations for clang-format found:".format(len(clang_paths)))
-            for i, clang_path in enumerate(clang_paths):
-                print("\t[{}] {}".format(i, clang_path))
-            print("picking one at random:")
-            clang_paths.shuffle()
-            print("selecting:  {}".format(clang_path))
-        clang_path = clang_paths[0]
-    else:
+    #  clang_paths = glob.glob(r"C:\Program Files (x86)\Microsoft Visual Studio\20*\*\Common7\IDE\VC\vcpackages\clang-format.exe")
+    #  if not clang_paths:
+    clang_path = find_in_path("clang-format.exe")
+    if not clang_path:
+        clang_paths = glob.glob(r"C:\Program Files (x86)\Microsoft Visual Studio\20*\*\Common7\IDE\VC\vcpackages\clang-format.exe")
+        if clang_paths:
+            if len(clang_paths) > 1:
+                print("{} possible locations for clang-format found:".format(len(clang_paths)))
+                for i, clang_path in enumerate(clang_paths):
+                    print("\t[{}] {}".format(i, clang_path))
+                print("picking one at random:")
+                clang_paths.shuffle()
+                print("selecting:  {}".format(clang_path))
+            clang_path = clang_paths[0]
+    if not clang_path:
         # No clang, just return input
         return source_code
 
@@ -1162,18 +1205,19 @@ def reby(chunk_size, matches):
                     yield item
 
 def wrap_pattern(pattern, split=None):
-    pattern = pattern                                            \
-        .replace(r'\x', r'[0-9a-fA-F]')                          \
-        .replace(r'\w\+', r'\w+')                                \
-        .replace(r' += ', r' \+= ')                              \
-        .replace(r' ^ ', r' \^ ')                                \
+    pattern = pattern                                                     \
+        .replace(r'\x',                             r'[0-9a-fA-F]')       \
+        .replace(r'\w\+',                           r'\w+')               \
+        .replace(r' += ',                           r' \+= ')             \
+        .replace(r' ^ ',                            r' \^ ')              \
         .replace(r'[::reinterpret_pointer_cast::]', r'(?:\*\([^)]+\*\))') \
-        .replace(r'[::pointer_cast::]', r'(?:\([^)]+\*\))')      \
-        .replace(r'[::static_cast::]', r'(?:\([^)]+\))')         \
-        .replace(r'[::reinterpet_cast::]', r'(?:\*\([^)]+\)&)')  \
-        .replace(r'[::deref_static_cast::]', r'(?:\*\([^)]+\))') \
-        .replace(r'[::v::]', r'(?:v\d+)')                        \
-        .replace(r'[::number::]', r'(?:(?:0x)?[0-9a-fA-F]+)')
+        .replace(r'[::pointer_cast::]',             r'(?:\([^)]+\*\))')   \
+        .replace(r'[::static_cast::]',              r'(?:\([^)]+\))')     \
+        .replace(r'[::reference_cast::]',           r'(?:\([^)]+\)&)')    \
+        .replace(r'[::reinterpet_cast::]',          r'(?:\*\([^)]+\)&)')  \
+        .replace(r'[::deref_static_cast::]',        r'(?:\*\([^)]+\))')   \
+        .replace(r'[::v::]',                        r'(?:v\d+)')          \
+        .replace(r'[::number::]',                   r'(?:(?:0x)?[0-9a-fA-F]+)')
     if split:
         return pattern.split(split)
     if pattern.startswith(('^', '\\')):
@@ -1627,58 +1671,39 @@ def decompile_arxan(ea = None):
             rename_lvar(remain, 'remain', ea, vu)
 
 
-
+        suffix = re.sub(r'^[a-zA-Z]+', '', idc.get_name(ea))
         pattern_subs = [
+                #  (wrap_compile(r'^\s+((?:ArxanGetNextRange|ArxanChecksumWorker)[^(), ]+)\([::static_cast::]*&(\w+), [::static_cast::]*&(\w+)\);') , 4 ,
+                    #  rename_lvar_factory((ea, 'guide', 'range'), type=(None, 'uint8_t*', 'arxan_range'), uniq=1)),
                 # v13 ^= *(unsigned __int8 *)i
                 # v13 ^= *(unsigned __int8*)i;
                 #[::static_cast::]*
-                (wrap_compile(r'^\s+(v\d+) [\^]= \*[::static_cast::]*(\w+);')          , 3 , fn_vortex_1),
-                (wrap_compile(r'\b(o_|off_14[0-9A-F]{7})\b')                           , 2 , fn_offset_1),
-                (wrap_compile(r'\b(o_+\d*)\b')                                         , 2 , fn_offset_1),
-                (wrap_compile(r'^\s+if \( !([::v::]) && Zero \)')                        , 1 ,
-                    rename_lvar_factory(0, 'misdirection')),
-                (wrap_compile(r'^\s+(\w+)\(ptr, ([::v::]), [::static_cast::]?([::v::])\);'), 4 ,
-                    rename_lvar_factory(('ArxanMemcpy', 'src', 'length'), type=(None, 'uint8_t*', 'uint32_t'), uniq=1)),
-                (wrap_compile(r'^\s+(\w+)\(ptr, \w+, [::static_cast::]?\w+\);')        , 3 ,
-                    rename_lvar_factory(('ArxanMemcpy'), type=(None), uniq=1)),
-                (wrap_compile(r'^\s+(v\d+) = 0i64;')                                   , 2 ,
-                    rename_lvar_factory(0, '_align', uniq=1)),
-                (wrap_compile(r'^\s+([::v::]) = [::pointer_cast::]ArxanCheckFunction_\w+ - [::pointer_cast::]\w+;')                                   , 2 ,
-                    rename_lvar_factory(0, 'Zero', uniq=1)),
-                (wrap_compile(r'^\s+([::v::]) = \w+_\x+ ^ \*\(_DWORD \*\)([::v::]);')                                   , 3 ,
-                    rename_lvar_factory(('buf', 'ciphered'), type=('uint32_t', 'uint32_t *'))),
-                (wrap_compile(r'^\s+(dword_\x+) = \*\(_DWORD \*\)(\w+_1402FAE33);')                       , 3 ,
-                    lambda all, dst, src: MakeDword(eax(src))),
-                (wrap_compile(r'^\s+(dword_\x+) = (dword_\x+);')                       , 3 ,
-                    rename_lvar_factory(('arxan_done_dst_{:x}'.format(ea), 'arxan_done_src_{:x}'.format(ea)), type=(None, None))),
-                (wrap_compile(r'^\s+(v\d+) = 0i64;')                                   , 2 ,
-                    rename_lvar_factory(0, 'Zero', uniq=1)),
-                (wrap_compile(r'^\s+([::v::]).start = 0;')                             , 2 ,
-                    rename_lvar_factory(0, 'range', uniq=1)),
-                (wrap_compile(r'^\s+([::v::]) = &ImageBase\[range.start\];')           , 2 ,
-                    rename_lvar_factory(0, 'ptr')),
-                (wrap_compile(r'^\s+(Zero|v\d+) (=) 1i64;')                            , 2 ,
-                    rename_lvar_factory(0, '_align', uniq=1)),
-                (wrap_compile(r'^\s+(v\d+) = [::static_cast::]*\w+imagebase', re.I)    , 2 ,
-                    rename_lvar_factory(0, 'ImageBase', type='uint8_t *', uniq=1)),
-                (wrap_compile(r'^\s+(v\d+) = a1;')                                     , 2 ,
-                    rename_lvar_factory(0, '_arg_0', uniq=1)),
-                (wrap_compile(r'^\s+if \((v\d+) == (24)\)')                            , 2 ,
-                    rename_lvar_factory(0, '_stack_padding', uniq=1)),
-                (wrap_compile(r'^\s+if \((v\d+) == (24)\)')                            , 2 ,
-                    rename_lvar_factory(0, '_stack_padding', uniq=1)),
-                (wrap_compile(r'([::v::]) = __ROL4__\(\2, ([::v::])\)')                , 2 ,
-                    rename_lvar_factory( ('roll_amt', 'rolling_code') )),
-                (wrap_compile(r'([::v::]) += rolling_code ^ roll_amt')                 , 1 ,
-                    rename_lvar_factory(0, 'hash')),
-                #  (wrap_compile(r'^\s+((?:ArxanGetNextRange|ArxanChecksumWorker)[^(), ]+)\([::static_cast::]*&(\w+), [::static_cast::]*&(\w+)\);') , 4 ,
-                    #  rename_lvar_factory((ea, 'guide', 'range'), type=(None, 'uint8_t*', 'arxan_range'), uniq=1)),
-                (wrap_compile(r'^\s+(\w+)\([::static_cast::]*&(\w+), [::static_cast::]*&(\w+)\);') , 4 ,
-                    rename_lvar_factory(('ArxanGetNextRange_{:x}'.format(ea), 'guide', 'range'), type=(None, 'uint8_t*', 'arxan_range'), uniq=1)),
-                (wrap_compile(r'^\s+(ArxanMemcpy[^(), ]+)\(&?(\w+), &?(\w+), &?(\w+)\);')                                                        , 5 ,
-                    rename_lvar_factory((ea, 'dst', 'p_B0', 'len'), uniq=1)),
-                (wrap_compile(r'([::v::]) = [::reinterpet_cast::]ImageBase\[[::deref_static_cast::]([::v::])\]')                                 , 3 ,
-                    rename_lvar_factory(('acid_bath', 'acid_offset'), type=('uint64_t', 'uint32_t*'), uniq=1)),
+                (wrap_compile(r'^\s+(v\d+) [\^]= \*[::static_cast::]*(\w+);'),                                       3 , fn_vortex_1),
+                (wrap_compile(r'\b(o_|off_14[0-9A-F]{7})\b'),                                                        2 , fn_offset_1),
+                (wrap_compile(r'\b(o_+\d*)\b'),                                                                      2 , fn_offset_1),
+                (wrap_compile(r'^\s+if \( !([::v::]) && Zero \)'),                                                   1 , rename_lvar_factory(0, 'misdirection')),
+                (wrap_compile(r'^\s+(\w+)\(ptr, ([::v::]), [::static_cast::]?([::v::])\);'),                         4 , rename_lvar_factory(('ArxanMemcpy', 'src', 'length'), type=(None, 'uint8_t*', 'uint32_t'), uniq=1)),
+                (wrap_compile(r'^\s+(\w+)\(ptr, \w+, [::static_cast::]?\w+\);'),                                     3 , rename_lvar_factory(('ArxanMemcpy'), type=(None), uniq=1)),
+                (wrap_compile(r'^\s+(v\d+) = 0i64;'),                                                                2 , rename_lvar_factory(0, '_align', uniq=1)),
+                (wrap_compile(r'^\s+([::v::]) = [::pointer_cast::]ArxanCheckFunction_\w+ - [::pointer_cast::]\w+;'), 2 , rename_lvar_factory(0, 'Zero', uniq=1)),
+                (wrap_compile(r'^\s+([::v::]) = \w+_\x+ ^ \*\(_DWORD \*\)([::v::]);'),                               3 , rename_lvar_factory(('buf', 'ciphered'), type=('uint32_t', 'uint32_t *'))),
+                (wrap_compile(r'^\s+(dword_\x+) = \*\(_DWORD \*\)(\w+_1402FAE33);'),                                 3 , lambda all, dst, src: MakeDword(eax(src))),
+                (wrap_compile(r'^\s+(dword_\x+) = (dword_\x+);'),                                                    3 , rename_lvar_factory(('arxan_done_dst_{}'.format(suffix), 'arxan_done_src_{}'.format(suffix)), type=(None, None))),
+                (wrap_compile(r'^\s+(v\d+) = 0i64;'),                                                                2 , rename_lvar_factory(0, 'Zero', uniq=1)),
+                (wrap_compile(r'^\s+([::v::]).start = 0;'),                                                          2 , rename_lvar_factory(0, 'range', uniq=1)),
+                (wrap_compile(r'^\s+([::v::]) = &ImageBase\[range.start\];'),                                        2 , rename_lvar_factory(0, 'ptr')),
+                (wrap_compile(r'^\s+(Zero|v\d+) (=) 1i64;'),                                                         2 , rename_lvar_factory(0, '_align', uniq=1)),
+                (wrap_compile(r'^\s+(v\d+) = [::static_cast::]*\w+imagebase', re.I),                                 2 , rename_lvar_factory(0, 'ImageBase', type='uint8_t *', uniq=1)),
+                # guide = (uint8_t *)&unk_1439B9746;
+                (wrap_compile(r'^\s+(?:guide\w*) = [::reference_cast::]*(\w+);', re.I),                              2 , rename_lvar_factory(('guide_{}'.format(suffix)), type=(None))),
+                (wrap_compile(r'^\s+(v\d+) = a1;'),                                                                  2 , rename_lvar_factory(0, '_arg_0', uniq=1)),
+                (wrap_compile(r'^\s+if \((v\d+) == (24)\)'),                                                         2 , rename_lvar_factory(0, '_stack_padding', uniq=1)),
+                (wrap_compile(r'^\s+if \((v\d+) == (24)\)'),                                                         2 , rename_lvar_factory(0, '_stack_padding', uniq=1)),
+                (wrap_compile(r'([::v::]) = __ROL4__\(\2, ([::v::])\)'),                                             2 , rename_lvar_factory(('roll_amt', 'rolling_code') )),
+                (wrap_compile(r'([::v::]) += rolling_code ^ roll_amt'),                                              1 , rename_lvar_factory(0, 'hash')),
+                (wrap_compile(r'^\s+(\w+)\([::static_cast::]*&(\w+), [::static_cast::]*&(\w+)\);'),                  4 , rename_lvar_factory(('ArxanGetNextRange_{}'.format(suffix), 'guide', 'range'), type=(None, 'uint8_t*', 'arxan_range'), uniq=1)),
+                (wrap_compile(r'^\s+(ArxanMemcpy[^(), ]+)\(&?(\w+), &?(\w+), &?(\w+)\);'),                           5 , rename_lvar_factory((ea, 'dst', 'p_B0', 'len'), uniq=1)),
+                (wrap_compile(r'([::v::]) = [::reinterpet_cast::]ImageBase\[[::deref_static_cast::]([::v::])\]'),    3 , rename_lvar_factory(('acid_bath', 'acid_offset'), type=('uint64_t', 'uint32_t*'), uniq=1)),
                 (wrap_pattern(r"""Zero = 0i64;
     ImageBase = .*
     .*_arg_0 \+ _align.*

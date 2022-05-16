@@ -135,7 +135,12 @@ def differences(a, b):
         raise ValueError("Lists of different length.")
     return sum(i != j for i, j in zip(a, b))
 
-def read_emu_glob(fn, path=None):
+def read_emu_glob(fn, subdir='*', path=None):
+    if path is None and match_emu._path is None:
+        guess = os.path.abspath(os.path.dirname(get_idb_path()))
+        print("Guessing database path as {}".format(guess))
+        path = guess
+
     if path is not None:
         match_emu._files.clear()
         emu_path(path)
@@ -147,13 +152,9 @@ def read_emu_glob(fn, path=None):
         print("No path set")
         return
 
-    fns = os.path.normpath(os.path.join(match_emu._path, 'memcpy/*/*/*' + fn + '*.bin'))
+    fns = os.path.normpath(os.path.join(match_emu._path, subdir, '*', '*', fn))
     globbed = list(glob(fns))
-    print('globbing... {}'.format(fns))
-    fns = os.path.normpath(os.path.join(match_emu._path, 'written/*/*/*' + fn + '*.bin'))
-    globbed.extend(list(glob(fns)))
-    print('globbing... {}'.format(fns))
-    print('globbed: {}'.format(globbed))
+    print('globbing... {} files'.format(len(fns)))
     return read_emu(globbed)
 
 def make_native_patchfile(ea=None, outFilename=None, noImport=False, width=76):
@@ -278,6 +279,14 @@ def make_emu_patchfile(fn=None, noImport=False, width=76):
 
     return result 
 
+def read_emu_walk(path):
+    for root, dirs, files in os.walk(path):
+        for _file in files:
+            if _file.endswith('.bin'):
+                _fnb = os.path.join(root, _file)
+                print(_fnb)
+                read_emu(_fnb)
+
 def read_emu(fn=None):
     """ 
     read_emu: read a file / list of files into patches
@@ -287,6 +296,7 @@ def read_emu(fn=None):
 
     """
     if isinstance(fn, list):
+        print(fn)
         return [(parseHex(string_between('_', '_', x)), read_emu(x)) for x in fn]
     base = parseHex(string_between('_', '_', fn))
     if base > 0x140000000 and base < 0x150000000:
@@ -295,21 +305,28 @@ def read_emu(fn=None):
             #  if rv:
                 #  idc.jumpto(base)
 
-            o = idc.get_bytes(base, len(b))
-            diffs = differences(o, b)
-            if diffs:
-                patch_bytes(base, b)
+            #  if b[0] == 0 and _.sum(b) == 0:
+                #  return fn.split('_', 3)[3], len(b), -1
+            #  o = idc.get_bytes(base, len(b))
+            #  diffs = differences(o, b)
+            #  if diffs:
+            #  _was_code = IsCode_(base)
+            ida_bytes.put_bytes(base, b)
+            #  if idc.get_segm_name(base) == '.text' and not _was_code:
+                #  EaseCode(base, forceStart=1, noExcept=1)
+            #  for ea in range(base, base + len(b)):
+                #  idc.set_color(ea, idc.CIC_ITEM, 0x280128)
 
-            idc.create_insn(base)
-            if 'EaseCode' in globals():
-                try:
-                    EaseCode(base)
-                except AdvanceFailure:
-                    pass
+            #  idc.create_insn(base)
+            #  if 'EaseCode' in globals():
+                #  try:
+                    #  EaseCode(base)
+                #  except AdvanceFailure:
+                    #  pass
 
-            return fn.split('_', 3)[3], len(b), diffs
+            return fn.split('_', 3)[3], len(b), len(b) # diffs
 
-    return 0
+    return fn.split('_', 3)[3], base, -2
 
 def emu_path(pn=None):
     if pn is not None:
@@ -318,7 +335,7 @@ def emu_path(pn=None):
         match_emu._path = smart_path(pn)
     return match_emu._path
 
-@static_vars(_files = dict(), _keys = dict(), _path = None)
+@static_vars(_files = dict(), _keys = dict(), _path = None, _subdirs = None)
 def match_emu(ea=None, size=None, path=None, retnAll=False):
     """
     match_emu: Find possible Arxan patches for the given address
@@ -330,25 +347,28 @@ def match_emu(ea=None, size=None, path=None, retnAll=False):
     @param retnAll: return all information on each patch
     """
 
-    subdirs = ["written", "read", "memcpy"]
+    if match_emu._subdirs is None:
+        match_emu._subdirs = [os.path.basename(os.path.dirname(os.path.dirname(p))) for p in glob(os.path.join(os.path.dirname(get_idb_path()), "*", "01", "01"))]
 
     if path is None and match_emu._path is None:
-        guess = os.path.dirname(get_idb_path())
+        guess = os.path.abspath(os.path.dirname(get_idb_path()))
         print("Guessing database path as {}".format(guess))
         path = guess
 
     if path is not None:
         # if match_emu._path != path:
         match_emu._files.clear()
+        path = path.replace("\\", "/")
+        print("Saving path {}".format(path))
         match_emu._path = emu_path(path)
+
 
     # compile list of files
     if not match_emu._files:
         if path is None:
             raise KeyError("please supply path argument on initial call")
-        match_emu._files["written"] = dict()
-        match_emu._files["read"]    = dict()
-        match_emu._files["memcpy"]  = dict()
+        for subdir in match_emu._subdirs:
+            match_emu._files[subdir] = dict()
         match_emu._files["maxsize"] = 0
 
         min_ea = ida_ida.cvar.inf.min_ea & ~0xffff
@@ -361,30 +381,42 @@ def match_emu(ea=None, size=None, path=None, retnAll=False):
 
         pickle_fn = "{}/files.pickle".format(path.rstrip('/'))
         if file_exists(pickle_fn):
-            match_emu._files = pickle.loads(file_get_contents_bin_spread(pickle_fn))
+            match_emu._files = pickle.loads(file_get_contents_bin(pickle_fn))
         else:
             print("database being generated, this only happens once, but may take a few minutes...")
             # generate new list
-            for _subdir in subdirs:
-                for fn in glob("{0}/{1}/*/*/*.bin".format(path.rstrip('/'), _subdir)):
-                    bn = os.path.basename(fn)
-                    addr,  bn = string_between_splice('_',   '_', bn, repl='')
-                    _size,  bn = string_between_splice('__',  '_', bn, repl='')
-                    arxan, bn = string_between_splice('___', '.', bn, repl='', greedy=1)
+            counter = 0
+            p = ProgressBar(64 * len(match_emu._subdirs))
+            for _subdir in match_emu._subdirs:
+                print("{}...".format(_subdir))
+                for level1 in range(64):
+                    counter = counter + 1
+                    p.update(counter)
+                    basepart = os.path.join(path, "{}/{}/*/*.bin".format(_subdir, level1))
+                    for fn in glob(basepart):
+                        bn = os.path.basename(fn)
+                        prefix    = string_between('', '_', bn)
+                        addr,  bn = string_between_splice('_',   '_', bn, repl='')
+                        _size, bn = string_between_splice('__',  '_', bn, repl='')
+                        arxan, bn = string_between_splice('___', '.', bn, repl='', greedy=1)
 
-                    addr = parseHex(addr, 0)
-                    _size = parseHex(_size, 0)
+                        try:
+                            addr = parseHex(addr, 0)
+                            _size = parseHex(_size, 0)
+                        except ValueError:
+                            print("Ignoring file: {} {}".format(escape_c(fn), (prefix, addr, _size, arxan, bn)))
+                            continue
 
-                    if min_ea <= addr <= max_ea and _size > 0:
-                        match_emu._files["maxsize"] = max(match_emu._files["maxsize"], _size)
-                        if addr not in match_emu._files[_subdir]:
-                            match_emu._files[_subdir][addr] = defaultdict(list)
-                        match_emu._files[_subdir][addr][_size].append(arxan)
+                        if min_ea <= addr <= max_ea and _size > 0:
+                            match_emu._files["maxsize"] = max(match_emu._files["maxsize"], _size)
+                            if addr not in match_emu._files[_subdir]:
+                                match_emu._files[_subdir][addr] = defaultdict(list)
+                            match_emu._files[_subdir][addr][_size].append((prefix, arxan))
 
             print("pickling files")
             file_put_contents_bin(pickle_fn, pickle.dumps(match_emu._files))
 
-        for _subdir in subdirs:
+        for _subdir in match_emu._subdirs:
             match_emu._keys[_subdir] = list(match_emu._files[_subdir].keys())
             match_emu._keys[_subdir].sort()
 
@@ -404,7 +436,7 @@ def match_emu(ea=None, size=None, path=None, retnAll=False):
     ea2 = ea + size
 
     results = dict()
-    for _subdir in subdirs:
+    for _subdir in match_emu._subdirs:
         left  = bisect_left(match_emu._keys[_subdir], ea - match_emu._files["maxsize"])
         right = bisect_right(match_emu._keys[_subdir], ea2)
         
@@ -424,7 +456,7 @@ def match_emu(ea=None, size=None, path=None, retnAll=False):
 
     return results
 
-def check_emu(ea=None, size=None, path=None, auto=None):
+def check_emu(ea=None, size=None, path=None, auto=None, xxd=False):
     """
     check_emu: Find possible Arxan patches for the given address
     range [ea, ea + size) and show disassembly
@@ -449,28 +481,46 @@ def check_emu(ea=None, size=None, path=None, auto=None):
 
     p = []
     p2 = []
+    # {'read': 
+    #     {0x1446ee605: 
+    #         {0xb: [('written', 'CheckFunc_143a6598b')]}}}
+    # {
+    #     'written':[(0x140017f19, 0x59, ('written', 'GTA5-b2612.1-original-fixed_dump.exe'))],
+    #     'read':   [(0x140017f30, 0x7,  ('written', 'CheckFunc_143e28478')), (0x140017f30, 0x7, ('written', 'CheckFunc_143e5775f'))],
+    #     'memcpy': [(0x140017f30, 0x7,  ('memcpy', 'ArxanChecksumActual3_188')), (0x140017f30, 0x7, ('memcpy', 'ArxanChecksumActual3_177'))]
+    # }
     for _subdir, r in res.items():
         if auto:
             r = _.filter(r, lambda x, *a: re.search(auto, x[2]))
         results[_subdir] = dict()
         if r:
-            for base, length, fn in r:
+            for base, length, base_and_fn in r:
+                if isinstance(base_and_fn, tuple):
+                    prefix, fn = base_and_fn
+                else:
+                    prefix = _subdir
+                    fn = fn
                 fullfn = '{}/{}/{}_{:x}_{:x}_{}.bin'.format(
-                        match_emu._path.rstrip('/'), _subdir, _subdir, base, length, fn)
+                        match_emu._path.rstrip('/'), _subdir, prefix, 
+                        base, length, 
+                        fn)
                 #  print("would check: {}".format(fn))
                 #  continue
                 try:
-                    asm = '; '.join([x[2] for x in diInsns(
-                        file_get_contents_bin_spread(fullfn), ea=base)])
-                    asm = re.sub(r'0x[0-9a-fA-F]{8,}', lambda x, *a: get_name_by_any(x[0]), asm)
+                    if xxd:
+                        asm = listAsHex(file_get_contents_bin_spread(fullfn)[0:64])
+                    else:
+                        asm = '; '.join([x[2] for x in diInsns(
+                            file_get_contents_bin_spread(fullfn)[0:64], ea=base)])
+                        asm = re.sub(r'0x[0-9a-fA-F]{8,}', lambda x, *a: get_name_by_any(x[0]), asm)
                     results[_subdir][asm] = "{:x} - {:x} {} {}".format(base, base + length, fn, asm)
-                    p.append((_subdir, fn, hex(base), hex(base + length), asm))
+                    p.append((_subdir, fn, hex(base), hex(base + length) + " ({})".format(length), asm[0:128]))
                     p2.append(fullfn)
                 except FileNotFoundError:
                     print("File Not Found: " + fullfn)
                     raise
         
-        if results[_subdir]:
+        if debug and results[_subdir]:
             for line in results[_subdir].values():
                 print(line)
 
@@ -491,14 +541,17 @@ def check_emu(ea=None, size=None, path=None, auto=None):
         return eax(p[row][2]), eax(p[row][3])
 
     if row != -1:
-        print("Chose {}: {}".format(row, p2[row]))
+        print("Chose {}: {}".format(row, p[row][1]))
         ida_bytes.patch_bytes(eax(p[row][2]), file_get_contents_bin_spread(p2[row]))
         if 'Commenter' in globals():
             Commenter(eax(p[row][2]), 'line').add("Patched by: " + p[row][1])
         #  idc.set_cmt(eax(p[row][2]), '\n'.join(idc.get_cmt(eax(p[row][2]), 0).split('\n') + ["Patched by: " + p[row][1]]), False)
         idc.create_insn(eax(p[row][2]))
         if 'EaseCode' in globals():
-            EaseCode(eax(p[row][2]))
+            try:
+                EaseCode(eax(p[row][2]))
+            except AdvanceFailure:
+                pass
 
 def comment_emu(funcea=None, path=None):
     """

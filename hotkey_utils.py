@@ -339,7 +339,7 @@ def get_bytes_chunked(start=0, end=0, maxlen=65535):
     inslen = 1
     count = 0
     while ea < end and inslen and count < maxlen:
-        inslen = MyGetInstructionLength(ea)
+        inslen = IdaGetInsnLen(ea)
         count += inslen
         bytes = [idc.get_wide_byte(ea + i) for i in range(inslen)]
         byteList.append(bytes)
@@ -354,7 +354,7 @@ def get_data_ref(frm, var, _globals=[]):
         if fullvar in __data_ref_cache:
             return __data_ref_cache[fullvar]
         ea = idc.get_name_ea_simple(var)
-        inslen = MyGetInstructionLength(frm)
+        inslen = IdaGetInsnLen(frm)
         for offset in range(inslen - 4, 1, -1):
             if MakeSigned(idc.get_wide_dword(frm + offset), 32) + frm + inslen == ea:
                 insOffset = frm - GetFuncStart(frm)
@@ -375,7 +375,7 @@ def get_instructions_chunked(start=0, end=0, addresses=None, maxlen=65535, _glob
     byteList = list()
     if isinstance(addresses, list):
         for ea, count in addresses:
-            inslen = MyGetInstructionLength(ea)
+            inslen = IdaGetInsnLen(ea)
             if inslen:
                 count += inslen
                 disasm = idc.GetDisasm(ea).split(';')[0]
@@ -399,7 +399,7 @@ def get_instructions_chunked(start=0, end=0, addresses=None, maxlen=65535, _glob
     count = 0
     while ea < end and inslen and count < maxlen:
         if IsCode_(ea):
-            inslen = MyGetInstructionLength(ea)
+            inslen = IdaGetInsnLen(ea)
             if inslen:
                 count += inslen
                 disasm = idc.GetDisasm(ea).split(';')[0]
@@ -684,7 +684,7 @@ def sig_globals(ea=None, sig='', sig_offset=0, fullFuncTypes=False):
                     if global_address == BADADDR:
                         print("'{}' == BADADDR".format(global_name, global_address))
 
-                    instruction_length = MyGetInstructionLength(instruction_start)
+                    instruction_length = IdaGetInsnLen(instruction_start)
                     for offset in range(instruction_length - 4, 0, -1):
                         a = MakeSigned(idc.get_wide_dword(instruction_start + offset),
                                        32) + instruction_start + instruction_length
@@ -951,7 +951,7 @@ def sig_maker_data(ea=None, wrt=None):
                             continue
 
                         print(" %% isfunc and is not chunked: 0x{:x}".format(frm), GetFunctionName(frm))
-                        inslen = MyGetInstructionLength(frm)
+                        inslen = IdaGetInsnLen(frm)
                         for offset in range(inslen - 4, 0, -1):
                             if MakeSigned(idc.get_wide_dword(frm + offset), 32) + frm + inslen == ea:
                                 insOffset = frm - GetFuncStart(frm)
@@ -1103,6 +1103,8 @@ def sig_maker_chunk(funcea=None):
 def sig_maker_ex(start=None, end=None, addresses=None, offset=0, rip=-1, type_=None, name=None, maxlen=256, show=False,
                  fullSig=False, noSig=False, quick=False, comment=False, chunk=False, extra=False, ripRelAsQuad=False, replValues=None):
     #  print(start, end, addresses, offset, rip, type_, name, maxlen, show, fullSig, noSig, quick)
+    if start is None:
+        start, end = get_selection_or_ea()
     final = ""
     insns = list()
     if start is None:
@@ -1126,6 +1128,9 @@ def sig_maker_ex(start=None, end=None, addresses=None, offset=0, rip=-1, type_=N
         full = get_bytes_chunked(start, end, maxlen)
     else:
         full = make_sig(get_bytes_chunked(start, end, maxlen), start, ripRelAsQuad=ripRelAsQuad, replValues=replValues)
+
+    if show and fullSig:
+        return " ".join(full)
         # might not be unique
         # final = sig_protectscan(full)
     _globals = []
@@ -1459,7 +1464,7 @@ def create_insns(ea1, ea2):
 def hotkey_patch():
     obfu.combed.clear()
     chunkStart, chunkEnd = get_selection_or_ea()
-    if chunkStart + MyGetInstructionLength(chunkStart) >= chunkEnd:
+    if chunkStart + IdaGetInsnLen(chunkStart) >= chunkEnd:
         print("single patch at {:x}", chunkStart)
         obfu._patch(chunkStart)
     elif chunkEnd > chunkStart and chunkEnd < BADADDR and chunkEnd - chunkStart < 8192:
@@ -1485,10 +1490,10 @@ def hotkey_patch():
 
 def hotkey_edit_nasm():
     chunkStart, chunkEnd = get_selection_or_ea()
-    if chunkStart + MyGetInstructionLength(chunkStart) >= chunkEnd:
-        _asm = diida(chunkStart, labels=True)
+    if chunkStart + IdaGetInsnLen(chunkStart) >= chunkEnd:
+        _asm = icida(chunkStart, labels=True)
     elif chunkEnd > chunkStart and chunkEnd < BADADDR and chunkEnd - chunkStart < 8192:
-        _asm = diida(chunkStart, chunkEnd, labels=True)
+        _asm = icida(chunkStart, chunkEnd, labels=True)
 
     _new_asm = "start:\n" + _asm
     while True:

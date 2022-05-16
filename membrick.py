@@ -177,7 +177,7 @@ def MemLabelAddressPlus(ea, name, rename_old=False, force=False, replace=False):
     if ea < idc.BADADDR:
         fnLoc = LocByName(name)
         if fnLoc == BADADDR:
-            return MakeNameEx(ea, name, idc.SN_NOWARN | idc.SN_AUTO)
+            return MakeNameEx(ea, name, idc.SN_NOWARN)
         elif fnLoc == ea:
             return True
 
@@ -187,7 +187,7 @@ def MemLabelAddressPlus(ea, name, rename_old=False, force=False, replace=False):
             return MakeNameEx(ea, name, idc.SN_NOWARN)
 
         name = MakeUniqueLabel(name, ea)
-        return MakeNameEx(ea, name, idc.SN_NOWARN | idc.SN_AUTO)
+        return MakeNameEx(ea, name, idc.SN_NOWARN)
 
     else:
         print("0x0%0x: Couldn't label %s, BADADDR" % (ea, name))
@@ -333,6 +333,8 @@ def find_checksummers6():
             return abso
         else:
             print("{:x}: rel: {:x}, abso: {:x}".format(ea, rel, abso))
+            mem(rel).label('ArxanChecksumActual7')
+            return rel
         return False
 
     pattern = '48 8b 05 ?? ?? ?? ?? 48 89 45 ?? 48 8d 05 ?? ?? ?? ?? 48 89 45'
@@ -444,16 +446,23 @@ def find_lame_memcpys():
         # idc.add_func(ea)
         # MemLabelAddressPlus(ea, 'ArxanMemcpy')
         # Remove "FAR PROC" attribute and set "BP frame"
-        if False:
+        if True:
             MemLabelAddressPlus(ea, 'ArxanMemcpy')
             idc.set_func_flags(ea, (idc.get_func_flags(ea) | 0x10) & ~0x22)
             idc.SetType(ea, "void f(uint8_t *dst, uint8_t *src, uint32_t len);") \
                     or idc.SetType(ea, "void f(BYTE *dst, BYTE *src, unsigned int len);")
             refFuncName = FuncRefsTo(ea)
-            for ref in refFuncName:
-                if ref != ea:
-                    if not HasUserName(eax(ref)):
-                        LabelAddressPlus(eax(ref), "ArxanCallsMemcpy")
+            if len(refFuncName) == 1:
+                for ref in refFuncName:
+                    ref_ea = GetFuncStart(ref)
+                    if not IsSameFunc(ea, eax(ref_ea)):
+                        if HasAnyName(ref_ea):
+                            if not HasUserName(eax(ref_ea)) and idc.get_name(ref_ea, ida_name.GN_VISIBLE).startswith('sub_'):
+                                LabelAddressPlus(eax(ref_ea), "ArxanCallsMemcpy")
+                            else:
+                                suffix = re.sub(r'^[a-zA-Z]+', '', idc.get_name(ref_ea)) # string_between('_', '', mainName)
+                                MemLabelAddressPlus(ea, suffix + 'ArxanMemcpy')
+
 
     return results
 
@@ -582,33 +591,88 @@ def find_rolls():
             LabelAddressPlus(ea, 'OrphanedArxanRoll')
     return results
 
+def fix_old_balances():
+    patterns = [
+        # '48 8d 64 24 f8 48 89 2c 24 48 8d 2d 76 31 ff ff 48 87 2c 24 55 48 8d 2d 30 5a 48 00 48 87 2c 24 c3',
+          '48 8d 64 24 f8 48 89 2c 24 48 8d 2d ?? ?? ?? ?? 48 87 2c 24 55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24 c3',
+        # 'e8 47 5a 48 00 e9 7c 31 ff ff 0f 1f 84 00 00 00 00 00 0f 1f 84 00 00 00 00 00 0f 1f 80 00 00 00 00',
+        # 'e8 ?? ?? ?? ?? e9 ?? ?? ?? ?? 0f 1f 84 00 00 00 00 00 0f 1f 84 00 00 00 00 00 0f 1f 80 ?? ?? ?? ??')
+          '48 89 6c 24 f8 48 8d 64 24 f8 48 8d 2d ?? ?? ?? ?? 48 87 2c 24 55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24 c3'
+    ]
+
+    for pattern in patterns:
+        for ea in [e for e in FindInSegments(pattern, '.text')]:
+            print("test: {:x}".format(ea))
+            MyMakeUnknown(ea, 99 // 3, DOUNK_EXPAND)
+            m = membrick_memo(ea, pattern=pattern)
+            # asm = nassemble(ea, "call 0x{:x}; jmp 0x{:x}".format(m.add(72//3).rip(4).ea, m.add(36//3).rip(4).ea))
+            asm = nassemble(ea, "call 0x{:x}; jmp 0x{:x}".format(m.autorip(1).ea, m.autorip(0).ea))
+            PatchBytes(ea, asm, "BalanceJump")
+            PatchNops(ea + 10, (1 + len(pattern)) // 3 - 10, "BalanceJumpSpare")
+            if not IsCode_(ea):
+                EaseCode(ea, (1 + len(pattern)) // 3, forceStart=1)
+            fix_location_plus_2(ea, code=1)
+            fix_location_plus_2(ea + 5, code=1)
+            if IsFunc_(ea + 10):
+                if IsSameFunc(ea + 10, ea - 10):
+                    ZeroFunction(ea - 10)
+                else:
+                    SetFuncEnd(ea + 10, ea + 10)
+
+
+
 def find_checksummers_from_balances():
     # pattern = '55 48 83 ec 20 48 8d 6c 24 20 48 89 4d 10 48 89 55 18 44 89 45 20 8b 45 20 83 f8 04 0f 82 ?? ?? ?? ?? e9 ?? ?? ?? ??'
     # pattern = '48 89 85 ?? ?? 00 00 48 8b 85 ?? ?? 00 00 0f b6 00 48 0f be c0 85 c0 0f 84'
     patterns = [
         "6A 10 48 F7 C4 0F 00 00 00 0F 85 ?? ?? ?? ?? E9",
+        "68 10 00 00 00 48 F7 C4 0F 00 00 00 0F 85 ?? ?? ?? ?? E9",
     ]
     results = []
     for pattern in patterns:
         for ea in [e for e in FindInSegments(pattern, '.text')]:
             try: 
-                EaseCode(ea, forceStart=1)
-                r = AdvanceToMnemEx(ea, term='call', inclusive=1, ease=1)
-                if r and r.insns:
-                    insns = _.pluck(r.insns, 'insn')
-                    if not (5 < len(insns) < 12):
-                        print("{:x} [find_checksummers_from_balances] len(insns): {}".format(ea, len(insns)))
-                        continue
-                    insn = insns[-1]
-                    insn = string_between('', ' ', insn, greedy=1, inclusive=1, repl='')
-                    print("{:x} {}".format(eax(insn), insn))
-                    if not IsCode_(insn):
+                r = AdvanceToMnemEx(ea, term=('call', 'retn'), inclusive=1, ease=1)
+                sti = CircularList(r)
+                m = sti.multimatch([
+                    r'push.*0x10',
+                    r'test rsp, 0xf',
+                    r'jnz .*',
+                    r'push.*0x18',
+                    r'(add|sub) rsp, .*',
+                    r'(mov|lea).*r[sb]p.*r[sb]p',
+                    r'(mov|lea).*r[sb]p.*r[sb]p',
+                    r'lea rbp, \[rel ({jmp}\w+)]',
+                    r'xchg \[rsp], rbp',
+                    r'push rbp',
+                    r'lea rbp, \[rel ({call}\w+)]',
+                    r'xchg \[rsp], rbp',
+                    r'retn?',
+                ])
+                target = None
+                if m:
+                    target = m['call'][0]
+                    #  while obfu._patch(m['default'][5].ea):
+                        #  pass
+#  
+                    #  r = AdvanceToMnemEx(ea, term='call', inclusive=1, ease=1)
+                        
+                if target or r and r.insns:
+                    if not target:
+                        insns = _.pluck(r.insns, 'insn')
+                        if not (5 < len(insns) < 12):
+                            print("{:x} [find_checksummers_from_balances] len(insns): {}".format(ea, len(insns)))
+                            continue
+                        insn = insns[-1]
+                        target = string_between('', ' ', insn, greedy=1, inclusive=1, repl='')
+                    print("{:x} {}".format(eax(target), target))
+                    if not IsCode_(target):
                         EaseCode(ea, forceStart=1)
-                    if isUnconditionalJmpOrCall(eax(insn)):
+                    if isUnconditionalJmpOrCall(eax(target)):
                         continue
-                    results.append(eax(insn))
-                    if not HasUserName(eax(insn)):
-                        LabelAddressPlus(eax(insn), 'ArxanChecksumActual0')
+                    results.append(eax(target))
+                    if not HasUserName(eax(target)):
+                        LabelAddressPlus(eax(target), 'ArxanChecksumActual0')
             except AdvanceFailure:
                 pass
     return results
@@ -637,6 +701,7 @@ def find_rbp_frame():
             print(hex(ea), ida_disasm)
             TagAddress([ea], "rbp_frame")
             results.append(ea)
+    return results
 
 def find_stack_align_adjust():
     patterns = ["6a 10 48 f7 c4 0f 00 00 00 0f 85 ?? ?? ?? ?? e9"]
@@ -695,27 +760,16 @@ def find_imagebase_offsets():
 # sprint = print
 
 def find_all_checksummers():
-    cs = find_checksummers()
+    cs = find_checksummers0()
+    cs.extend( find_checksummers() )
+    cs.extend( find_checksummers1() )
     cs.extend( find_checksummers2() )
+    cs.extend( find_checksummers4() )
+    cs.extend( find_checksummers5() )
     cs.extend( find_checksummers3() )
     cs.extend( find_checksummers6() )
     return cs
 
-debug = 0
-def find_shifty_stuff_quick():
-    find_arxan_mutators()
-    cs = defaultglobal('cs', [])
-    cs = find_checksummers()
-    cs.extend( find_checksummers2() )
-    cs.extend( find_checksummers3() )
-    LabelManyAddresses(cs, "ArxanChecksumFunction", force=1)
-    mc = defaultglobal('mc', [])
-    mc = find_lame_memcpys()
-    find_checksum_workers()
-    # find_decrypted_loadlibs()
-    find_rbp_frame()
-    find_stack_align_adjust()
-    find_imagebase_offsets()
 
 def find_shifty_stuff():
     results = {}
@@ -724,21 +778,24 @@ def find_shifty_stuff():
     print("find_shifty_stuff()")
     pp(obfu)
     print("{}".format("arxan_mutators"))
-    cs0 = find_checksummers_from_balances()
-    # retrace_list(r)
-    print("{}".format("rbp_frame"))
-    results['rbp'] = find_rbp_frame()
-    # retrace_list(r)
+    # print("{}".format("rbp_frame"))
+    # results['rbp'] = find_rbp_frame()
     r = {}
-    cs1 = find_checksummers()
-    print("checksummers: {}".format(hex(cs1)))
-    cs2 = find_checksummers2()
-    print("checksummers2: {}".format(hex(cs2)))
-    cs6 = find_checksummers6()
-    print("checksummers6: {}".format(hex(cs6)))
-    cs3 = find_checksummers3()
-    print("checksummers3: {}".format(hex(cs3)))
-    results['cs'] = [cs0, cs1, cs2, cs3, cs6]
+    print("cs0")
+    cs0 = find_checksummers_from_balances(); print("checksummers_0: {}".format(hex(cs0)))
+    print("cs1")
+    cs1 = find_checksummers(); print("checksummers: {}".format(hex(cs1)))
+    print("cs2")
+    cs2 = find_checksummers2(); print("checksummers2: {}".format(hex(cs2)))
+    print("cs4")
+    cs4 = find_checksummers4(); print("checksummers4: {}".format(hex(cs4)))
+    print("cs5")
+    cs5 = find_checksummers5(); print("checksummers5: {}".format(hex(cs5)))
+    print("cs3")
+    cs3 = find_checksummers3(); print("checksummers3: {}".format(hex(cs3)))
+    print("cs6")
+    cs6 = find_checksummers6(); print("checksummers6: {}".format(hex(cs6)))
+    results['cs'] = [cs0, cs1, cs2, cs3, cs4, cs5, cs6]
     #  print("checksummers...")
     #  print([idc.get_func_name(x) for x in r])
     #  LabelManyAddresses(r, "ArxanChecksumTest", force=1)
@@ -815,6 +872,9 @@ def SetFarFunc(ea=None, flags=None):
 def FixFarFuncs():
     [SetFarFunc(x, 0) for x in Functions() if IsFarFunc(x)]
 
+def StripTags(s):
+    return string_between("_$.", "$", s, repl='', greedy=1)
+
 def TagGetTagSubstring(s):
     return string_between("_$.", "$", s, greedy=1)
 
@@ -886,6 +946,16 @@ def RemoveTag(ea, tags):
         label = TagRemoveSubstring(label)
         _new = _existing - _remove
         label = label + TagMakeTagSubstring(_new)
+        if not idc.set_name(ea, label, idc.SN_NOWARN | idc.SN_NOCHECK):
+            print("[warn] couldn't set name of {:x} to {}".format(ea, label))
+        else:
+            print("[info] set name of {:x} to {}".format(ea, label))
+
+def RemoveTags(ea):
+    ea = get_ea_by_any(ea)
+    old_label = label = idc.get_name(ea)
+    label = StripTags(label)
+    if label != old_label:
         if not idc.set_name(ea, label, idc.SN_NOWARN | idc.SN_NOCHECK):
             print("[warn] couldn't set name of {:x} to {}".format(ea, label))
         else:
@@ -1034,7 +1104,7 @@ def FindInSegments(searchstr, segments=None, limit=None, predicate=None, iterate
 
 
     if not segments:
-        segments = ['.text']
+        segments = ['.text', 'LOAD']
 
     if not binary:
         searchstr = ' '.join(["%02x" % x for x in asByteArray(searchstr)])
@@ -1205,12 +1275,12 @@ def mb(pattern, limit=1, index=0):
         return membrick_memo(results[index], pattern).chain()
 
 
-def mem(pattern):
-    return mb(pattern)
+def mem(*args, **kwargs):
+    return mb(*args, **kwargs)
 
 
-def ProtectPattern(pattern):
-    return ProtectScan(pattern)
+def ProtectPattern(*args, **kwargs):
+    return mb(*args, **kwargs)
 
 
 def ProtectScan(*args, **kwargs):
@@ -1467,7 +1537,7 @@ class membrick_memo(object):
                 return self.error_return_chained("?? ?? ?? ?? x {} not found".format(index))
             found += 1
 
-        print(".add({}).rip(4)".format(pos // 3))
+        if debug: print(".add({}).rip(4)".format(pos // 3))
         return self.add(pos // 3).rip(4)
 
     def count(self, num, name=''):
@@ -1502,6 +1572,11 @@ class membrick_memo(object):
         if not idc.SetType(self.val(), type):
             return self.error_return_chained("could not set type at 0x{:x} from {} to {}".format(self.val(), idc.get_type(self.val()), type))
         return self
+
+    def dword(self):
+        if self.in_error():
+            return self.error_return()
+        return idc.get_wide_dword(self.obj)
 
     def As(self, type):
         if self.in_error():
@@ -1596,15 +1671,20 @@ class membrick_memo(object):
         else:
             return T(self.obj)
 
-    def ea(self, T=long_type):
-        """ returns the object instead of instance
+    @property
+    def ea(self):
         """
-        if self.in_error(): return self.error_return_chained()
-        if self._wrapped is not self.Null:
-            return T(self._wrapped)
-        else:
-            return T(self.obj)
-
+        returns self.obj
+        """
+        return self.obj
+    
+    @ea.setter
+    def ea(self, value):
+        """ New style classes requires setters for @property methods
+        """
+        self.obj = value
+        return self.obj
+    
     def eax(self, T=long_type):
         """ returns the object instead of instance
         """
@@ -1841,3 +1921,34 @@ def rssign():
     #  tmp.extend( FindInSegments(st, segments='.rdata', binary=0, predicate=lambda x: IsStrlit(x) and GetString(x) == asBytesRaw(st), iteratee=lambda x: RecurseCallersChart(x, exe=None)) )
 #  RecurseCallersChart(tmp[0], exe='dot')
 #  
+# [0x2d2ba20, 0x2d2ba50, 0x2d2ba70, 0x2d2ba90, 0x2d2bab0, 0x2d2bad0, 0x2d2baf0, 0x2d2bb10, 0x2d2bb20, 0x2d2bb40, 0x2d2bb80, 0x2d2bb60, 0x2d2bbc0, 0x2d2bba0, 0x2d2bbe0, 0x2d2bc10, 0x2d2bc40, 0x2d2bc70, 0x2d2bca0, 0x2d2bcf0, 0x2d2bd10, 0x2d2bd40, 0x2d2bda0, 0x2d2bd70, 0x2d2be00, 0x2d2bdd0, 0x2d2be30, 0x2d2be80, 0x2d2bed0, 0x2d2bf20, 0x2d2bf90, 0x2d2bfb0, 0x2d2bfd0, 0x2d2bff0, 0x2d2c010, 0x2d2c030, 0x2d2c050, 0x2d2c070, 0x2d2c090, 0x2d2c0c0, 0x2d2c0f0, 0x2d2c0f0, 0x2d2c110, 0x2d2c130, 0x2d2c140, 0x2d2c2b0, 0x2d2c3e0, 0x2d2c520, 0x2d2c540, 0x2d2c560, 0x2d2c580, 0x2d2c6c0, 0x2d2c750, 0x2d2c7b0, 0x2d2c7e0, 0x2d2c810, 0x2d2c830, 0x2d2c850, 0x2d2c870, 0x2d2c890, 0x2d2c8b0, 0x2d2c8d0, 0x2d2c8f0, 0x2d2c910, 0x2d2c930, 0x2d2c950, 0x2d2c970, 0x2d2c9a0, 0x2d2c9c0, 0x2d2c9e0, 0x2d2ca00, 0x2d2ca20, 0x2d2ca40, 0x2d2ca70, 0x2d2cab0, 0x2d2caf0, 0x2d2cb30, 0x2d2cb60, 0x2d2cb90, 0x2d2cbb0, 0x2d2cbd0, 0x2d2cbf0, 0x2d2cc10, 0x2d2cc40, 0x2d2cc70, 0x2d2ce20, 0x2d2ce60, 0x2d2cee0, 0x2d2cf30, 0x2d2cfd0, 0x2d2cf80, 0x2d2d070, 0x2d2d020, 0x2d2cdd0, 0x2d2cca0, 0x2d2cd20, 0x2d2cd60, 0x2d2cdb0, 0x2d2d120, 0x2d2d1b0, 0x2d2dbc0, 0x2d2d1f0, 0x2d2d250, 0x2d2d470, 0x2d2d500, 0x2d2d7c0, 0x2d2d8a0, 0x2d2d8f0, 0x2d2d940, 0x2d2d980, 0x2d2d9a0, 0x2d2d9c0, 0x2d2d9e0, 0x2d2da00, 0x2d2da20, 0x2d2da40, 0x2d2da60, 0x2d2da80, 0x2d2daa0, 0x2d2dac0, 0x2d2dae0, 0x2d2db00, 0x2d2db20, 0x2d2db40, 0x2d2db60, 0x2d2db80, 0x2d2dba0, 0x2d2dc70, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0]
+# [0x2d2b9bc, 0x2d2ba46, 0x2d2ba63, 0x2d2ba83, 0x2d2baa8, 0x2d2bacc, 0x2d2baec, 0x2d2bb04, 0x2d2bb1b, 0x2d2bb3c, 0x2d2bb5c, 0x2d2bb7c, 0x2d2bb9c, 0x2d2bbbc, 0x2d2bbdc, 0x2d2bbfd, 0x2d2bc2d, 0x2d2bc5d, 0x2d2bc95, 0x2d2bce1, 0x2d2bcfd, 0x2d2bd33, 0x2d2bd63, 0x2d2bd90, 0x2d2bdc0, 0x2d2bdf0, 0x2d2be20, 0x2d2be71, 0x2d2bec1, 0x2d2bf11, 0x2d2bf7f, 0x2d2bfa7, 0x2d2bfc3, 0x2d2bfe3, 0x2d2c003, 0x2d2c025, 0x2d2c043, 0x2d2c06a, 0x2d2c086, 0x2d2c0b2, 0x2d2c0eb, 0x2d2c105, 0x2d2c126, 0x2d2c13c, 0x2d2c2a9, 0x2d2c3a5, 0x2d2c519, 0x2d2c534, 0x2d2c559, 0x2d2c579, 0x2d2c62f, 0x2d2c74c, 0x2d2c779, 0x2d2c7d9, 0x2d2c80a, 0x2d2c82a, 0x2d2c84a, 0x2d2c869, 0x2d2c88a, 0x2d2c8aa, 0x2d2c8c9, 0x2d2c8e4, 0x2d2c908, 0x2d2c92a, 0x2d2c948, 0x2d2c96b, 0x2d2c990, 0x2d2c9b6, 0x2d2c9d4, 0x2d2c9f8, 0x2d2ca18, 0x2d2ca3b, 0x2d2ca60, 0x2d2ca9d, 0x2d2cadd, 0x2d2cb1e, 0x2d2cb4d, 0x2d2cb7d, 0x2d2cbac, 0x2d2cbca, 0x2d2cbea, 0x2d2cc09, 0x2d2cc31, 0x2d2cc61, 0x2d2cc90, 0x2d2ccd9, 0x2d2cd59, 0x2d2cd9d, 0x2d2cdc8, 0x2d2ce0d, 0x2d2ce53, 0x2d2cea0, 0x2d2ced5, 0x2d2cf25, 0x2d2cf75, 0x2d2cfc5, 0x2d2d015, 0x2d2d065, 0x2d2d0b5, 0x2d2d10d, 0x2d2d1a1, 0x2d2d1dd, 0x2d2d232, 0x2d2d245, 0x2d2d44b, 0x2d2d466, 0x2d2d4e2, 0x2d2d4f5, 0x2d2d712, 0x2d2d72e, 0x2d2d74c, 0x2d2d897, 0x2d2d8de, 0x2d2d93a, 0x2d2d97b, 0x2d2d994, 0x2d2d9b4, 0x2d2d9d4, 0x2d2d9f4, 0x2d2da14, 0x2d2da34, 0x2d2da54, 0x2d2da74, 0x2d2da94, 0x2d2dab4, 0x2d2dad4, 0x2d2daf4, 0x2d2db14, 0x2d2db34, 0x2d2db54, 0x2d2db74, 0x2d2db94, 0x2d2dbb4, 0x2d2dc5d, 0x2d2dc93]
+#
+#  _cases = [0x2d2ba20, 0x2d2ba50, 0x2d2ba70, 0x2d2ba90, 0x2d2bab0, 0x2d2bad0, 0x2d2baf0, 0x2d2bb10, 0x2d2bb20, 0x2d2bb40, 0x2d2bb80, 0x2d2bb60, 0x2d2bbc0, 0x2d2bba0, 0x2d2bbe0, 0x2d2bc10, 0x2d2bc40, 0x2d2bc70, 0x2d2bca0, 0x2d2bcf0, 0x2d2bd10, 0x2d2bd40, 0x2d2bda0, 0x2d2bd70, 0x2d2be00, 0x2d2bdd0, 0x2d2be30, 0x2d2be80, 0x2d2bed0, 0x2d2bf20, 0x2d2bf90, 0x2d2bfb0, 0x2d2bfd0, 0x2d2bff0, 0x2d2c010, 0x2d2c030, 0x2d2c050, 0x2d2c070, 0x2d2c090, 0x2d2c0c0, 0x2d2c0f0, 0x2d2c0f0, 0x2d2c110, 0x2d2c130, 0x2d2c140, 0x2d2c2b0, 0x2d2c3e0, 0x2d2c520, 0x2d2c540, 0x2d2c560, 0x2d2c580, 0x2d2c6c0, 0x2d2c750, 0x2d2c7b0, 0x2d2c7e0, 0x2d2c810, 0x2d2c830, 0x2d2c850, 0x2d2c870, 0x2d2c890, 0x2d2c8b0, 0x2d2c8d0, 0x2d2c8f0, 0x2d2c910, 0x2d2c930, 0x2d2c950, 0x2d2c970, 0x2d2c9a0, 0x2d2c9c0, 0x2d2c9e0, 0x2d2ca00, 0x2d2ca20, 0x2d2ca40, 0x2d2ca70, 0x2d2cab0, 0x2d2caf0, 0x2d2cb30, 0x2d2cb60, 0x2d2cb90, 0x2d2cbb0, 0x2d2cbd0, 0x2d2cbf0, 0x2d2cc10, 0x2d2cc40, 0x2d2cc70, 0x2d2ce20, 0x2d2ce60, 0x2d2cee0, 0x2d2cf30, 0x2d2cfd0, 0x2d2cf80, 0x2d2d070, 0x2d2d020, 0x2d2cdd0, 0x2d2cca0, 0x2d2cd20, 0x2d2cd60, 0x2d2cdb0, 0x2d2d120, 0x2d2d1b0, 0x2d2dbc0, 0x2d2d1f0, 0x2d2d250, 0x2d2d470, 0x2d2d500, 0x2d2d7c0, 0x2d2d8a0, 0x2d2d8f0, 0x2d2d940, 0x2d2d980, 0x2d2d9a0, 0x2d2d9c0, 0x2d2d9e0, 0x2d2da00, 0x2d2da20, 0x2d2da40, 0x2d2da60, 0x2d2da80, 0x2d2daa0, 0x2d2dac0, 0x2d2dae0, 0x2d2db00, 0x2d2db20, 0x2d2db40, 0x2d2db60, 0x2d2db80, 0x2d2dba0, 0x2d2dc70, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0]
+#  _case_tails = [0x2d2b9bc, 0x2d2ba46, 0x2d2ba63, 0x2d2ba83, 0x2d2baa8, 0x2d2bacc, 0x2d2baec, 0x2d2bb04, 0x2d2bb1b, 0x2d2bb3c, 0x2d2bb5c, 0x2d2bb7c, 0x2d2bb9c, 0x2d2bbbc, 0x2d2bbdc, 0x2d2bbfd, 0x2d2bc2d, 0x2d2bc5d, 0x2d2bc95, 0x2d2bce1, 0x2d2bcfd, 0x2d2bd33, 0x2d2bd63, 0x2d2bd90, 0x2d2bdc0, 0x2d2bdf0, 0x2d2be20, 0x2d2be71, 0x2d2bec1, 0x2d2bf11, 0x2d2bf7f, 0x2d2bfa7, 0x2d2bfc3, 0x2d2bfe3, 0x2d2c003, 0x2d2c025, 0x2d2c043, 0x2d2c06a, 0x2d2c086, 0x2d2c0b2, 0x2d2c0eb, 0x2d2c105, 0x2d2c126, 0x2d2c13c, 0x2d2c2a9, 0x2d2c3a5, 0x2d2c519, 0x2d2c534, 0x2d2c559, 0x2d2c579, 0x2d2c62f, 0x2d2c74c, 0x2d2c779, 0x2d2c7d9, 0x2d2c80a, 0x2d2c82a, 0x2d2c84a, 0x2d2c869, 0x2d2c88a, 0x2d2c8aa, 0x2d2c8c9, 0x2d2c8e4, 0x2d2c908, 0x2d2c92a, 0x2d2c948, 0x2d2c96b, 0x2d2c990, 0x2d2c9b6, 0x2d2c9d4, 0x2d2c9f8, 0x2d2ca18, 0x2d2ca3b, 0x2d2ca60, 0x2d2ca9d, 0x2d2cadd, 0x2d2cb1e, 0x2d2cb4d, 0x2d2cb7d, 0x2d2cbac, 0x2d2cbca, 0x2d2cbea, 0x2d2cc09, 0x2d2cc31, 0x2d2cc61, 0x2d2cc90, 0x2d2ccd9, 0x2d2cd59, 0x2d2cd9d, 0x2d2cdc8, 0x2d2ce0d, 0x2d2ce53, 0x2d2cea0, 0x2d2ced5, 0x2d2cf25, 0x2d2cf75, 0x2d2cfc5, 0x2d2d015, 0x2d2d065, 0x2d2d0b5, 0x2d2d10d, 0x2d2d1a1, 0x2d2d1dd, 0x2d2d232, 0x2d2d245, 0x2d2d44b, 0x2d2d466, 0x2d2d4e2, 0x2d2d4f5, 0x2d2d712, 0x2d2d72e, 0x2d2d74c, 0x2d2d897, 0x2d2d8de, 0x2d2d93a, 0x2d2d97b, 0x2d2d994, 0x2d2d9b4, 0x2d2d9d4, 0x2d2d9f4, 0x2d2da14, 0x2d2da34, 0x2d2da54, 0x2d2da74, 0x2d2da94, 0x2d2dab4, 0x2d2dad4, 0x2d2daf4, 0x2d2db14, 0x2d2db34, 0x2d2db54, 0x2d2db74, 0x2d2db94, 0x2d2dbb4, 0x2d2dc5d, 0x2d2dc93]
+#  _opcodes = "NOP IADD ISUB IMUL IDIV IMOD INOT INEG IEQ INE IGT IGE ILT ILE FADD FSUB FMUL FDIV FMOD FNEG FEQ FNE FGT FGE FLT FLE VADD VSUB VMUL VDIV VNEG IAND IOR IXOR I2F F2I F2V PUSH_CONST_U8 PUSH_CONST_U8_U8 PUSH_CONST_U8_U8_U8 PUSH_CONST_U32 PUSH_CONST_F DUP DROP NATIVE ENTER LEAVE LOAD STORE STORE_REV LOAD_N STORE_N ARRAY_U8 ARRAY_U8_LOAD ARRAY_U8_STORE LOCAL_U8 LOCAL_U8_LOAD LOCAL_U8_STORE STATIC_U8 STATIC_U8_LOAD STATIC_U8_STORE IADD_U8 IMUL_U8 IOFFSET IOFFSET_U8 IOFFSET_U8_LOAD IOFFSET_U8_STORE PUSH_CONST_S16 IADD_S16 IMUL_S16 IOFFSET_S16 IOFFSET_S16_LOAD IOFFSET_S16_STORE ARRAY_U16 ARRAY_U16_LOAD ARRAY_U16_STORE LOCAL_U16 LOCAL_U16_LOAD LOCAL_U16_STORE STATIC_U16 STATIC_U16_LOAD STATIC_U16_STORE GLOBAL_U16 GLOBAL_U16_LOAD GLOBAL_U16_STORE J JZ IEQ_JZ INE_JZ IGT_JZ IGE_JZ ILT_JZ ILE_JZ CALL GLOBAL_U24 GLOBAL_U24_LOAD GLOBAL_U24_STORE PUSH_CONST_U24 SWITCH STRING STRINGHASH TEXT_LABEL_ASSIGN_STRING TEXT_LABEL_ASSIGN_INT TEXT_LABEL_APPEND_STRING TEXT_LABEL_APPEND_INT TEXT_LABEL_COPY CATCH THROW CALLINDIRECT PUSH_CONST_M1 PUSH_CONST_0 PUSH_CONST_1 PUSH_CONST_2 PUSH_CONST_3 PUSH_CONST_4 PUSH_CONST_5 PUSH_CONST_6 PUSH_CONST_7 PUSH_CONST_FM1 PUSH_CONST_F0 PUSH_CONST_F1 PUSH_CONST_F2 PUSH_CONST_F3 PUSH_CONST_F4 PUSH_CONST_F5 PUSH_CONST_F6 PUSH_CONST_F7 BITTEST ERROR".split(" ")
+#  for k, v in zip(_cases, _opcodes): idc.set_name(k, "VM_"+v, idc.SN_NOWARN | idc.SN_AUTO)
+#
+#  _cases = [0x2d2ba20, 0x2d2ba50, 0x2d2ba70, 0x2d2ba90, 0x2d2bab0, 0x2d2bad0, 0x2d2baf0, 0x2d2bb10, 0x2d2bb20, 0x2d2bb40, 0x2d2bb80, 0x2d2bb60, 0x2d2bbc0, 0x2d2bba0, 0x2d2bbe0, 0x2d2bc10, 0x2d2bc40, 0x2d2bc70, 0x2d2bca0, 0x2d2bcf0, 0x2d2bd10, 0x2d2bd40, 0x2d2bda0, 0x2d2bd70, 0x2d2be00, 0x2d2bdd0, 0x2d2be30, 0x2d2be80, 0x2d2bed0, 0x2d2bf20, 0x2d2bf90, 0x2d2bfb0, 0x2d2bfd0, 0x2d2bff0, 0x2d2c010, 0x2d2c030, 0x2d2c050, 0x2d2c070, 0x2d2c090, 0x2d2c0c0, 0x2d2c0f0, 0x2d2c0f0, 0x2d2c110, 0x2d2c130, 0x2d2c140, 0x2d2c2b0, 0x2d2c3e0, 0x2d2c520, 0x2d2c540, 0x2d2c560, 0x2d2c580, 0x2d2c6c0, 0x2d2c750, 0x2d2c7b0, 0x2d2c7e0, 0x2d2c810, 0x2d2c830, 0x2d2c850, 0x2d2c870, 0x2d2c890, 0x2d2c8b0, 0x2d2c8d0, 0x2d2c8f0, 0x2d2c910, 0x2d2c930, 0x2d2c950, 0x2d2c970, 0x2d2c9a0, 0x2d2c9c0, 0x2d2c9e0, 0x2d2ca00, 0x2d2ca20, 0x2d2ca40, 0x2d2ca70, 0x2d2cab0, 0x2d2caf0, 0x2d2cb30, 0x2d2cb60, 0x2d2cb90, 0x2d2cbb0, 0x2d2cbd0, 0x2d2cbf0, 0x2d2cc10, 0x2d2cc40, 0x2d2cc70, 0x2d2ce20, 0x2d2ce60, 0x2d2cee0, 0x2d2cf30, 0x2d2cfd0, 0x2d2cf80, 0x2d2d070, 0x2d2d020, 0x2d2cdd0, 0x2d2cca0, 0x2d2cd20, 0x2d2cd60, 0x2d2cdb0, 0x2d2d120, 0x2d2d1b0, 0x2d2dbc0, 0x2d2d1f0, 0x2d2d250, 0x2d2d470, 0x2d2d500, 0x2d2d7c0, 0x2d2d8a0, 0x2d2d8f0, 0x2d2d940, 0x2d2d980, 0x2d2d9a0, 0x2d2d9c0, 0x2d2d9e0, 0x2d2da00, 0x2d2da20, 0x2d2da40, 0x2d2da60, 0x2d2da80, 0x2d2daa0, 0x2d2dac0, 0x2d2dae0, 0x2d2db00, 0x2d2db20, 0x2d2db40, 0x2d2db60, 0x2d2db80, 0x2d2dba0, 0x2d2dc70, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0]
+#  _case_tails = [0x2d2b9bc, 0x2d2ba46, 0x2d2ba63, 0x2d2ba83, 0x2d2baa8, 0x2d2bacc, 0x2d2baec, 0x2d2bb04, 0x2d2bb1b, 0x2d2bb3c, 0x2d2bb5c, 0x2d2bb7c, 0x2d2bb9c, 0x2d2bbbc, 0x2d2bbdc, 0x2d2bbfd, 0x2d2bc2d, 0x2d2bc5d, 0x2d2bc95, 0x2d2bce1, 0x2d2bcfd, 0x2d2bd33, 0x2d2bd63, 0x2d2bd90, 0x2d2bdc0, 0x2d2bdf0, 0x2d2be20, 0x2d2be71, 0x2d2bec1, 0x2d2bf11, 0x2d2bf7f, 0x2d2bfa7, 0x2d2bfc3, 0x2d2bfe3, 0x2d2c003, 0x2d2c025, 0x2d2c043, 0x2d2c06a, 0x2d2c086, 0x2d2c0b2, 0x2d2c0eb, 0x2d2c105, 0x2d2c126, 0x2d2c13c, 0x2d2c2a9, 0x2d2c3a5, 0x2d2c519, 0x2d2c534, 0x2d2c559, 0x2d2c579, 0x2d2c62f, 0x2d2c74c, 0x2d2c779, 0x2d2c7d9, 0x2d2c80a, 0x2d2c82a, 0x2d2c84a, 0x2d2c869, 0x2d2c88a, 0x2d2c8aa, 0x2d2c8c9, 0x2d2c8e4, 0x2d2c908, 0x2d2c92a, 0x2d2c948, 0x2d2c96b, 0x2d2c990, 0x2d2c9b6, 0x2d2c9d4, 0x2d2c9f8, 0x2d2ca18, 0x2d2ca3b, 0x2d2ca60, 0x2d2ca9d, 0x2d2cadd, 0x2d2cb1e, 0x2d2cb4d, 0x2d2cb7d, 0x2d2cbac, 0x2d2cbca, 0x2d2cbea, 0x2d2cc09, 0x2d2cc31, 0x2d2cc61, 0x2d2cc90, 0x2d2ccd9, 0x2d2cd59, 0x2d2cd9d, 0x2d2cdc8, 0x2d2ce0d, 0x2d2ce53, 0x2d2cea0, 0x2d2ced5, 0x2d2cf25, 0x2d2cf75, 0x2d2cfc5, 0x2d2d015, 0x2d2d065, 0x2d2d0b5, 0x2d2d10d, 0x2d2d1a1, 0x2d2d1dd, 0x2d2d232, 0x2d2d245, 0x2d2d44b, 0x2d2d466, 0x2d2d4e2, 0x2d2d4f5, 0x2d2d712, 0x2d2d72e, 0x2d2d74c, 0x2d2d897, 0x2d2d8de, 0x2d2d93a, 0x2d2d97b, 0x2d2d994, 0x2d2d9b4, 0x2d2d9d4, 0x2d2d9f4, 0x2d2da14, 0x2d2da34, 0x2d2da54, 0x2d2da74, 0x2d2da94, 0x2d2dab4, 0x2d2dad4, 0x2d2daf4, 0x2d2db14, 0x2d2db34, 0x2d2db54, 0x2d2db74, 0x2d2db94, 0x2d2dbb4, 0x2d2dc5d, 0x2d2dc93]
+#  _opcodes = "NOP IADD ISUB IMUL IDIV IMOD INOT INEG IEQ INE IGT IGE ILT ILE FADD FSUB FMUL FDIV FMOD FNEG FEQ FNE FGT FGE FLT FLE VADD VSUB VMUL VDIV VNEG IAND IOR IXOR I2F F2I F2V PUSH_CONST_U8 PUSH_CONST_U8_U8 PUSH_CONST_U8_U8_U8 PUSH_CONST_U32 PUSH_CONST_F DUP DROP NATIVE ENTER LEAVE LOAD STORE STORE_REV LOAD_N STORE_N ARRAY_U8 ARRAY_U8_LOAD ARRAY_U8_STORE LOCAL_U8 LOCAL_U8_LOAD LOCAL_U8_STORE STATIC_U8 STATIC_U8_LOAD STATIC_U8_STORE IADD_U8 IMUL_U8 IOFFSET IOFFSET_U8 IOFFSET_U8_LOAD IOFFSET_U8_STORE PUSH_CONST_S16 IADD_S16 IMUL_S16 IOFFSET_S16 IOFFSET_S16_LOAD IOFFSET_S16_STORE ARRAY_U16 ARRAY_U16_LOAD ARRAY_U16_STORE LOCAL_U16 LOCAL_U16_LOAD LOCAL_U16_STORE STATIC_U16 STATIC_U16_LOAD STATIC_U16_STORE GLOBAL_U16 GLOBAL_U16_LOAD GLOBAL_U16_STORE J JZ IEQ_JZ INE_JZ IGT_JZ IGE_JZ ILT_JZ ILE_JZ CALL GLOBAL_U24 GLOBAL_U24_LOAD GLOBAL_U24_STORE PUSH_CONST_U24 SWITCH STRING STRINGHASH TEXT_LABEL_ASSIGN_STRING TEXT_LABEL_ASSIGN_INT TEXT_LABEL_APPEND_STRING TEXT_LABEL_APPEND_INT TEXT_LABEL_COPY CATCH THROW CALLINDIRECT PUSH_CONST_M1 PUSH_CONST_0 PUSH_CONST_1 PUSH_CONST_2 PUSH_CONST_3 PUSH_CONST_4 PUSH_CONST_5 PUSH_CONST_6 PUSH_CONST_7 PUSH_CONST_FM1 PUSH_CONST_F0 PUSH_CONST_F1 PUSH_CONST_F2 PUSH_CONST_F3 PUSH_CONST_F4 PUSH_CONST_F5 PUSH_CONST_F6 PUSH_CONST_F7 BITTEST ERROR".split(" ")
+#  for k, v in zip(_cases, _opcodes): idc.set_name(k, "VM_"+v, idc.SN_NOWARN | idc.SN_AUTO)
+#
+#
+#  for asm, addrs in _.groupBy(t, lambda v, *asm: diida(v)).items():
+#      for addr in addrs[1:]:
+#          nassemble(addr, "jmp 0x{:x}".format(addrs[0]), 1)
+#  
+#
+
+# funcs = _.uniq([x for x in GetFuncStart(xrefs_to(eax('register_native_handler'))) if x != idc.BADADDR])
+# for func in funcs:
+#     lines = decompile_function(func)
+#     for line in lines:
+#         #   register_native_handler(0xA50CED7FB6E38751LL, sub_143F980);
+#         s1 = string_between('register_native_handler(', ');', line)
+#         if s1:
+#             hash = string_between('', ',', s1).rstrip('Lu')
+#             sub = string_between(', ', '', s1)
+#             name = "NATIVE::_0x{:016X}".format(int(hash, 16))
+#             LabelAddressPlus(eax(sub), name)

@@ -331,7 +331,7 @@ def PatchBytes(ea, patch=None, comment=None, code=False):
         # fast patch
         idaapi.patch_bytes(ea, byte_type(patch))
         if 'helper' in globals() and hasattr(globals()['helper'], 'writeEmuMem'):
-            print("[PatchBytes] also writing to writeEmuMem")
+            # print("[PatchBytes] also writing to writeEmuMem")
             helper.writeEmuMem(ea, patch)
         if comment:
             Commenter(ea, 'line').add(comment)
@@ -341,7 +341,7 @@ def PatchBytes(ea, patch=None, comment=None, code=False):
         # slower patch to allow for unset values
         [idaapi.patch_byte(ea+i, patch[i]) for i in range(length) if patch[i] != -1]
         if 'helper' in globals() and hasattr(globals()['helper'], 'writeEmuMem'):
-            print("[PatchBytes] also writing to writeEmuMem")
+            # print("[PatchBytes] also writing to writeEmuMem")
             [helper.writeEmuMem(ea+i, bytearray([patch[i]])) for i in range(length) if patch[i] != -1]
 
     #  if was_code:
@@ -956,9 +956,13 @@ def nassemble(ea, string = None, apply=None):
             #  with InfAttr(idc.INF_AF, lambda v: v & 0xdfe60008):
                 #  MyMakeUnknown(ea, length, DOUNK_EXPAND | ida_bytes.DELIT_NOTRUNC)
             # PatchBytes(ea, r + bytes(MakeNops(nextInsn - next)))
+            _was_code = IsCode_(ea)
+            if _was_code:
+                _code_len = MyGetInstructionLength(ea)
             PatchBytes(ea, r)
-                # print("PatchNops({:x}, {})".format(next, nextInsn - next))
-                # PatchNops(next, nextInsn - next)
+            if _was_code and _code_len > length:
+                print("PatchNops({:x}, {})".format(next, _code_len - length))
+                PatchNops(next, _code_len - length)
                 # idc.auto_wait()
             # idc.plan_and_wait(ea, nextInsn)
             # forceCode(ea, nextInsn) # , nextInsn) # , ea + nextInsn)

@@ -7,7 +7,7 @@ def smart_path(pn):
         if m:
             pn = "{}:/{}".format(m.group(2), m.group(3))
 
-    pn = os.path.abspath(pn)
+    pn = os.path.abspath(pn).replace("\\", "/")
     return pn
 
 

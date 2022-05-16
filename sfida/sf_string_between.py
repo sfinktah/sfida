@@ -35,7 +35,7 @@ def _isIterable(o):
     return hasattr(o, '__iter__') and not hasattr(o, 'ljust')
 
 def _string_find(S, sub, start=0, end=None):
-    if isinstance(sub, str):
+    if isinstance(sub, string_type):
         return len(sub), S.find(sub, start, end)
     if _isre(sub):
         for m in re.finditer(sub, S):

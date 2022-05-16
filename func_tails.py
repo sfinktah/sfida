@@ -142,10 +142,12 @@ class AdvanceInsnList(object):
             start_ea
             end_ea
         """
-        if isinstance(ea, GenericRange):
-            insns=[FuncTailsInsn(x) for x in idautils.Heads(ea.start, ea.trend)]
-            ea = start_ea = ea.start
-
+        if isinstance(ea, GenericRange) or isinstance(ea, tuple) and len(ea) == 2:
+            _s, _e = ea[0], ea[-1]
+            if _e < _s:
+                _e += _s
+            insns=[FuncTailsInsn(x) for x in idautils.Heads(_s, _e)]
+            ea = start_ea = _s
 
         self._list_insns = insns
         self._list_insn_count = insn_count
@@ -158,6 +160,41 @@ class AdvanceInsnList(object):
         self._list_start_ea = start_ea
         self._list_end_ea = end_ea
         self._list_ea = ea
+        self._list_prev_list = None
+        self._list_next_list = None
+
+        if ea.__class__.__name__ == self.__class__.__name__:
+            props = [x for x in dir(self) if x.startswith('_list')]
+            for k in props:
+                setattr(self, k, getattr(ea, k, None))
+
+    @property
+    def prev(self):
+        """
+        returns self._list_prev_list
+        """
+        return self._list_prev_list
+    
+    @prev.setter
+    def prev(self, value):
+        """ New style classes requires setters for @property methods
+        """
+        self._list_prev_list = value
+        return self._list_prev_list
+
+    @property
+    def next(self):
+        """
+        returns self._list_next_list
+        """
+        return self._list_next_list
+    
+    @next.setter
+    def next(self, value):
+        """ New style classes requires setters for @property methods
+        """
+        self._list_next_list = value
+        return self._list_next_list
 
     @property
     def insns(self):
@@ -196,6 +233,10 @@ class AdvanceInsnList(object):
         return self._list_start_ea
 
     @property
+    def start(self):
+        return self.ea
+
+    @property
     def end_ea(self):
         return self._list_end_ea
 
@@ -207,12 +248,16 @@ class AdvanceInsnList(object):
     def target(self):
         return self._list_insns[-1].target
 
+    @property
+    def bytes(self):
+        return b''.join([insn.bytes for insn in self._list_insns])
+
     def __pprint_repr__(self, *args, **kwargs):
         if isinstance(kwargs, dict):
             if 'indent' in kwargs:
                 _indent = kwargs['indent']
                 if _indent:
-                    return self.labeled_value
+                    return str(self.generic_range())
                 #  if _indent: return self._toText()
         # return long form output
         result = {}
@@ -220,9 +265,21 @@ class AdvanceInsnList(object):
         for k in props:
             result[k[6:]] = getattr(self, k)
 
-        result['labeled_value'] = self.labeled_value
+        if self._list_insns:
+            result['range'] = GenericRange(start=self._list_insns[0].ea, trend=self._list_insns[-1].ea + len(self._list_insns[-1]))
 
         return result
+
+    def join(self):
+        visited = set()
+        x = self
+        yield from x.insns
+        while x.next and x.next not in visited:
+            yield from x.next.insns
+            visited.add(x)
+            x = x.next
+
+
     #  def errors(self): return self._list_errors
 
     #  __contains__(self, key, /)
@@ -320,12 +377,21 @@ class AdvanceInsnList(object):
     def labeled_values(self):
         return [o.labeled_value for o in self._list_insns]
 
+    def generic_range(self):
+        if not self._list_insns:
+            return None
+        return GenericRange(start=self._list_insns[0].ea, trend=self._list_insns[-1].ea + len(self._list_insns[-1]))
+
+    def range(self):
+        if not self._list_insns:
+            return None
+        return range(self._list_insns[0].ea, self._list_insns[-1].ea + len(self._list_insns[-1]))
 
 class FuncTailsInsn(object):
     """Docstring for FuncTailsInsn """
 
-    def __init__(self, insn=None, ea=None, text=None, size=None, comments=None, sp=None, spd=None, warnings=None,
-                 errors=None, chunkhead=None, op=None, labels=[],
+    def __init__(self, insn=None, ea=None, text=None, size=None, code=None, mnemonic=None, operands=None, comments=None, sp=None, spd=None, warnings=None,
+                 errors=None, chunkhead=None, labels=[],
                  refs_from={}, refs_to={}, flow_refs_from={}, flow_refs_to={}):
         """@todo: to be defined
 
@@ -359,7 +425,9 @@ class FuncTailsInsn(object):
         self._insn_comments = comments
         self._insn_warnings = warnings
         self._insn_errors = errors
-        self._insn_op = op
+        self._insn_code = code
+        self._insn_operands = operands
+        self._insn_mnemonic = mnemonic
         self._insn_chunkhead = chunkhead
         self._insn_labels = labels
         self._insn_insn = insn
@@ -378,6 +446,11 @@ class FuncTailsInsn(object):
 
     def __str__(self):
         return self._insn_text
+
+    @property
+    def bytes(self):
+        return ida_bytes.get_bytes(self.ea, len(self))
+
 
     #  def __eq__(self, other):
     #  if isinstance(other, str):
@@ -566,8 +639,18 @@ class FuncTailsInsn(object):
         return self._insn_chunkhead
 
     @property
-    def op(self):
-        return self._insn_op
+    def operands(self):
+        return self._insn_operands
+
+    @property
+    def code(self):
+        return self._insn_code
+
+
+    @property
+    def mnemonic(self):
+        return self._insn_mnemonic
+
 
     @property
     def labels(self):

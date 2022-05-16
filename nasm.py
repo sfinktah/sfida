@@ -30,6 +30,19 @@ def extend(obj, *args):
                 del obj[k]
     return obj
 
+def nasm_process_mapfile():
+    _start = "---- Section .text ------------------------------------------------------------"
+    _labels = lines_between(_start, "", "file:e:/git/distorm/examples/tests/myfile.map", skip=True, strip=True, rightmost=True)
+    if len(_labels) > 1:
+        try:
+           for line in _labels[1:]:
+              real, virtual, name = line.split("  ", 2)
+              print(real, virtual, name)
+              if name.startswith(('VM_')):
+                 LabelAddressPlus(real, name, force=1)
+        except ValueError:
+            pass
+
 nasm_cache = dict()
 def nasm64(ea, string):
     global nasm_cache

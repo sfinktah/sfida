@@ -137,40 +137,8 @@ def ArxanGetNextRange(guide, range=None):
         print("{:55}{:8x}   range.len".format('', range.len))
         print("{:55}{}".format('', '-' * 8))
 
-    return
+    return guide, range
 
-
-
-    result = 0 # int32
-    shift = 0 # int32
-    for byte in guide.gen():
-        amt = (byte & 0x7F) << shift
-        result = result | amt
-        shift += 7;
-        # dif debug: print("[phase-1] byte, amt, result, shift")
-        if debug: print("[phase-1] byte: {:02x}, 7bt {:02x}  amt<<{:2}: {:>8}, result: {:8x}".format(byte, byte & 0x7f, shift, hex_trailing_zero_to_space(amt), result))
-        
-    if debug: print("{:55}{:8x} + range.start".format('', range.start))
-    if debug: print("{:55}{:8x} + range.len".format('', range.len))
-    if debug: print("{:55}{}".format('', '-' * 8))
-
-    # dif debug: print("[-------] range.start, result, range.len")
-    # if debug: print("[-------] range.start = range.start:{:8x} + result:{:8x} + range.len:{:8x}".format(range.start, result, range.len))
-    
-    range.start += result + range.len;
-    if debug: print("{:55}{:8x} = new range.start".format('', range.start))
-    #  if debug: print("[-------] range.start: {:08x}".format(range.start)) #  range.start = range.start:{:8x} + result:{:8x} + range.len:{:8x}".format(range.start, result, range.len))
-    if range.start < 0xFFFFFFFF:
-        shift = 0;
-        result = 0;
-        for byte in guide.gen():
-            amt = _uint32((byte & 0x7F) << shift)
-            result = _uint32(result + amt)
-            shift += 7;
-            # dif debug: print("[phase-1] byte, amt, result, shift")
-            #  if debug: print("[phase-2] byte:{:02x}, amt:{:8x}, result:{:08x}, shift:{:2x}".format(byte, amt, result, shift))
-        range.len = result;
-        # if debug: print("[-------] range.len:{}".format(range.len))
 
 def ArxanGetNextRangeGen(guide, range=None):
     if isinstance(guide, (str, int)):
@@ -267,9 +235,19 @@ class arxan_range:
     """arxan range"""
     base = ida_ida.cvar.inf.min_ea
 
-    def __init__(self, start=0, len=0):
+    def __init__(self, start=0, len=0, rdx=None):
         self._start = start
         self._len = len
+        if rdx is not None:
+            self._start = rdx & (1 << 32) - 1 # 0xa1b2c3d4
+            self._len = rdx >> 32             # 0x12345678
+
+    def fromQword(self, qword):
+        self._start, self._len = struct.unpack('II', intAsBytes(qword, 8))
+        return self
+
+    def asQword(self):
+        return self._len << 32 | self._start
 
     @property
     def start(self):
@@ -285,7 +263,7 @@ class arxan_range:
         self._start = _uint32(value)
         if self._start == _uint32(-1):
             print("[arxan_range] **** start == -1 ****")
-        else:
+        elif self._start > 0x5000000:
             print("[arxan_range] start {:08x}".format(0x140000000 + self._start))
         return self._start
 
@@ -378,8 +356,12 @@ class arxan_boxed_qword(arxan_boxed_number):
 
 
 
-def ArxanReadMemcpyRanges(base: arxan_boxed_qword, guide: arxan_guide, 
-        range: arxan_range, begin: arxan_boxed_qword, total_size, 
+def ArxanReadMemcpyRanges(
+        base: arxan_boxed_qword, 
+        guide: arxan_guide, 
+        range: arxan_range, 
+        begin: arxan_boxed_qword, 
+        total_size, 
         skip: arxan_boxed_dword):
     """
     void ArxanReadMemcpyRanges(uint8_t* Base, uint8_t** guide, arxan_range* range, void* begin, uint total_size, int* skip)

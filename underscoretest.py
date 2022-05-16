@@ -383,7 +383,7 @@ class underscore(object):
         """ Return the results of applying the iterator to each element.
         """
         newlist = {}
-        for k, v in self.items():
+        for k, v in self._clean.items():
             # if k not in values:  # use indexof to check identity
             k2, v2 = func(v, k, self.obj)
             newlist[k2] = v2
@@ -476,6 +476,7 @@ class underscore(object):
         """ Return all the elements that pass a truth test.
         """
         return self._wrap(list(filter(func, self.obj)))
+
     select = filter
 
     def remove(self, func):
@@ -1005,7 +1006,7 @@ class underscore(object):
 
         return self._wrap([pass_list, fail_list])
 
-    def uniq(self, isSorted=False, iterator=None):
+    def uniq(self, isSorted=False, iterator=None, val=None):
         """
         Produce a duplicate-free version of the array. If the array has already
         been sorted, you have the option of using a faster algorithm.
@@ -1019,8 +1020,8 @@ class underscore(object):
             initial = _(ns.array).map(iterator)
 
         def by(memo, value, index):
-            if ((_.last(memo) != value or
-                 not len(memo)) if isSorted else not _.include(memo, value)):
+            if ((_.last(memo) != value or not len(memo)) if isSorted \
+                    else not _.include(memo, value)):
                 memo.append(value)
                 ns.results.append(ns.array[index])
 

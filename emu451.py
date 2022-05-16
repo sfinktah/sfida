@@ -306,8 +306,8 @@ def insnHook(unicornObject, address, instructionSize, userData):
     #  ah = helper.analysisHelper
     if single_step:
         fnNameLower = fnName.lower()
-        if fnName.startswith("ArxanMemcpy") \
-                or fnName.startswith("ArxanChecksumWorker"):
+
+        if 'ArxanMemcpy' in fnName or 'ArxanChecksumWorker' in fnName:
             pass
         else:
             #  if fnName:
@@ -404,30 +404,39 @@ def callHook(address, arguments, fnName, userData):
         helper.stopEmulation(userData)
         return
 
-    if fnName.startswith('ArxanMemcpy'):
+    if 'ArxanMemcpy' in fnName:
         #  out("{} {:x}: {}, {}".format(fnName, userData["currAddr"], hex(helper.getArgv()[0:3]), hex(helper.getEmuPtr(helper.getRegVal("rdx")) & ((1 << ((args[2]  * 8))) - 1))))
         # helper.writeEmuMem(args[0], intAsBytes(helper.getEmuPtr(helper.getRegVal("rdx")), args[2]))
         #  print("{} {:x}, {:x}, {}".format(fnName, args[0], args[1], args[2]))
         if args[0] > 0x140000000:
-            memcpy[args[0]] = helper.getEmuBytes(args[1], args[2])
+            if arg[0] > 0x145000000:
+                print("invalid write to {:x}".format(arg[0]))
+                abort = 1
+                helper.stopEmulation(userData)
+            else:
+                memcpy[args[0]] = helper.getEmuBytes(args[1], args[2])
         #  helper.writeEmuMem(args[0], helper.getEmuBytes(args[1], args[2]))
         #  if len(memcpy.keys()) % 100 == 0:
             #  memcpy_count = sum([len(x) for x in memcpy.values()])
             #  out("memcpy: {:,}".format(memcpy_count), silent=1)
         #  #  healer_src[args[0]] = address
         #  helper.skipInstruction(userData)
-    else:
-        if fnName == last_function:
-            out("{:x} re-entrant function call detected".format(address))
-            helper.stopEmulation(userData)
+    elif 'ArxanGetNextRange' in fnName:
+        gu, ra = ArxanGetNextRange(helper.getRegVal("rcx"), arxan_range(rdx=helper.getRegVal("rdx")))
+        helper.uc.reg_write(helper.regs["rcx"], gu.ea)
+        helper.uc.reg_write(helper.regs["rdx"], ra.asQword())
+        helper.skipInstruction(userData)
+    elif fnName == last_function:
+        out("{:x} re-entrant function call detected".format(address))
+        helper.stopEmulation(userData)
 
-        if fnName != last_called_function or called_functions[fnName] % 100 == 0:
-            after("; === {:x} calling function: {} ({}) ({})".format(userData["currAddr"], fnName,
-                                                                     called_functions[fnName], hex(args)))
-            last_called_function = fnName
+    elif fnName != last_called_function or called_functions[fnName] % 100 == 0:
+        after("; === {:x} calling function: {} ({}) ({})".format(userData["currAddr"], fnName,
+                                                                 called_functions[fnName], hex(args)))
+        last_called_function = fnName
 
     if False:
-        if fnName.startswith('ArxanChecksumWorker'):
+        if 'ArxanGetNextRange' in fnName:
             #  out("{}: guide: 0x{:x}".format(fnName, helper.getEmuPtr(helper.getRegVal("rcx"))))
             userData["breakpoints"].add(userData["currAddr"] + userData["currAddrSize"])
             userData["arxan_range"] = helper.getRegVal("rdx")
@@ -608,7 +617,7 @@ def checksummers(*args, **kwargs):
     color = True
     tag = False
     comment = True
-    patch = False
+    patch = True
 
 
     max_count = 0

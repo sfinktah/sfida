@@ -314,12 +314,13 @@ def check_pdata(label=None, func=None, color=None, tails=None, tailsTerm=None, o
 
             #  file_put_contents("e:\\git\\ida\\natives\\build\\
 
-    def lblfunc():
-        if not LabelAddressPlus(x, "{}_{}".format(oname, count), force=1):
-            if impl_address:
-                SkipJumps(impl_address, iteratee=lambda x, *a: ForceFunction(x) == 123)
-            SkipJumps(handler_address, until=impl_address, iteratee=lambda x, *a: ForceFunction(x) == 123)
-        count += 1
+    def lblfunc(impl_or_handler, oname, parent, x):
+        LabelAddressPlus(x, "native_{}_{}_{:x}".format(impl_or_handler, oname, parent), flags=SN_LOCAL)
+        #  if not LabelAddressPlus(x, "{}_{}".format(oname, count), force=1):
+            #  if impl_address:
+                #  SkipJumps(impl_address, iteratee=lambda x, *a: ForceFunction(x) == 123)
+            #  SkipJumps(handler_address, until=impl_address, iteratee=lambda x, *a: ForceFunction(x) == 123)
+        #  count += 1
 
     filename = ''
     if color or label or tails or spd or func:
@@ -387,7 +388,8 @@ def check_pdata(label=None, func=None, color=None, tails=None, tailsTerm=None, o
                 if impl_actual and impl_offset and impl_offset != 0xffffffff and impl_offset != handler_offset:
                     until = impl_address
                     count = 0
-                    SkipJumps(impl_address, until=until, iteratee=lambda x, *a: lblfunc)
+                    lblfunc('impl', oname_impl, impl_address, impl_address)
+                    SkipJumps(impl_address, until=until, iteratee=lambda x, *a: lblfunc('impl', oname_impl, impl_address, x))
                     if not LabelAddressPlus(impl_address, oname_impl, force=1, throw=0):
                         if impl_address:
                             SkipJumps(impl_address, iteratee=lambda x, *a: ForceFunction(x) == 123)
@@ -396,7 +398,8 @@ def check_pdata(label=None, func=None, color=None, tails=None, tailsTerm=None, o
                 if handler_offset and handler_offset != 0xffffffff:
                     #  print("addr: {:x}".format(handler_address))
                     count = 0
-                    SkipJumps(handler_address, until=until, iteratee=lambda x, *a: lblfunc)
+                    lblfunc('handler', oname, handler_address, handler_address)
+                    SkipJumps(handler_address, until=until, iteratee=lambda x, *a: lblfunc('handler', oname, handler_address, x))
                     LabelAddressPlus(handler_address, oname, force=1, throw=1)
                     LabelAddressPlus(SkipJumps(handler_address), oname + "_ACTUAL", force=1, throw=1)
                 #  print("Labelled {}".format(oname))
@@ -592,19 +595,19 @@ def make_latest_json():
     re_version = re.compile(r'gta(s[ct]).*?[^0-9](\d{3,4})[^0-9]')
     if 'get_idb_path' not in globals():
         _source = 'sc'
-        _build = '2545'
+        _build = '2612'
     else:
         for __source, __build in re.findall(re_version, get_idb_path()):
             _source = __source
             _build = __build
 
     if _build:
-        VERSION = _build
+        
         ## set to None to force original hashes
-        crossmap_file = glob_last("e:/git/GTA5Utilities/ScriptDiffer/Differ/Output/CrossMapping_323_" + str(VERSION) + ".txt")
+        crossmap_file = glob_last("e:/git/GTA5Utilities/ScriptDiffer/Differ/Output/CrossMapping_323_" + str(_build) + ".txt")
         #  crossmap_file = None
         ## set to None if not using a crossmap
-        natives_file = glob_last("e:/git/GTA5Utilities/ScriptDiffer/Differ/Tables/Addresses/NativeAddresses_" + str(VERSION) + "*.txt")
+        natives_file = glob_last("e:/git/GTA5Utilities/ScriptDiffer/Differ/Tables/Addresses/NativeAddresses_" + str(_build) + "*.txt")
         #  natives_file = None
         ## path to formatted native argument types
         vtypes_file = glob_last("e:/git/ida/natives.*vtypes*")
@@ -648,7 +651,7 @@ def make_latest_json():
 
         alloc8 = get_latest_native_names()
         if natives_file:
-            for _hash, _offset in cut(natives_file, min= 2):
+            for _hash, _offset, *a in cut(natives_file, min=2):
                 _hash = int(_hash, 16)
                 _offset = int(_offset, 16)
                 native_hashes.append(_hash)
@@ -751,23 +754,22 @@ def make_latest_json():
             else:
                 print("# UNKNOWN HASH: ori: 0x{0:016X} new: 0x{0:016X}".format(old_hash, new_hash))
 
-        json_save_safe("test_natives_" + str(VERSION) + ".json", json_result)
+        json_save_safe("test_natives_" + str(_build) + ".json", json_result)
         json_save_safe("e:/git/GTA5Utilities/ScriptDiffer/YSCDisassembler/bin/Release/natives-{}.json".format(_build), json_result)
         # json_save_safe(f"/e/git/gta5-nativedb-data/nsalloc8or.json", json_result)
         return json_result
 
-def make_native_labels():
+def make_native_labels(_build=''):
     global natives;
     _source = ''
-    _build = ''
     re_version = re.compile(r'gta(s[ct]).*?[^0-9](\d{3,4})[^0-9]')
     for __source, __build in re.findall(re_version, get_idb_path()):
         _source = __source
         _build = __build
 
     if _build:
-        VERSION = _build
-        crossmap_file = glob_last("e:/git/GTA5Utilities/ScriptDiffer/Differ/Output/CrossMapping_323_" + str(VERSION) + ".txt")
+        
+        crossmap_file = glob_last("e:/git/GTA5Utilities/ScriptDiffer/Differ/Output/CrossMapping_323_" + str(_build) + ".txt")
         print("crossmap_file: {}".format(crossmap_file))
         if crossmap_file:
             crossmap = {}
@@ -804,14 +806,15 @@ def make_decompiler_dat():
     global natives;
     _source = ''
     _build = ''
+    results = {}
     re_version = re.compile(r'gta(s[ct]).*?[^0-9](\d{3,4})[^0-9]')
     for __source, __build in re.findall(re_version, get_idb_path()):
         _source = __source
         _build = __build
 
     if _build:
-        VERSION = _build
-        crossmap_file = glob_last("e:/git/GTA5Utilities/ScriptDiffer/Differ/Output/CrossMapping_323_" + str(VERSION) + ".txt")
+        
+        crossmap_file = glob_last("e:/git/GTA5Utilities/ScriptDiffer/Differ/Output/CrossMapping_323_" + str(_build) + ".txt")
         print("crossmap_file: {}".format(crossmap_file))
         if crossmap_file:
             crossmap = {}
@@ -822,6 +825,7 @@ def make_decompiler_dat():
             alloc8 = {}
             # /e/git/give-two.github.io/storage/scripts/natives.json
             alloc8 = get_latest_native_names()
+            assert isinstance(_.keys(alloc8)[0], int), "alloc8 keys are not int"
             #  with JsonStoredDict('e:/git/give-two.github.io/storage/scripts/nsalloc8or.json') as tmp:
                 #  alloc8 = tmp.copy()
             for row in natives:
@@ -830,12 +834,15 @@ def make_decompiler_dat():
                 else:
                     oname, x, new_hash, handler_offset, impl_offset = row[0:5]
 
-                old_hash = crossmap[int(new_hash)]
+                assert isinstance(new_hash, int), "hash not int"
+                old_hash = crossmap[new_hash]
                 old_hash_str = "0x%016X" % old_hash
                 new_hash_str = "0x%016X" % new_hash
-                if old_hash_str in alloc8:
+                if old_hash in alloc8:
                     #  print("nh", byteify(alloc8[old_hash_str]))
-                    n = alloc8[old_hash_str]
+                    n = alloc8[old_hash]
+                    results[old_hash] = n
+                    results[new_hash] = n
                     #  pp(n)
                     namespace = n['namespace']
                     name = n['name']
@@ -843,36 +850,77 @@ def make_decompiler_dat():
                     return_type = n['return_type']
                     native_comment = n['comment']
                     print("{}:{}:{}".format(new_hash_str, namespace, name))
-                    del alloc8[old_hash_str]
+                    del alloc8[old_hash]
                 else:
                     print("{}:{}".format(new_hash_str, oname.replace('::', ':')))
+    return results
 
 def apply_native_renames():
+    lookup = make_decompiler_dat()
+    unfound = set()
     with JsonStoredDict("e:/git/GTA5Utilities/ScriptDiffer/YSCDisassembler/bin/Release/natives-{}.json".format(_build)) as natives:
         for fnLoc in FunctionsMatching('.*_0x.*'):
             fnName = GetFuncName(fnLoc)
-            hashString = string_between('0x', '', fnName, inclusive=1).split('_')[0]
-            #  try:
-            try:
-                fnHash = parseHex(hashString)
-            except ValueError:
-                # dprint("[apply_native_renames] ValueError parsing {} from {}")
-                print("[apply_native_renames] ValueError parsing {} from {}".format(hashString, fnName))
-                
-            fnHash = "0x%016X" % fnHash
-            if fnHash and fnHash in natives:
-                if fnName.find('::_') > 0:
-                    repl = fnName.replace('::_' + hashString, '::' + natives[fnHash]['name'])
-                    print("{}: {}".format( fnName, repl))
-                    LabelAddressPlus(fnLoc, repl)
-                elif fnName.find('___') > 0:
-                    repl = fnName.replace('___' + hashString, '__' + natives[fnHash]['name'].lower())
-                    print("{}: {}".format( fnName, repl))
-                    LabelAddressPlus(fnLoc, repl)
-                else:
-                    print("!! {}: {}::{}".format( fnName, natives[fnHash]['namespace'], natives[fnHash]['name']))
-            #  except ValueError:
-                #  print("Couldn't parse hash {} from func {}".format(hashString, fnName))
+            if 'common' in fnName:
+                # common:common:NETWORK::_0x494B84826E4A775E:NETWORK::_0xEE3ACED204F48810:common:NETWORK::_0x7261FA840A6D9E98_helper_helper_0:NETWORK::_0xF7C55939E655699D_helper_helper:_1_others
+                # common:common:system___0xe816e655de37fe20_helper
+                common = True
+                fnName = fnName.replace('::_', '!').replace('___', '!')
+                newName = []
+                for token in _.uniq(fnName.split(':')):
+                    if '!' in token:
+                        match = re.search(r'0x([0-9a-fA-F]{16})', token)
+                        if match:
+                            hashString = match.group(1)
+                            try:
+                                fnHashInt = parseHex(hashString)
+                            except ValueError:
+                                # dprint("[apply_native_renames] ValueError parsing {} from {}")
+                                print("[apply_native_renames] ValueError parsing {} from {}".format(hashString, fnName))
+                                continue
+                        
+                            fnHash = "0x%016X" % fnHashInt
+                            if fnHashInt in lookup:
+                                newName.append(camelCase(lookup[fnHashInt]['name']).replace('0X', '0x'))
+                            else:
+                                if not fnHashInt in unfound:
+                                    unfound.add(fnHashInt)
+                                    print("Couldn't find common fnHash {}".format(fnHash))
+                                    newName.append(fnHash)
+                    else:
+                        newName.append(camelCase(token))
+                LabelAddressPlus(fnLoc, ":".join(_.uniq(newName)))
+
+            else:
+                oldFnName = fnName
+                for match in re.finditer(r'0x([0-9a-fA-F]{16})', fnName):
+                    # hashString = string_between('0x', '', fnName, inclusive=1).split('_')[0]
+                    hashString = match.group(1)
+                    try:
+                        fnHashInt = parseHex(hashString)
+                    except ValueError:
+                        # dprint("[apply_native_renames] ValueError parsing {} from {}")
+                        print("[apply_native_renames] ValueError parsing {} from {}".format(hashString, fnName))
+                        continue
+                        
+                    fnHash = "0x%016X" % fnHashInt
+                    if fnHashInt and fnHashInt in lookup:
+                        if fnName.find('::_0x' + hashString) > 0:
+                            fnName = fnName.replace('::_0x' + hashString, '::' + lookup[fnHashInt]['name'])
+                            if fnName.startswith('NATIVE'):
+                                fnName = fnName.replace('NATIVE', lookup[fnHashInt]['namespace'])
+                        elif fnName.find('___0x' + hashString) > 0:
+                            fnName = fnName.replace('___0x' + hashString, '__' + lookup[fnHashInt]['name'].lower())
+                        else:
+                            print("!! {}: {}::{}".format( fnName, lookup[fnHashInt]['namespace'], lookup[fnHashInt]['name']))
+                    else:
+                        if not fnHashInt in unfound:
+                            unfound.add(fnHashInt)
+                            print("Couldn't find fnHash {}".format(fnHash))
+                if fnName != oldFnName:
+                    LabelAddressPlus(fnLoc, fnName)
+                    #  except ValueError:
+                        #  print("Couldn't parse hash {} from func {}".format(hashString, fnName))
 
 import sys
 if sys.stdin and sys.stdin.isatty():

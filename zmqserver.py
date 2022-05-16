@@ -166,6 +166,7 @@ def zmserver():
     #  if socket:
         #  socket.close()
     context = zmq.Context()
+    zmserver.context = context
     socket = context.socket(zmq.REP)
     socket.bind("tcp://{}:{}".format(host, port))
     socket.RCVTIMEO = 1000

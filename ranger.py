@@ -36,12 +36,17 @@ class GenericRange(object):
                 self._start, self._last = l[0], l[-1]
 
         if self._start and self._last and self._start > self._last:
-            self._start, self._last = self._last, self._start
+            if self._last < 0xffffffff and self._start > 0xffffffff:
+                self._last += self._start
+            else:
+                self._start, self._last = self._last, self._start
 
     def __repr__(self):
         return "{:x}{}{:x}".format(self.start, self.endash, self.last) if self.last != self.start else "{:x}".format(self.start)
 
     def __getitem__(self, index):
+        if index < 0:
+            index += len(self)
         r = self.start + index
         if r > self.last:
             raise IndexError()

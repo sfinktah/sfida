@@ -202,6 +202,7 @@ def smartTraversalFactory(fn1, direction = -1):
                 if not targetList:
                     targetList = _.filter(list(refs['jmpRefs']), lambda x, *a: idc.get_item_size(x) > 1)
                 myassert(len(targetList) > 0, "Not enough refs")
+                #  if not targetList: return
                 #  targetList = _.filter(targetList, lambda x, *a: not IsSameFunc(x, ea))
                 targetList2 = []
                 targetList2.extend(_.filter(targetList, lambda x, *a: isCall(x)))
@@ -211,6 +212,10 @@ def smartTraversalFactory(fn1, direction = -1):
                 targetList2 = _.flatten(targetList2)
                 #  if not targetList2:
                 targetList2.extend(refs['callRefs'])
+                if debug:
+                    # dprint("[next] targetList2")
+                    print("[next] targetList2:{}".format(targetList2))
+                    
                 targetList2 = _.uniq(targetList2)
                 while targetList2:
                     target = targetList2.pop(0)
@@ -621,7 +626,7 @@ def UnPatch(start, end = None):
                 return 0
         end = InsnLen(start) + start
 
-    if end < start and end < 16364:
+    if end < start and end < 65536:
         end = start + end
 
     count = 0
@@ -706,6 +711,17 @@ def UnpatchFunc(funcea=None):
     SetFuncStart(funcea, func.start_ea)
     SetFuncEnd(funcea, func.end_ea)
     EaseCode(funcea)
+
+
+@static_vars(good = 0)
+def color_patched_byte(ea, fpos, org_val, patch_val):
+    good = good + 1
+    p.update(good)
+    idc.set_color(ea, idc.CIC_ITEM, 0x280128)
+
+def color_patches():
+    p = ProgressBar(count)
+    idaapi.visit_patched_bytes(0, idaapi.BADADDR, color_patched_byte)
 
         
 patchedBytes=[]
@@ -897,10 +913,9 @@ def unpatch_func2(funcea=None, unpatch=True):
     for start, end in chunks:
         ida_auto.revert_ida_decisions(start, end)
         if unpatch:
-            while start < end:
-                if ida_bytes.get_original_qword(start) != idc.get_qword(start):
-                    _unpatch_count += UnPatch(start, min(end, start + 4))
-                start += 4
+            while not IsFunc_(end + 1):
+                end += 1
+            _unpatch_count += UnPatch(start, end)
 
     #  EaseCode(ea)
     idc.add_func(ea)
@@ -1016,7 +1031,7 @@ def get_version_mb():
     if get_version_mb.loc:
         return mb(get_version_mb.loc)
 
-    get_version_mb.loc = bestOf3([x.ea() for x in [
+    get_version_mb.loc = bestOf3([x.ea for x in [
         ProtectScan("48 89 6c 24 10 48 89 7c 24 18 41 57 48 83 ec 60 48").add(-5),
         ProtectScan("75 0b 88 05 ?? ?? ?? ?? e9 ?? ?? ?? ?? b2").add(-58),
         ProtectScan("48 85 c0 0f 84 ?? ?? ?? ?? 4c 8d 3d").add(-88),

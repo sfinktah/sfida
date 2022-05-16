@@ -206,6 +206,12 @@ def debug_fflags(ea = None, f = None, quiet = False):
     if idc.is_struct(f): isList.append("is_struct")
     if idc.is_align(f): isList.append("is_align")
 
+    if ida_bytes.has_name(f): isList.append("has_name")
+    if ida_bytes.has_dummy_name(f): isList.append("has_dummy_name")
+    if ida_bytes.has_auto_name(f): isList.append("has_auto_name")
+    if ida_bytes.has_any_name(f): isList.append("has_any_name")
+    if ida_bytes.has_user_name(f): isList.append("has_user_name")
+
     if not quiet: print(" ".join(isList))
     result.extend(isList)
 

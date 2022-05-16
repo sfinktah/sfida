@@ -129,7 +129,7 @@ class CircularList(object):
             
 
             m = re.search(pattern, text, flags)
-            mobj = line
+            matchline = line
             if multi and not greedy and peek:
                 mpeek = re.search(peek, text, flags)
             else: 
@@ -184,17 +184,17 @@ class CircularList(object):
             if m:
                 #  dprint("[multi] multi, min, pattern")
                 if debug: print("[multi] m:{}, multi:{}, min:{}, pattern:{}, text:{}".format(True, multi, min, pattern, text))
-                matches.append(mobj)
+                matches.append(matchline)
                 # dprint("[multi] m")
                 #  print("[either] m:{}".format(m))
                 
                 for k, v in m.groupdict().items():
-                    group_matches[k].append( call_if_callable(groupiter, mobj, default=v) )
+                    group_matches[k].append( call_if_callable(groupiter, matchline, default=v) )
                     # dprint("[multi] k, v")
                     #  print("[either] k:{}, v:{}".format(k, v))
                     
                 if multi:
-                    repetitions[pattern_count].append(mobj)
+                    repetitions[pattern_count].append(matchline)
                     # dprint("[multi] repetitions[pattern_count]")
                     #  print("[multi] repetitions[pattern_count]:{}".format(repetitions[pattern_count]))
                     

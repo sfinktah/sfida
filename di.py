@@ -138,6 +138,7 @@ def MyGetInstructionLength(*args):
         insn = ida_ua.insn_t()
         inslen = ida_ua.decode_insn(insn, ea)
         if inslen:
+            return inslen
             lengths.append(inslen)
 
         # distorm method
@@ -173,7 +174,7 @@ def getCode(ea=None, length=None):
     @param length: number of bytes
     """
     ea = eax(ea)
-    length = length or MyGetInstructionLength(ea)
+    length = length or MyGetInstructionLength(ea) or IdaGetInsnLen(ea)
     if length > ea:
         length -= ea
     r = idc.get_bytes(ea, length)
