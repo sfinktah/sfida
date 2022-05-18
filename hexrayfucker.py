@@ -2159,16 +2159,16 @@ def get_decl_args(decl):
     # ('__int64', '', '', '(*__fastcall(__int64 (*a1)(void)))(void)')
     # [get_decl_args] returnType:__int64, fnPtr:, fnName:, fnArgs:(*__fastcall(__int64 (*a1)(void)))(void)
 
-    print("[get_decl_args] {}".format(decl))
+    if debug: print("[get_decl_args] {}".format(decl))
     while True:
         failed = []
         # dprint("    [get_decl_args] decl")
         #  returnType:, callTypeAndName:, fnName:void, fnArgs:__int64 a1, ... 
         re_res = None
-        print("    [get_decl_args] re.findall({})".format(regex))
+        if debug: print("    [get_decl_args] re.findall({})".format(regex))
         for found in re.findall(regex, decl):
             for x, y in zip(["returnType", "fnPtr", "fnName", "fnArgs"], found):
-                print("        [get_decl_args] {:12} {}".format(x + ':', y or '(none)'))
+                if debug: print("        [get_decl_args] {:12} {}".format(x + ':', y or '(none)'))
 
 
             re_res = found
@@ -2210,7 +2210,7 @@ def get_decl_args(decl):
                 if not arg:
                     continue
                 # dprint("        [debug] arg")
-                print("    [get_decl_args] {}".format(arg))
+                if debug: print("    [get_decl_args] {}".format(arg))
                 
                 if '(' in arg:
                     continue
@@ -2234,14 +2234,14 @@ def get_decl_args(decl):
                 # dprint("            [get_decl_args] lhs, stars, rhs")
                 #
                 for x, y in zip(["type", "indirection", "name"], [lhs, stars, rhs]):
-                    print("        [get_decl_args] {:12} {}".format(x + ':', y or '(none)'))
+                    if debug: print("        [get_decl_args] {:12} {}".format(x + ':', y or '(none)'))
 
                 if get_tinfo_by_parse(lhs):
                     # dprint("            [tinfo-ok] lhs")
-                    print("        [get_decl_args] [tinfo-ok] lhs:{}".format(lhs))
+                    if debug: print("        [get_decl_args] [tinfo-ok] lhs:{}".format(lhs))
                 else:
                     # dprint("            [tinfo-ok] lhs")
-                    print("        [get_decl_args] [tinfo-fail] lhs:{}".format(lhs))
+                    if debug: print("        [get_decl_args] [tinfo-fail] lhs:{}".format(lhs))
                     failed.append(lhs)
             stars = ''
             while returnType and returnType[-1] == '*':
@@ -2250,7 +2250,7 @@ def get_decl_args(decl):
             returnType = returnType.strip()
             if not get_tinfo_by_parse(returnType):
                     # dprint("    [tinfo-ok] returnType")
-                    print("    [get_decl_args] [tinfo-fail] returnType: {}".format(returnType))
+                    if debug: print("    [get_decl_args] [tinfo-fail] returnType: {}".format(returnType))
                     failed.append(returnType)
 
         break

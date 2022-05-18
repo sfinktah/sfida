@@ -359,9 +359,9 @@ def get_data_ref(frm, var, _globals=[]):
             if MakeSigned(idc.get_wide_dword(frm + offset), 32) + frm + inslen == ea:
                 insOffset = frm - GetFuncStart(frm)
                 # print(" %% Found reference at offset %i (%i) of instruction offset %i of %s" % (offset, inslen - offset, insOffset, idc.get_func_name(frm)))
-                #  pattern = sig_maker_ex(GetFuncStart(frm), GetFuncEnd(frm), offset = insOffset + offset, rip = inslen - offset, idc.get_type(ea), name=var)
+                #  pattern = sig_maker_ex(GetFuncStart(frm), GetFuncEnd(frm), offset = insOffset + offset, rip = inslen - offset, MyGetType(ea), name=var)
                 pattern = "mem(LocByName('{}')).chain().add({}).rip({}).type('{}').name('{}')".format(
-                    idc.get_name(GetFuncStart(frm)), insOffset + offset, inslen - offset, idc.get_type(ea), var)
+                    idc.get_name(GetFuncStart(frm)), insOffset + offset, inslen - offset, MyGetType(ea), var)
                 #  idc.apply_type(EA(), byteify(unbyteify(idc.get_tinfo(EA()))))
                 if isinstance(pattern, str) and len(pattern) > 0:
                     __data_ref_cache[fullvar] = pattern
@@ -384,7 +384,7 @@ def get_instructions_chunked(start=0, end=0, addresses=None, maxlen=65535, _glob
                     addr = idc.get_name_ea_simple(var)
                     if addr < idc.BADADDR and HasUserName(addr):
                         loc = get_data_ref(ea, var, _globals)
-                        print(" %% global: 0x{:x} {} {}: {}".format(addr, GetType(addr), var, loc))
+                        print(" %% global: 0x{:x} {} {}: {}".format(addr, MyGetType(addr), var, loc))
                         Commenter(addr).add('[DATA-PATTERN: {}]'.format(loc))
 
                 byteList.append(disasm)
@@ -408,7 +408,7 @@ def get_instructions_chunked(start=0, end=0, addresses=None, maxlen=65535, _glob
                     addr = get_name_ea_simple(var)
                     if addr < BADADDR and HasUserName(addr):
                         loc = get_data_ref(ea, var, _globals)
-                        print(" %% global: 0x{:x} {} {}: {}".format(addr, GetType(addr), var, loc))
+                        print(" %% global: 0x{:x} {} {}: {}".format(addr, MyGetType(addr), var, loc))
                         Commenter(addr).add('[DATA-PATTERN: {}]'.format(loc))
 
                 byteList.append(disasm)
@@ -483,7 +483,7 @@ def make_sig_from_comb(_chunks, addresses, ripRelAsQuad=False, replValues=None):
         #  ['o_far', 6, 'Immediate Far Address  (CODE)', 'addr'],
         #  ['o_near', 7, 'Immediate Near Address (CODE)', 'addr'],
         # dprint("[debug] ea, chunks, opSet.isdisjoint(procSet)")
-        print("[debug] ea:{:x}, chunks:{}, opSet.isdisjoint(procSet):{}".format(ea, chunks, opSet.isdisjoint(procSet)))
+        if debug: print("[debug] ea:{:x}, chunks:{}, opSet.isdisjoint(procSet):{}".format(ea, chunks, opSet.isdisjoint(procSet)))
         
         changed = 0
         if not opSet.isdisjoint(procSet):
@@ -491,8 +491,6 @@ def make_sig_from_comb(_chunks, addresses, ripRelAsQuad=False, replValues=None):
             for i in range(2):
                 if idc.get_operand_type(ea, i) in procSet:
                     opNum = i
-            # dprint("[op] opNum")
-            print("[op] opNum:{}".format(opNum))
             
             if opNum > -1:
                 _opValue = GetOperandValue(ea, opNum)
@@ -504,7 +502,7 @@ def make_sig_from_comb(_chunks, addresses, ripRelAsQuad=False, replValues=None):
                 _insnHex = ' '.join(["{:02x}".format(idc.get_wide_byte(ea + a)) for a in range(GetInsnLen(ea))])
                 _offsetChars = _insnHex.find(_ripRelHex)
                 # dprint("[debug] _ripRelHex, _insnHex, _offsetChars")
-                print("[debug] _ripRelHex:{}, _insnHex:{}, _offsetChars:{}".format(_ripRelHex, _insnHex, _offsetChars))
+                if debug: print("[debug] _ripRelHex:{}, _insnHex:{}, _offsetChars:{}".format(_ripRelHex, _insnHex, _offsetChars))
                 
                 
                 if ~_offsetChars:
@@ -639,9 +637,9 @@ def make_sig_from_comb(_chunks, addresses, ripRelAsQuad=False, replValues=None):
                             #  results.append( \
                                     #  { 'ea': sub,
                                       #  'name': TagRemoveSubstring(idc.get_name(sub)),
-                                      #  'path': [('offset', head - ea + 1 + offset), ('is_mnem', idc.print_insn_mnem(head)), ('rip', 4), ('name', TagRemoveSubstring(idc.get_name(sub))), ('type', idc.get_type(sub))],
+                                      #  'path': [('offset', head - ea + 1 + offset), ('is_mnem', idc.print_insn_mnem(head)), ('rip', 4), ('name', TagRemoveSubstring(idc.get_name(sub))), ('type', MyGetType(sub))],
                                       #  'sub' : True,
-                                      #  'type': idc.get_type(sub) })
+                                      #  'type': MyGetType(sub) })
     #  return results
 
 
@@ -693,28 +691,32 @@ def sig_globals(ea=None, sig='', sig_offset=0, fullFuncTypes=False):
                             #  print(" %% Found reference at offset(%i).rip(%i) of instruction offset(%i) of %s" % (offset, instruction_length - offset, instruction_offset, idc.get_func_name(ea)))
                             _offset = sig_offset + instruction_offset + offset
                             _rip = instruction_length - offset
-                            _type = str(idc.get_type(global_address))
+                            _type = str(MyGetType(global_address))
                             if isinstance(_type, str):
                                 if fullFuncTypes:
                                     _type = _type.replace("__fastcall", "(*)").replace("__stdcall", "(*)").replace("None", "void*").replace("(*)", "(*) func")
                                 else:
                                     _type = _type.replace("__fastcall", "(*)").replace("__stdcall", "(*)").replace("None", "void*")
                                 # dprint("[sig_globals] _type")
-                                print("[sig_globals] _type:{} fullFuncTypes:{}".format(_type, fullFuncTypes))
+                                if debug: print("[sig_globals] _type:{} fullFuncTypes:{}".format(_type, fullFuncTypes))
                                 
 
                             sent.add(global_address)
-                            print(
+                            if debug: print(
                                 sig_protectscan(sig, _offset, _rip,
                                                 _type, idc.get_name(global_address), func=IsFuncHead(global_address), fullFuncTypes=fullFuncTypes))
                             found += 1
                             results.append( \
                                     { 'ea': global_address,
                                       'name': global_name,
-                                      'path': [('offset', _offset), ('is_mnem', idc.print_insn_mnem(instruction_start)), ('rip', _rip), ('name', global_name), ('type', idc.get_type(global_address))],
-                                      'sub' : False,
+                                      'path': [('offset', _offset),
+                                               ('is_mnem', idc.print_insn_mnem(instruction_start)),
+                                               ('rip', _rip),
+                                               ('name', global_name),
+                                               ('type', MyGetType(global_address))],
+                                      'sub' : IsFuncHead(global_address),
                                       'type': _type })
-                            #  pattern = sig_maker_ex(GetFuncStart(global_address), GetFuncEnd(global_address), offset = global_offset + offset, rip = instruction_length - offset, quick = 1) #, type = idc.get_type(global_address))
+                            #  pattern = sig_maker_ex(GetFuncStart(global_address), GetFuncEnd(global_address), offset = global_offset + offset, rip = instruction_length - offset, quick = 1) #, type = MyGetType(global_address))
 
                     if not found:
                         print(" %% Couldn't find solution for {} self {}".format(global_name, hex(global_address)))
@@ -741,7 +743,7 @@ def make_sig(chunks, start, ripRelAsQuad=False, replValues=None):
         #  ['o_far', 6, 'Immediate Far Address  (CODE)', 'addr'],
         #  ['o_near', 7, 'Immediate Near Address (CODE)', 'addr'],
         # dprint("[debug] start, chunks, opSet.isdisjoint(procSet)")
-        print("[debug] start:{:x}, chunks:{}, opSet.isdisjoint(procSet):{}".format(start, chunks, opSet.isdisjoint(procSet)))
+        if debug: print("[debug] start:{:x}, chunks:{}, opSet.isdisjoint(procSet):{}".format(start, chunks, opSet.isdisjoint(procSet)))
         
         changed = 0
         if not opSet.isdisjoint(procSet):
@@ -749,8 +751,6 @@ def make_sig(chunks, start, ripRelAsQuad=False, replValues=None):
             for i in range(2):
                 if idc.get_operand_type(start, i) in procSet:
                     opNum = i
-            # dprint("[op] opNum")
-            print("[op] opNum:{}".format(opNum))
             
             if opNum > -1:
                 _opValue = GetOperandValue(start, opNum)
@@ -761,7 +761,7 @@ def make_sig(chunks, start, ripRelAsQuad=False, replValues=None):
                 _ripRelHex = ' '.join(_tmp2)
                 _insnHex = ' '.join(["{:02x}".format(idc.get_wide_byte(start + a)) for a in range(GetInsnLen(start))])
                 _offsetChars = _insnHex.find(_ripRelHex)
-                print("[debug] _ripRelHex:{}, _insnHex:{}, _offsetChars:{}".format(_ripRelHex, _insnHex, _offsetChars))
+                if debug: print("[debug] _ripRelHex:{}, _insnHex:{}, _offsetChars:{}".format(_ripRelHex, _insnHex, _offsetChars))
                 
                 if ~_offsetChars:
                     _offsetBytes = div3(_offsetChars)
@@ -819,7 +819,7 @@ def make_sig(chunks, start, ripRelAsQuad=False, replValues=None):
             pass
         elif (mnem == 'cmp' or mnem == 'mov') and idc.get_operand_type(start, 0) == o_reg and idc.get_operand_type(
                 start, 1) == o_imm:
-            print("Testing letting cmp/mov o_reg, o_imm go without wildcards: {}".format(idc.GetDisasm(start)))
+            if debug: print("Testing letting cmp/mov o_reg, o_imm go without wildcards: {}".format(idc.GetDisasm(start)))
             pass
         elif octets == 7 and (mnem == 'cmp' or mnem == 'mov') and idc.get_operand_type(start, 1) == o_imm:
             # chunk = '80 3D 64 C2 D1 01 00'
@@ -958,7 +958,7 @@ def sig_maker_data(ea=None, wrt=None):
                                 print(" %% Found reference at offset %i (%i) of instruction offset %i of %s" % (
                                     offset, inslen - offset, insOffset, idc.get_func_name(frm)))
                                 pattern = sig_maker_ex(GetFuncStart(frm), GetFuncEnd(frm), offset=insOffset + offset,
-                                                       rip=inslen - offset, quick=1)  # , type = idc.get_type(ea))
+                                                       rip=inslen - offset, quick=1)  # , type = MyGetType(ea))
                                 if isinstance(pattern, str) and len(pattern) > 0 and len(pattern) < 128:
                                     patterns.append(pattern)
                                     print("%x: %s" % (ea, pattern))
@@ -1068,6 +1068,8 @@ def sig_type_fn(ea=None):
     if ea is None:
         ea = idc.get_screen_ea()
     fnLoc = ea
+    # member_type = MyGetType(fnLoc)
+    # we don't want the name
     member_type = idc.get_type(fnLoc)
     return make_declfn(member_type)
 
@@ -1138,7 +1140,7 @@ def sig_maker_ex(start=None, end=None, addresses=None, offset=0, rip=-1, type_=N
         insns = get_instructions_chunked(start, end, _globals=_globals)
     if show:
         # dprint("[debug] len(full), len(insn)")
-        print("[debug] len(full):{}, len(insns):{}".format(len(full), len(insns)))
+        if debug: print("[debug] len(full):{}, len(insns):{}".format(len(full), len(insns)))
         
         for i in range(len(full)):
             print("%-24s %s" % (full[i], insns[i]))
@@ -1329,12 +1331,13 @@ def find_pattern(pattern, limit=2, start=0, end=BADADDR):
 
 
 def binary_search_pattern_len(pattern, quick=False):
-    print(" %% checking entire pattern is unique %s (%i bytes)" % (pattern[0:72], len(pattern) / 3))
+    if debug: print(" %% checking entire pattern is unique %s (%i bytes)" % (pattern[0:72], len(pattern) / 3))
     count = len(FindInSegments(pattern, None, 2))
-    if count > 1:
-        print(" %% pattern was found %i times" % count)
-    if count < 1:
-        print(" %% pattern was not found")
+    if debug:
+        if count > 1:
+            print(" %% pattern was found %i times" % count)
+        if count < 1:
+            print(" %% pattern was not found")
 
     if count != 1:
         return count
@@ -1344,15 +1347,15 @@ def binary_search_pattern_len(pattern, quick=False):
 
     limit = 64 * 3
     if best_size > 99:
-        print(" %% checking small pattern is unique %s (%i bytes)" % (pattern[0:24], limit // 3))
+        if debug: print(" %% checking small pattern is unique %s (%i bytes)" % (pattern[0:24], limit // 3))
         count = len(FindInSegments(pattern[0:limit], None, 2))
 
         if count == 1:
-            print(" %% it was")
+            if debug: print(" %% it was")
             best = pattern = pattern[0:limit]
 
         else:
-            print(" %% afraid not")
+            if debug: print(" %% afraid not")
 
     if quick:
         return best;

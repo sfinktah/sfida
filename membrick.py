@@ -1565,12 +1565,27 @@ class membrick_memo(object):
             return idc.get_type(self.val())
         if not type:
             return self
-        if not IsHead(self.val()):
-            return self.error_return_chained("cannot set type on non-head at 0x{:x}".format(self.val()))
-        if not IsFuncHead(self.val()) and not IsData(self.val()):
-            return self.error_return_chained("cannot set type on non-data and non-func-head at 0x{:x}".format(self.val()))
-        if not idc.SetType(self.val(), type):
-            return self.error_return_chained("could not set type at 0x{:x} from {} to {}".format(self.val(), idc.get_type(self.val()), type))
+        #  if not IsHead(self.val()):
+            #  return self.error_return_chained("cannot set type on non-head at 0x{:x}".format(self.val()))
+        #  if IsCode(self.val()):
+            #  return self.error_return_chained("cannot set type on non-func-head code at 0x{:x}".format(self.val()))
+        #  if not IsFuncHead(self.val()) and not IsData(self.val()):
+            #  return self.error_return_chained("cannot set type on non-data and non-func-head at 0x{:x}".format(self.val()))
+        e = "invalid type for {:x} of {}".format(self.val(), type)
+        r = idc.SetType(self.val(), type)
+        if r is None:
+            if '(' in type:
+                if idc.SetType(self.val(), type.replace('(', ' mbfunc(')):
+                    print("[membrick::info] set type of {:x} to {} by adding 'mbfunc' before '('".format(self.val(), type))
+                else:
+                    print("[memberick::warn] " + e)
+                    return self.error_return_chained(e)
+            else:
+                print("[memberick::warn] " + e)
+                return self.error_return_chained(e)
+        elif r is False:
+            print("[memberick::warn] " + e)
+            return self.error_return_chained(e)
         return self
 
     def dword(self):

@@ -8,7 +8,7 @@ try:
 except ImportError:
     pass
 from types import *
-import re
+import re, random
 import functools
 import random
 import time
@@ -64,6 +64,95 @@ def oget(obj, key, default=None, call=False):
 
     return r
 
+def _shuffleSize(array, size=None):
+    """
+    A specialized version of `_.shuffle` which mutates and sets the size of `array`.
+
+    @private
+    @param {Array} array The array to shuffle.
+    @param {number} [size=array.length] The size of `array`.
+    @returns {Array} Returns `array`.
+    """
+    index = -1
+    length = len(array)
+    lastIndex = length - 1
+                                               
+    if size is None:
+        size = length
+
+    for index in range(size):
+        rand = _baseRandom(index, lastIndex)
+        
+        array[rand], array[index] = array[index], array[rand]
+
+    return array[0:size]
+
+def _baseSampleSize(collection, n):
+    """
+    The base implementation of `_.sampleSize` without param guards.
+
+    @private
+    @param {Array|Object} collection The collection to sample.
+    @param {number} n The number of elements to sample.
+    @returns {Array} Returns the random elements.
+    """
+    array = _values(collection)
+    return _shuffleSize(array, _baseClamp(n, 0, len(array)))
+
+def _baseClamp(number, lower, upper):
+    """
+    The base implementation of `_.clamp` which doesn't coerce arguments.
+
+    @private
+    @param {number} number The number to clamp.
+    @param {number} [lower] The lower bound.
+    @param {number} upper The upper bound.
+    @returns {number} Returns the clamped number.
+    """
+    if type(number) == type(upper):
+        return number if number <= upper else upper
+    
+    if type(number) == type(lower):
+        return number if number >= lower else lower
+    
+    return number;
+
+
+def _isIterateeCall(value, index, object):
+    """
+    Checks if the given arguments are from an iteratee call.
+
+    @private
+    @param {*} value The potential iteratee value argument.
+    @param {*} index The potential iteratee index or key argument.
+    @param {*} object The potential iteratee object argument.
+    @returns {boolean} Returns `true` if the arguments are from an iteratee call, else `false`.
+    """
+    if object and index is not None:
+        try:
+            if _isListlike(object):
+                if isinstance(index, int):
+                    if index and index > 0 and index < len(object):
+                        return object[index] == value
+            if _isDictlike(object):
+                if index in object:
+                    return object[index] == value
+        except TypeError:
+            pass
+    return False
+
+def _baseRandom(lower, upper):
+    """
+    The base implementation of `_.random` without support for returning
+    floating-point numbers. [lodash]
+                                                                        
+    @private
+    @param {number} lower The lower bound.
+    @param {number} upper The upper bound.
+    @returns {number} Returns the random number.
+    """
+    return random.randint(lower, upper)
+
 # https://stackoverflow.com/questions/42095393/python-map-a-function-over-recursive-iterables
 def _recursive_map(seq, func):
     for item in seq:
@@ -101,7 +190,15 @@ def _makeSequenceMapper(f):
 def _isIterable(o):
     return hasattr(o, '__iter__') and not hasattr(o, 'ljust')
 
+def _isDictlike(o):
+    return hasattr(o, 'items') and hasattr(o, 'values') and hasattr(o, 'keys') and hasattr(o, 'get')
 
+def _values(o):
+    """ Retrieve the values of an object's properties.
+    """
+    if _isIterable(o) and _isDictlike(o):
+        return o.values()
+    return _asList(o)
 
 __asList = _makeSequenceMapper(lambda x: x)
 def _asList(o):
@@ -756,6 +853,34 @@ class underscore(object):
         random.shuffle(cloned)
         return self._wrap(cloned)
 
+    def sampleSize(self, n, guard=None):
+        """
+        Gets `n` random elements at unique keys from `collection` up to the
+        size of `collection`.
+
+        @static
+        @memberOf _
+        @since 4.0.0
+        @category Collection
+        @param {Array|Object} collection The collection to sample.
+        @param {number} [n=1] The number of elements to sample.
+        @param- {Object} [guard] Enables use as an iteratee for methods like `_.map`.
+        @returns {Array} Returns the random elements.
+        @example
+
+        _.sampleSize([1, 2, 3], 2);
+        // => [3, 1]
+
+        _.sampleSize([1, 2, 3], 4);
+        // => [2, 3, 1]
+        """
+        collection = self.obj
+        if n is None or guard is not None and _isIterateeCall(collection, n, guard):
+            n = 1
+        else:
+            n = int(n)
+        return self._wrap(_baseSampleSize(collection, n))
+
     def reverse(self):
         cloned = self.obj[:]
         cloned.reverse()
@@ -1408,7 +1533,7 @@ class underscore(object):
     def values(self):
         """ Retrieve the values of an object's properties.
         """
-        return self._wrap(list(self.obj.values()))
+        return self._wrap(_values(self.obj))
 
     def pairs(self):
         """ Convert an object into a list of `[key, value]` pairs.

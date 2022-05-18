@@ -53,9 +53,9 @@ def EA():
 def GetFuncStart(ea):
     """
     Determine a new function boundaries
-    
+
     @param ea: address inside the new function
-    
+
     @return: if a function already exists, then return its end address.
             If a function end cannot be determined, the return BADADDR
             otherwise return the end address of the new function
@@ -68,9 +68,9 @@ def GetFuncStart(ea):
 def GetFuncEnd(ea):
     """
     Determine a new function boundaries
-    
+
     @param ea: address inside the new function
-    
+
     @return: if a function already exists, then return its end address.
             If a function end cannot be determined, the return BADADDR
             otherwise return the end address of the new function
@@ -214,12 +214,12 @@ if 'pf' not in globals():
     pfh = pf
 
 def zrequest(j):
-    request = asBytes(json.dumps(j).replace('Concurrency::details::HardwareAffinity', 'void')) # .encode('ascii')
+    request = asBytes(json.dumps(j).replace('Concurrency::details::HardwareAffinity', 'void*')) # .encode('ascii')
     retries = 10
     while retries:
         retries = retries - 1
         try:
-            print("retry #{} message:\n{}\n".format(retries, pfh(asString(request))))
+            if debug: print("retry #{} message:\n{}\n".format(retries, pfh(asString(request))))
             socket.send(request, zmq.NOBLOCK)
         except zmq.error.Again:
             print(("Resource Temporarily Unavailable... %i" % retries))
@@ -290,24 +290,36 @@ def zrequest(j):
         return -1
 
 def ignore_function_name(fnName):
-    if False                                                                 \
-        or  not fnName                                                       \
-        or  len(fnName) < 2                                                  \
-        or  re.match(r".*arxan", fnName, re.I)                               \
-        or  re.match(r".*_BACK_", fnName)                                    \
-        or  fnName.find('::m_') > -1                                         \
-        or  fnName.find( "$" ) > -1                                          \
-        or  fnName[0] == "$"                                                 \
-        or  fnName[0] == "_"                                                 \
-        or  fnName[0] == "?"                                                 \
-        or  fnName[0:2] == "j_"                                              \
-        or  fnName.find('unknown_libname_') > -1                             \
-        or  re.match(r"^jJSub", fnName)                                      \
-        or  re.match(r"\?", fnName)                                          \
-        or  re.match(r"(::_0x|___0x)", fnName)                               \
-        or  len(VtableRefsTo(eax(fnName))) > 0                               \
-        or  (idc.get_type(eax(fnName)) and '#' in idc.get_type(eax(fnName))) \
-        or  re.match(r".*_impl[_0-9]+$", fnName, re.IGNORECASE):
+    if re.match(r'^(SYSTEM|APP|AUDIO|BRAIN|CAM|CLOCK|CUTSCENE|DATAFILE|DECORATOR|DLC|ENTITY|EVENT|FILES|FIRE|GRAPHICS|HUD|INTERIOR|ITEMSET|LOADING|LOCALE|MISC|NETCASH|MOBILE|NETSHOP|NETWORK|OBJECT|PAD|PATHFIND|PED|PHYSICS|PLAYER|RECORDING|RENDERING|SCRIPT|SHAPETEST|SOCIALCLUB|STATS|STREAMING|\
+TASK|VEHICLE|WATER|WEAPON|ZONE|NATIVE)(::|__)',
+            fnName, re.I):
+        return True
+    if 'Arxan' in fnName:
+        return True
+    if 'FromNative' in fnName:
+        return True
+    if 'BACK' in fnName:
+        return True
+
+    if (False
+        or  not fnName
+        or  len(fnName) < 2
+        or  re.match(r".*arxan", fnName, re.I)
+        or  re.match(r".*_BACK_", fnName)
+        or  fnName.find('::m_') > -1
+        or  fnName.find( "$" ) > -1
+        or  fnName[0] == "$"
+        or  fnName[0] == "_"
+        or  fnName[0] == "?"
+        or  fnName[0:2] == "j_"
+        or  fnName.find('unknown_libname_') > -1
+        or  re.match(r"^jJSub", fnName)
+        or  re.match(r"\?", fnName)
+        or  re.match(r"(::_0x|___0x)", fnName)
+        or  len(VtableRefsTo(eax(fnName))) > 0
+        or  (idc.get_type(eax(fnName)) and '#' in idc.get_type(eax(fnName)))
+        or  re.match(r".*_impl[_0-9]+$", fnName, re.IGNORECASE)
+    ):
             return True
     return False
 
@@ -362,8 +374,8 @@ def sig_maker_auto_zmq(ea, colorise=False, force=False, special=False):
     # if idaapi.has_dummy_name(fnFlags) or not idaapi.has_any_name(fnFlags) or fnName.find('::') > -1 or fnName.find('NATIVES') == 0 or fnName[0] == "$" or fnName[0] == "?" or fnName.find('_BACK_') > -1 or fnName.find('unknown_libname_') > -1 or re.match(r"^jJSub", fnName) != None:
     if not force:
         # dprint("[sigmaker] fnName")
-        print("[sigmaker] fnName:{}".format(fnName))
-        
+        if debug: print("[sigmaker] fnName:{}".format(fnName))
+
         if not special:
             if idaapi.has_dummy_name(fnFlags)            \
                 or  not idaapi.has_any_name(fnFlags)     \
@@ -375,11 +387,11 @@ def sig_maker_auto_zmq(ea, colorise=False, force=False, special=False):
             print(("%s: skipping vtable functions" % fnName))
             return
     if Byte(ea) == 0xe9:
-        print(("%s: skipping thunk" % fnName))
+        if debug: print(("%s: skipping thunk" % fnName))
         return
 
-    #  if check(ea, "[PATTERN;MULTIPLE]"):
-        #  print("%s: skipping marked multiple" % fnName)
+    if check(ea, "[PATTERN;MULTIPLE]"):
+        print("%s: skipping marked multiple" % fnName)
         #  if colorise:
             #  SetColor(fnStart, CIC_FUNC, DEFCOLOR)
         #  return
@@ -389,11 +401,12 @@ def sig_maker_auto_zmq(ea, colorise=False, force=False, special=False):
             print(("%s: skipping unmatched" % fnName))
             return
         return
-    #  if check_re(ea, r"\[PATTERN;(EXISTS|MULTIPLE|UNMATCHED):" + remote_version):
+    if check_re(ea, r"\[PATTERN;(EXISTS|MULTIPLE|UNMATCHED):" + remote_version):
     #  if check_re(ea, r"\[PATTERN;UNMATCHED:" + remote_version):
-        #  print("%s: skipping unmatched" % fnName)
-        #  return
-    
+        for x in  check_re(ea, r"\[PATTERN;(EXISTS|MULTIPLE|UNMATCHED):" + remote_version):
+            print("%s: skipping on remote " % fnName + " (" + string_between('PATTERN;', ':', x) + ")")
+            return
+
         #  if check_re(ea, r"\[PATTERN;(XXXXXX|MULTIPLE|UNMATCHED):" + remote_version):
             #  print("%s: skipping previously tried" % fnName)
             #  return
@@ -401,11 +414,11 @@ def sig_maker_auto_zmq(ea, colorise=False, force=False, special=False):
     pattern = ""
     rv = check_re(ea, r"\[PATTERN;SHORTEST:")
     for r in rv:
-        print(("found existing pattern comment: %s" % r))
+        if debug: print(("found existing pattern comment: %s" % r))
         m = re.match(r"\[PATTERN;SHORTEST:\w+] '(.*)'", r)
         if m:
             pattern = m.group(1)
-            print(("found existing pattern: %s" % pattern))
+            if debug: print(("found existing pattern: %s" % pattern))
             break
 
         #  print("%s: skipping previously processed" % fnName)
@@ -420,20 +433,18 @@ def sig_maker_auto_zmq(ea, colorise=False, force=False, special=False):
         desc = TagRemoveSubstring(fnName)
         rv = zrequest_exists({'cmd':'aob', 'pattern':[], 'description':desc, 'address':ea, 'decl':''})
         if rv and isinstance(rv, object):
-            if 'pp' in globals():
-                pp(rv)
-            # (b'{"cmd": "aob", "pattern": [], "description": "pureVirtualFunctionPtr", 
+            # (b'{"cmd": "aob", "pattern": [], "description": "pureVirtualFunctionPtr",
             # "address": 5368713216, "decl": "", "_exists": 1}')
             if 'version' in rv:
                 remote_version = rv['version']
             # XXX
             if 'exists' in rv and rv['exists'] == 1 and 'address' in rv:
                 _address = rv['address']
-                print("type address: {}".format(type(_address)))
+                if debug: print("type address: {}".format(type(_address)))
                 _exists = _address
-                print("type address: {}".format(type(_exists)))
-                print("_exists: {:x} {:x}".format(rv['address'], _exists))
-                print(("\n\n\n%s: already _exists on target" % fnName))
+                if debug: print("type address: {}".format(type(_exists)))
+                if debug: print("_exists: {:x} {:x}".format(rv['address'], _exists))
+                if debug: print(("\n\n\n%s: already _exists on target" % fnName))
                 # XXX
                 #  mark(ea, "[PATTERN;EXISTS:%s]" % (remote_version));
 
@@ -471,7 +482,7 @@ def sig_maker_auto_zmq(ea, colorise=False, force=False, special=False):
     _subs = []
     _globals = []
     if not _exists and (ignore_existing_pattern or len(pattern) == 0):
-        print(("%s: making pattern" % fnName))
+        if debug: print(("%s: making pattern" % fnName))
         # this will make subs or globals or smth
         #  get_instructions_chunked(fnStart, fnEnd, 1024, _globals = _old_globals)
         #  _subs = sig_subs(fnStart, filter=lambda fnLoc, fnName: not ignore_function_name(fnName))
@@ -484,7 +495,7 @@ def sig_maker_auto_zmq(ea, colorise=False, force=False, special=False):
             mark(ea, "[PATTERN;SHORTEST:%s] '%s'" % (time.strftime('%Y-%m-%d'), pattern));
         elif isinstance(pattern, int):
             if pattern != 1:
-                print(("%s: multiple matches (%d)" % (fnName, pattern)))
+                if debug: print(("%s: multiple matches (%d)" % (fnName, pattern)))
                 add_alt_matches(fnStart)
                 return
                 #  rl = []
@@ -497,29 +508,29 @@ def sig_maker_auto_zmq(ea, colorise=False, force=False, special=False):
                     #  return
                 #  pattern = rl
             else:
-                print(("%s: %s: make_sig returned: %s (probably no matches)" % (ea, fnName, pattern)))
+                if debug: print(("%s: %s: make_sig returned: %s (probably no matches)" % (ea, fnName, pattern)))
         else:
             print(("%s: %s: make_sig returned unexpected type: %s" % (ea, fnName, type(pattern))))
 
     if zmqfake:
         return
-    
+
     #  ea = idaapi.get_screen_ea()
     if _exists:
         pattern = ''
     try:
-        cfunc = idaapi.decompile(ea) 
+        cfunc = idaapi.decompile(ea)
         func_def = str(cfunc).split("\n")
         decl = [x for x in func_def if len(x) and not x[0] == '/'][0]
         # dprint("[decl] decl")
-        print("[decl] decl:{}".format(decl))
-        
+        if debug: print("[decl] decl:{}".format(decl))
+
         #  if len(pattern) < (3 * 6) or pattern[0:2] == "e9":
             #  return
         export_types = ''
         while True:
             # dprint("[debug] _globals")
-            print("[debug] _globals:{}".format(_globals))
+            if debug: print("[debug] _globals:{}".format(_globals))
             if special and not HasUserName(ea) and idc.get_func_name(ea).startswith('sub_'):
                 desc = "_" + idc.get_func_name(ea)
             else:
@@ -529,16 +540,15 @@ def sig_maker_auto_zmq(ea, colorise=False, force=False, special=False):
             # # untested
             for _g in _globals:
                 if _g['type'].endswith(')'):
-                    _g['type'] = _g['type'].replace('void (*)(', 'void (*) fn(')
+                    _g['type'] = _g['type'].replace('void (*)(', 'void (*) fun1(')
                     # dprint("[sig_maker_auto_zmq] _g")
-                    print("[sig_maker_auto_zmq] _g:{}".format(_g))
-                    
+                    if debug: print("[sig_maker_auto_zmq] _g:{}".format(_g['type']))
+
 
             req = {'cmd':'aob', 'version':local_version,
                 'pattern':pattern, 'description':desc, 'address':_exists or ea,
                 'decl':decl, 'globals':_globals, 'subs':[],
                 'types':export_types}
-            pp(req)
             rv = zrequest(req)
             if not isinstance(rv, dict):
                 print(("typeof rv is %s" % type(rv)))
@@ -546,10 +556,10 @@ def sig_maker_auto_zmq(ea, colorise=False, force=False, special=False):
                 raise Exception("error")
             matches = rv['matches']
             remote_version = rv['version']
-            print(("%s: %i matches" % (fnName, matches)))
+            if debug: print(("%s: %i matches" % (fnName, matches)))
             if 'request_type' in rv:
                 types = rv['request_type']
-                print("remove has request type definitions for: {}".format(types))
+                print("remote has request type definitions for: {}".format(types))
                 if types:
                     for t in _.uniq(types):
                         if t != 'void':
@@ -586,7 +596,7 @@ def sig_maker_all(pattern=None, colorise=False):
     numLocs = len(list(idautils.Functions()))
     count = 0
     lastPercent = 0
-    print(("locs: %i" % numLocs))
+    #  print(("locs: %i" % numLocs))
 
     iter = idautils.Functions() # idc.get_segm_attr(EA(, SEGATTR_START)), idc.get_segm_attr(EA(, SEGATTR_END))):
     while True:
@@ -603,6 +613,11 @@ def sig_maker_all(pattern=None, colorise=False):
                 print('matched pattern with {}'.format(fnName))
             else:
                 ea = next(iter)
+                if not HasUserName(ea):
+                    continue
+                
+                fnName = idc.get_func_name(ea)
+                if debug: print('function {}...'.format(fnName))
             if getglobal('m', None, list) and getglobal('l', None, list):
                 if ea in globals()['m'] or ea in globals()['l']:
                     continue
@@ -641,7 +656,7 @@ def testport():
             print('socket is open')
         else:
             print('socket is closed, error: {}'.format(result))
-        
+
     return result
 
 def test(port = 5558):

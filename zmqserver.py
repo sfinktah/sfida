@@ -111,8 +111,9 @@ def ZmqLabelPattern(j, name, pattern, address, decl = ''):
             c.add("[DECL;REMOTE:%s] '%s'" % (remote_version, decl))
             if add:
                 if not idc.SetType(p, decl):
-                    print("SetType(0x{:x}, '{}') failed".format(p, decl))
-                    needed_types = get_decl_args(decl)
+                    if idc.get_type(p) != decl:
+                        print("SetType(0x{:x}, '{}') failed".format(p, decl))
+                        needed_types = get_decl_args(decl)
                     # dprint("[debug] needed_types")
                     print("[debug] needed_types:{}".format(needed_types))
                     

@@ -3589,7 +3589,6 @@ camelize = camelCase_snake
 def PascalCase(st, upper=True, split=None, repl=''):
     return camelCase(st, upper, split, repl)
 
-
 def camelCase(st, upper=False, split=None, repl='', splitUpper=True):
     if not st:
         return st
@@ -5999,6 +5998,59 @@ def RemoveAllChunks(ea = 0):
 
     return chunk_list
 
+def GetFuncType(funcea=None):
+    """
+    GetFuncType
+
+    @param funcea: any address in the function
+    """
+    if isinstance(funcea, list):
+        return [GetFuncType(x) for x in funcea]
+
+    funcea = eax(funcea)
+    func = ida_funcs.get_func(funcea)
+
+    if not func:
+        return 0
+    else:
+        funcea = func.start_ea
+
+    if not IsFuncHead(funcea):
+        return None
+    
+    #  GN_VISIBLE = ida_name.GN_VISIBLE     # replace forbidden characters by SUBSTCHAR
+    #  GN_COLORED = ida_name.GN_COLORED     # return colored name
+    #  GN_DEMANGLED = ida_name.GN_DEMANGLED # return demangled name
+    #  GN_STRICT = ida_name.GN_STRICT       # fail if cannot demangle
+    #  GN_SHORT = ida_name.GN_SHORT         # use short form of demangled name
+    #  GN_LONG = ida_name.GN_LONG           # use long form of demangled name
+    #  GN_LOCAL = ida_name.GN_LOCAL         # try to get local name first; if failed, get global
+    #  GN_ISRET = ida_name.GN_ISRET         # for dummy names: use retloc
+    #  GN_NOT_ISRET = ida_name.GN_NOT_ISRET # for dummy names: do not use retloc
+    fnName = idc.get_name(funcea, ida_name.GN_VISIBLE)
+    if not fnName:
+        fnName = "invalid"
+    fnType = idc.get_type(funcea) 
+    if fnType:
+        return fnType.replace('(', ' ' + fnName + '(', 1)
+
+    return None
+
+def MyGetType(ea=None):
+    """
+    MyGetType
+
+    @param ea: linear address
+    """
+    if isinstance(ea, list):
+        return [MyGetType(x) for x in ea]
+
+    ea = eax(ea)
+    
+    if IsFuncHead(ea):
+        return GetFuncType(ea)
+    return idc.get_type(ea)
+
 def get_dtype(ea, op_idx):
     if idaapi.IDA_SDK_VERSION >= 700:
         insn = idaapi.insn_t()
@@ -8262,30 +8314,63 @@ def name_common_function(ea=None, dryRun=False):
         #  return "Is not function start: {}".format(describe_target(ea))
     
     if idc.get_segm_name(ea) == '.text':
-        refs = xrefs_to(ea, include='call|jump')
-        refNames = _.uniq(_.sort([string_between(re.compile('_actual', flags=re.I), '', x, inclusive=1, repl='') for x in GetFuncName(refs) if _.contains(x, ['::_0x', '___0x']) and not x.startswith(('common:', 'return_', 'nullsub_'))]) , True)
-        if not refNames:
-            refNames = _.uniq(_.sort([string_between(re.compile('_actual', flags=re.I), '', x, inclusive=1, repl='') for x in GetFuncName(refs) if _.contains(x, ['::_0x', '___0x']) and not x.startswith(('return_', 'nullsub_'))]) , True)
-        otherNames = _.uniq(_.sort([x for x in GetFuncName(refs) if x and not _.contains(x, ['::_0x', '___0x'])]), True)
+        #  refs = xrefs_to(ea, include='call|jump')
+        #  refNames = _.uniq(_.sort([string_between(re.compile('_actual', flags=re.I), '', x, inclusive=1, repl='') for x in GetFuncName(refs) if _.contains(x, ['::_0x', '___0x']) and not x.startswith(('common:', 'return_', 'nullsub_'))]) , True)
+        #  if not refNames:
+            #  refNames = _.uniq(_.sort([string_between(re.compile('_actual', flags=re.I), '', x, inclusive=1, repl='') for x in GetFuncName(refs) if _.contains(x, ['::_0x', '___0x']) and not x.startswith(('return_', 'nullsub_'))]) , True)
+        # otherNames = _.uniq(_.sort([x for x in GetFuncName(refs) if x and not _.contains(x, ['::_0x', '___0x'])]), True)
+        otherNames = []
+        refNames = FuncRefsTo(ea)
+
+        #  fnName = idc.get_name(ea)
+        #  fnName = fnName.replace('::', '!!').replace('__', '##')
+        nonNativeNames = []
+        nativeNames = []
+        otherCount = 0
+        for token in _.uniq(_.sort(_.flatten([fnName.replace('::', '!!').replace('__', '##').split(':') for fnName in refNames])), 1):
+            if '!!' in token or '##' in token:
+                token = token.replace('!!', '::').replace('##', '__')
+            if '::_0x' in token or '___0x' in token:
+                nativeNames.append(token)
+            elif '_others' in token:
+                otherCount += int(string_between('_', '_others', token, rightmost=1))
+            elif 'Others' in token:
+                otherCount += int(string_between('', 'Others', token).strip('_'))
+            elif '_helper' in token:
+                pass
+            elif token == 'common':
+                pass
+            else:
+                otherCount += 1
+                pass
+                #  nonNativeNames.append(token)
+
+        nativeNames = _.map(nativeNames, lambda v, *a: re.sub(r"_(ACTUAL|helper).*", "", v, re.I))
+
         #  callrefs = _.uniq(GetFuncStart([ea for ea in list(CallRefsTo(ea)) if idc.get_segm_name(ea) == '.text' and IsFunc_(ea) and IsNiceFunc(ea)]))
         #  jmprefs =  _.uniq(GetFuncStart([ea for ea in list(JmpRefsTo(ea)) if idc.get_segm_name(ea) == '.text' and IsFunc_(ea) and IsNiceFunc(ea) and IdaGetInsnLen(ea) > 2]))
         #  if e.conditional and len(callrefs + jmprefs) == 0:
             #  idc.del_func(ea)
             #  patched += 1
-        if len(refNames) == 1 and len(otherNames) == 0:
-            label = "{}_helper".format(refNames[0])
+        if len(nativeNames) == 1 and otherCount == 0:
+            label = "{}_helper".format(nativeNames[0])
             if not dryRun:
                 LabelAddressPlus(ea, label)
                 Commenter(ea, 'line').remove('[ALLOW EJMP]')
+            else:
+                print("{:x} {}".format(ea, label))
             return hex(ea), label
-
-        if refNames:
-            label = "common:" + ":".join(refNames)
-            if otherNames:
-                label += ":_{}_others".format(len(otherNames))
+        if not nativeNames:
+            label=''
+        else:
+            label = ":".join(['common'] + nativeNames + nonNativeNames)
+            if otherCount:
+                label += ":_{}_others".format(otherCount)
             if not dryRun:
                 LabelAddressPlus(ea, label)
                 Commenter(ea, 'line').add('[ALLOW EJMP]')
+            else:
+                print("{:x} {}".format(ea, label))
             return hex(ea), label
 
 def diStripNatives():
