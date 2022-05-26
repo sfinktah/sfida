@@ -430,7 +430,7 @@ def callHook(address, arguments, fnName, userData):
         out("{:x} re-entrant function call detected".format(address))
         helper.stopEmulation(userData)
 
-    elif fnName != last_called_function or called_functions[fnName] % 100 == 0:
+    if fnName != last_called_function or called_functions[fnName] % 100 == 0:
         after("; === {:x} calling function: {} ({}) ({})".format(userData["currAddr"], fnName,
                                                                  called_functions[fnName], hex(args)))
         last_called_function = fnName

@@ -1659,6 +1659,12 @@ def GetChunkStarts(ea):
     for cstart, cend in idautils.Chunks(ea):
         yield cstart
 
+def GetChunkCount(ea):
+    count = 0
+    for cstart, cend in idautils.Chunks(ea):
+        count += 1
+    return count
+
 
 def GetChunkEnd(ea=None):
     ea = eax(ea)
@@ -2564,6 +2570,19 @@ def find_element_in_list(element, list_element):
     except ValueError:
         return None
 
+def fixCallAndJmpObfu():
+    for ea in FindInSegments("48 89 6c 24 f8 48 8d 64 24 f8 48 8d 2d ?? ?? ?? ?? 48 87 2c 24 e9 ?? ?? ?? ??"):
+        for r in range(3):
+            obfu._patch(ea)
+    for ea in FindInSegments("48 8d 64 24 f8 48 89 2c 24 48 8d 2d ?? ?? ?? ?? 48 87 2c 24 e9 ?? ?? ?? ??"):
+        for r in range(2):
+            obfu._patch(ea)
+    for ea in FindInSegments("48 8D 64 24 F8 48 89 2C 24 48 8d 2d ?? ?? ?? ?? 48 87 2c 24 55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24 c3"):
+        for r in range(2):
+            obfu._patch(ea)
+    for ea in FindInSegments("48 89 6c 24 f8 48 8d 64 24 f8 48 8d 2d ?? ?? ?? ?? 48 87 2c 24 55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24 c3"):
+        for r in range(3):
+            obfu._patch(ea)
 
 def fixRdata(ea):
     global st_limit
@@ -3056,6 +3075,10 @@ def isJmpOrObfuJmp(ea, patch=0):
 def isCallOrObfuCall(ea, patch=0):
     if isCall(ea):
         return True
+    while obfu._patch(ea):
+        printi("patched...")
+    if isCall(ea):
+        return True
     if idc.get_wide_dword(ea) == 0x24648d48:
         searchstr = '48 8d 64 24 f8 48 89 2c 24 48 8d 2d ?? ?? ?? ?? 48 87 2c 24 55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24 c3'
         found = ida_search.find_binary(ea, ea + div3(len(searchstr)), searchstr, 16, idc.SEARCH_CASE | idc.SEARCH_DOWN | idc.SEARCH_NOSHOW)
@@ -3512,8 +3535,8 @@ def GetSpds(funcea = None):
     ea = eax(funcea)
     if not IsFunc_(ea):
         return False
-    if GetMinSpd(ea) == False:
-        return False
+    #  if GetMinSpd(ea) == False:
+        #  return False
     spds = [idc.get_spd(head) for head in GetFuncHeads(ea) if isRet(head)]
     return spds
 
@@ -3521,10 +3544,31 @@ def GetAllSpds(funcea = None):
     ea = eax(funcea)
     if not IsFunc_(ea):
         return False
-    if GetMinSpd(ea) == False:
-        return False
+    #  if GetMinSpd(ea) == False:
+        #  return False
     spds = [idc.get_spd(head) for head in GetFuncHeads(ea)]
     return spds
+
+def RemoveLameFuncs():
+    l1 = []
+    l2 = []
+    l3 = []
+    for ea in Functions():
+        if GetFuncName(ea).startswith('sub_'):
+            ccount = GetChunkCount(ea)
+            mnem = idc.print_insn_mnem(ea)
+            if mnem and mnem.startswith('jmp'):
+                if ccount > 1:
+                    l3.append(ea)
+                elif ea + IdaGetInsnLen(ea) < GetFuncEnd(ea):
+                    l3.append(ea)
+            else:
+                spds = GetSpds(ea)
+                if len(spds) == 0:
+                    l1.append(ea)
+                elif sum(spds) != 0:
+                    l2.append(ea)
+    return l1, l2, l3
 
 def GetSpdsMinMax(funcea=None):
     ea = eax(funcea)
@@ -7381,7 +7425,7 @@ def get_ea_by_any(val, d=object):
         if r and r != idc.BADADDR:
             return r
 
-        match = re.match(r'(sub|off|loc|byte|word|dword|qword|nullsub|locret)_([0-9A-F]+)$', val)
+        match = re.match(r'(sub|off|loc|byte|word|dword|qword|nullsub|locret)_([0-9a-fA-F]+)$', val)
         if match:
             return int(match.group(2), 16)
 

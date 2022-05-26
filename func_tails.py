@@ -273,6 +273,7 @@ class AdvanceInsnList(object):
     def join(self):
         visited = set()
         x = self
+        # yield "loc_{:X}:".format(x.ea)
         yield from x.insns
         while x.next and x.next not in visited:
             yield from x.next.insns

@@ -1096,7 +1096,7 @@ def sig_maker_chunk(funcea=None):
     if rl:
         rl = _.sortBy(_.flatten(rl), lambda x: len(x) + 5 * x.count("??"))
 
-        print(pf(rl).replace("'", ''))
+        print(str(rl).replace("'", ''))
 
         sig_globals(funcea, rl[0])
 
@@ -1493,6 +1493,7 @@ def hotkey_patch():
 
 def hotkey_edit_nasm():
     chunkStart, chunkEnd = get_selection_or_ea()
+    _asm = ""
     if chunkStart + IdaGetInsnLen(chunkStart) >= chunkEnd:
         _asm = icida(chunkStart, labels=True)
     elif chunkEnd > chunkStart and chunkEnd < BADADDR and chunkEnd - chunkStart < 8192:

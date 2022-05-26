@@ -164,6 +164,7 @@ def zmserver():
     global context, socket
     if hasattr(globals(), 'context') and not context.closed:
         context.destroy()
+    zmq.Context().destroy()
     #  if socket:
         #  socket.close()
     context = zmq.Context()

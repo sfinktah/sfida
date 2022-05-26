@@ -417,8 +417,9 @@ def match_emu(ea=None, size=None, path=None, retnAll=False):
             file_put_contents_bin(pickle_fn, pickle.dumps(match_emu._files))
 
         for _subdir in match_emu._subdirs:
-            match_emu._keys[_subdir] = list(match_emu._files[_subdir].keys())
-            match_emu._keys[_subdir].sort()
+            if _subdir in match_emu._files:
+                match_emu._keys[_subdir] = list(match_emu._files[_subdir].keys())
+                match_emu._keys[_subdir].sort()
 
     # don't return results if all we received was a path
     if path is not None and ea is None and size is None:
@@ -437,6 +438,8 @@ def match_emu(ea=None, size=None, path=None, retnAll=False):
 
     results = dict()
     for _subdir in match_emu._subdirs:
+        if not _subdir in match_emu._files:
+            continue
         left  = bisect_left(match_emu._keys[_subdir], ea - match_emu._files["maxsize"])
         right = bisect_right(match_emu._keys[_subdir], ea2)
         

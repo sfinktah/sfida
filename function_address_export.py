@@ -30,6 +30,17 @@ def save():
     except IOError:
         print("file not writable or some such")
 
+def save_uc():
+    json_save_functions()
+    try:
+        with open(os.path.join(os.path.dirname(GetIdbPath()), os.path.splitext(os.path.basename(GetIdbPath()))[0] + '.funcs.json'), 'w') as f:
+            json.dump(funclist, f)
+        with open(os.path.join(os.path.dirname(GetIdbPath()), os.path.splitext(os.path.basename(GetIdbPath()))[0] + '.names.json'), 'w') as f:
+            json.dump(_.zipObject([(y, x-0x140000000) for x, y in Names() if HasUserName(x)]), f)
+    except IOError:
+        print("file not writable or some such")
+
+
 def under14pair(p):
     return [x - 0x140000000 for x in p]
 

@@ -187,14 +187,12 @@ def idarest_master():
             if 'idb' not in args:
                 raise HTTPRequestError("idb param not specified", 400)
             found = _.find(self.hosts, lambda x, *a: x['idb'] == args['idb'])
-            # dprint("[fail] key, type(key)")
             print("[fail] found:{}, type(found):{}".format(found, type(found)))
-            key = None
-            if found:
-                key = found['host'] + ':' + found['port']
-            if key:
-                if idarest_master_plugin_t.config['master_debug']: print("[idarest_master::Handler::unregister] removing existing host {}".format(key))
-                value = self.hosts.pop(key)
+            keys = [x for x, y in self.hosts.items() if y == found]
+            if keys:
+                for key in keys:
+                    if idarest_master_plugin_t.config['master_debug']: print("[idarest_master::Handler::unregister] removing existing host {}".format(key))
+                    value = self.hosts.pop(key)
             else:
                 value = dict({
                     'host': args['host'],

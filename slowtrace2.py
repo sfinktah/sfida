@@ -2260,7 +2260,6 @@ def slowtrace2(ea=None,
             MakeCodeAndWait(ea)
             MakeCodeAndWait(idc.next_head(ea), comment=slvars.startFnName)
             #  if ea == 0x140cb33f1:
-            if debug: print("line 12B")
             if modify:
                 opType0 = GetOpType(ea, 0)  # 4  o_displ
                 opType1 = GetOpType(ea, 1)  # 1  o_reg
@@ -2600,7 +2599,6 @@ def slowtrace2(ea=None,
                             #  patched.extend(r['addressList'])
             # If we patched something, we need to start the trace again
             # or do we? should we?
-            if debug: print("line 12A")
             if patches:
                 patches = 0
                 if single:
@@ -3214,7 +3212,7 @@ def slowtrace2(ea=None,
                             # call x -- arxan 
                             # jmp y  -- never reach
                             
-                            printi("skipping arxan rabbit hole (depth: {})".format(depth))
+                            printi("{:x} skipping arxan rabbit hole (depth: {}, balanceCallCount: {})".format(ea, depth, balanceCallCount))
                             raise Exception("Must do something about rabbit hole")
                 else:
                     if debug: sprint("0x{:x} [spd:{:x}] #{} call {:x} Nice: {}".format(ea, slvars.rsp, len(slvars.addresses), target, IsNiceFunc(target)))
@@ -3274,6 +3272,7 @@ def slowtrace2(ea=None,
 
                         Commenter(ea).add("{:16} {:x}".format("TheBalancer", balanceLoc))
                         printi("{:x} {}".format(balanceLoc, "TheBalancer"))
+                        EaseCode(balanceLoc, forceStart=1)
                         assert IsCode_(balanceLoc), hex(balanceLoc)
 
                         push_count, new_ea, unused2 = CountConsecutiveMnem(balanceLoc, ["push", "pushf", "pushfq"])
@@ -3465,12 +3464,14 @@ def slowtrace2(ea=None,
                                                     #  # _.filter(_stackMut, lambda x, *a: not x['mnem'].startswith('ret')), 
                                                     
                                                     printi("*#*# retracing {}".format(hex(_locations)))
-                                                    _retrace = [retrace(addr, once=1, depth=depth+1, max_depth=depth+1) for addr in _locations]
+                                                    # may need to retrace final location is _extra is in play
+                                                    _retrace = [retrace(addr, once=1, depth=depth+1, max_depth=depth+1) for addr in _locations[0:-1]]
                                                     #  printi("[Target Retracings] {}".format(pfh(_retrace)))
                                                     #  r2 = _.sortBy(_.filter(_stackMut, lambda x, *a: not x['mnem'].startswith('ret')), lambda x, *a: x['offset'])
 
                                                     sections = []
                                                     if _extra:
+                                                        retrace(_locations[-1], once=1, depth=depth+1, max_depth=depth+1)
                                                         sections = [_extra]
                                                         printi("[Section-Extra] {}".format("; ".join(_extra.values())))
 
@@ -3498,6 +3499,7 @@ def slowtrace2(ea=None,
                                                         printi("[ArxanQuickFix] {:x} -> {:x}".format(ea, _filtered[0].ea))
                                                         Commenter(ea, 'line').add("[ArxanQuickFix] {:x} -> {:x}".format(ea, _filtered[0].ea))
                                                         nassemble(ea, "{} 0x{:x}".format(arxanJmpOrCall, _filtered[0].ea), apply=1)
+                                                        EaseCode(_filtered[0].ea, forceStart=1)
                                                         continue
 
 
@@ -4241,10 +4243,8 @@ def slowtrace2(ea=None,
 
             try:
                 ea = AdvanceHead(ea)
-                if debug: print("line 139a")
                 continue
             except AdvanceFailure as e:
-                if debug: print("line 139b")
                 next_insn = ea + IdaGetInsnLen(ea)
                 line = output("\nCouldn't advance past 0x%x (%s)" % (ea, str(e)))
                 #  raise InvalidInstruction("Couldn't advance past {} due to invalid instruction at {}: {} ({})".format(
@@ -4255,7 +4255,6 @@ def slowtrace2(ea=None,
                 break
 
 
-            if debug: print("line 139c")
 
             # if not idc.is_code(ida_bytes.get_flags(target2)):
             # forgeAheadWithCode(target2)

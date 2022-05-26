@@ -89,10 +89,9 @@ def string_between(left, right, subject, *args, **kwargs):
     string_between(left, right, subject, [,start [,end]] [,greedy=False] [,inclusive=False] [,repl=None] [,retn_all_on_fail=False] [,retn_class=False] [,rightmost=False]) -> str
 
 
-    Return the substring sub delineated by being between the
-    strings `left` and `right`, and such that sub is contained
-    within subject[start:end].  Optional default_arguments start and
-    end are interpreted as in slice notation.
+    Return the substring delineated by `left` and `right` such that the result
+    is contained within subject[start:end].  Optional default_arguments start
+    and end are interpreted as in slice notation.
     
     Return the string between `left` and `right` or empty string on failure
 

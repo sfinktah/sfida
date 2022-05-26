@@ -1027,7 +1027,7 @@ def FunctionsMatching(regex=None, exclude=None, filter=lambda x: x, flags=0):
         result = [a for a in result if not re.search(regex, idc.get_name(a))]
     return result
 
-def NamesMatching(regex=None, exclude=None, filter=lambda x: x, flags=0):
+def NamesMatching(regex=None, exclude=None, filstop=lambda x: x, flags=0):
     if regex and not isinstance(regex, re.Pattern):
         regex = re.compile(regex, flags)
     if exclude and not isinstance(exclude, re.Pattern):
@@ -1076,7 +1076,29 @@ class MemBatchMode(object):
         if self.old_batch_mode is not None:
             idc.batch(self.old_batch_mode)
 
-def FindInSegments(searchstr, segments=None, limit=None, predicate=None, iteratee=None, binary=True):
+def FindRelRef(ea=None):
+    """
+    FindRelRef
+
+    @param ea: linear address
+    """
+    if isinstance(ea, list):
+        return [FindRelRef(x) for x in ea]
+
+    ea = eax(ea)
+
+    for seg_start in idautils.Segments():
+        seg_name = idc.get_segm_name(seg_start)
+        print("segment: {}".format(seg_name))
+        if seg_name == '.text':
+            seg_end = idc.get_segm_attr(seg_start, idc.SEGATTR_END)
+
+            for a in range(seg_start, seg_end):
+                if a + MakeSigned(Dword(a)) + 4 == ea:
+                    return a
+
+
+def FindInSegments(searchstr, segments=None, start=None, stop=None, limit=None, predicate=None, iteratee=None, binary=True):
     """
     @param searchstr: a string as a user enters it for Search Text in Core
     @param segments: segment names (default: ['.text'])
@@ -1092,7 +1114,7 @@ def FindInSegments(searchstr, segments=None, limit=None, predicate=None, iterate
     if isinstance(searchstr, list):
         results = []
         for search in searchstr:
-            results.extend(FindInSegments(search, segments=segments, limit=limit, predicate=predicate, iteratee=iteratee))
+            results.extend(FindInSegments(search, start=start, stop=stop, segments=segments, limit=limit, predicate=predicate, iteratee=iteratee, binary=binary))
         return results
 
     if isinstance(searchstr, int):
@@ -1117,6 +1139,34 @@ def FindInSegments(searchstr, segments=None, limit=None, predicate=None, iterate
 
     ea = 0
     results = []
+
+    if start is not None and stop is not None:
+        if stop < start:
+            stop = stop + start
+        ea = ida_search.find_binary(start, stop, searchstr, 16, idc.SEARCH_CASE | idc.SEARCH_DOWN | idc.SEARCH_NOSHOW)
+        while ea < stop:
+            skip = False
+            r = ea
+            if predicate and callable(predicate):
+                pr = predicate(r)
+                if not pr:
+                    skip = True
+                elif isinstance(pr, int) and pr > ida_ida.cvar.inf.min_ea:
+                    r = pr
+            if not skip:
+                if iteratee and callable(iteratee):
+                    r = iteratee(r)
+
+                results.append(r)
+
+                if limit and len(results) > limit:
+                    return results
+            #  with MemBatchMode(1):
+            ea = ida_search.find_binary(ea, stop, searchstr, 16,
+                                        SEARCH_CASE | SEARCH_DOWN | SEARCH_NEXT | SEARCH_NOSHOW)
+
+        return results
+
     seg_names = set()
     for seg_start in idautils.Segments():
         seg_name = idc.get_segm_name(seg_start)
@@ -1210,18 +1260,6 @@ def get_vfunction(rtti, number):
     else:
         return BADADDR
 
-def MakeSigned(number, size):
-    """
-    MakeSigned(number, bits)
-
-        Return a signed version of an unsigned number as retrieved by Qword,
-        Dword, etc.
-        -- sfinktah
-    """
-    number = number & (1 << size) - 1
-    return number if number < 1 << size - 1 else - (1 << size) - (~number + 1)
-
-
 class __(object):
     """
     Use this class to alter __repr__ of
@@ -1273,6 +1311,14 @@ def mb(pattern, limit=1, index=0):
             return error
 
         return membrick_memo(results[index], pattern).chain()
+    if isinstance(pattern, list):
+        for ea in pattern:
+            # dprint("[find] ea")
+            print("[mem instance] ea:{:x}".format(ea))
+            m = membrick_memo(ea).chain().find(pattern, length=length)
+            if not m.in_error():
+                print("[find] [found]: {:x}".format(m.ea))
+                return m
 
 
 def mem(*args, **kwargs):
@@ -1433,6 +1479,7 @@ class membrick_memo(object):
 
     def error_return_chained(self, reason=None):
         if reason:
+            self.errored = True;
             self.print_error(reason)
             self.errors.append(reason)
         return self
@@ -1445,7 +1492,7 @@ class membrick_memo(object):
 
     def in_error(self):
         if self.errored:
-            pass
+            return True
             #  print("in_error")
         return self.errored
 
@@ -1486,6 +1533,35 @@ class membrick_memo(object):
         """ alias for add
         """
         return self.add(value)
+
+    def find(self, pattern, length=None):
+        if self.in_error(): return self.error_return_chained()
+        if isinstance(self.obj, list):
+            for ea in self.obj:
+                # dprint("[find] ea")
+                print("[find] ea:{:x}".format(ea))
+                m = membrick_memo(ea).chain().find(pattern, length=length)
+                if not m.in_error():
+                    print("[find] [found]: {:x}".format(m.ea))
+                    return m
+
+            return self.error_return_chained("unable to find sub-pattern")
+        if length is None:
+            seg_end = idc.get_segm_attr(self.obj, idc.SEGATTR_END)
+            length = seg_end - self.obj
+        addrs = FindInSegments(pattern, start=self.obj, stop=self.obj + length, limit=1)
+        if addrs:
+            cloned = self.clone()
+            cloned.obj = addrs[0]
+            return cloned
+        else:
+            return self.error_return_chained("unable to find sub-pattern")
+
+    def is_match(self, pattern, bytelen=64, flags=0):
+        if self.in_error(): return self.error_return_chained()
+        if re.match(pattern, listAsHex(ida_bytes.get_bytes(self.obj, bytelen))):
+            return self
+        return self.error_return_chained("match failed")
 
     def rip(self, offset=4):
         """ Dereference pointer
@@ -1691,6 +1767,8 @@ class membrick_memo(object):
         """
         returns self.obj
         """
+        if self.in_error():
+            return None
         return self.obj
     
     @ea.setter
