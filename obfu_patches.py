@@ -201,14 +201,14 @@ def set_sp_factory(mark, offset=0):
         cmt = "[SPD={:x}] '{}' ({:x} + {:x} - {:x} ({}))".format(_spd, mark, value, disp, spd, offset if offset is not None else "")
         Commenter(idc.prev_head(dst), "line").remove_matching(r'^\[SPD=')
         Commenter(idc.prev_head(dst), "line").add(cmt).commit()
-        printi("dst started: {:x}".format(dst))
+        if obfu_debug: printi("dst started: {:x}".format(dst))
         move_to_next = False
         if isNop(idc.prev_head(dst)):
             while isNop(dst):
                 move_to_next = True
                 dst = GetTarget(dst, failnone=True) or idc.next_head(dst)
 
-        printi("dst finished: {:x}".format(dst))
+        if obfu_debug: printi("dst finished: {:x}".format(dst))
         if move_to_next:
             dst = idc.next_head(dst)
             printi("dst move to next_head: {:x}".format(dst))

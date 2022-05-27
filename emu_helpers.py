@@ -154,7 +154,7 @@ def read_emu_glob(fn, subdir='*', path=None):
 
     fns = os.path.normpath(os.path.join(match_emu._path, subdir, '*', '*', fn))
     globbed = list(glob(fns))
-    print('globbing... {} files'.format(len(fns)))
+    print('globbing... {} - {} files. {}'.format(fns, len(globbed), globbed[0:64]))
     return read_emu(globbed)
 
 def make_native_patchfile(ea=None, outFilename=None, noImport=False, width=76):
@@ -220,7 +220,7 @@ def make_native_patchfile(ea=None, outFilename=None, noImport=False, width=76):
 
     return result 
 
-def make_emu_patchfile(fn=None, noImport=False, width=76):
+def make_emu_patchfile(fn=None, outFilename=None, noImport=False, width=76):
     import base64
     """ 
     eg: read_emu(glob('r:/data/memcpy/*_ArxanFunction_140000000.bin'))
@@ -253,7 +253,10 @@ def make_emu_patchfile(fn=None, noImport=False, width=76):
             "",
             "base64_patch_tmp()"
             ])
+        if outFilename:
+            return file_put_contents(outFilename, "\n".join(result))
         return result
+
 
     base = parseHex(string_between('_', '_', fn))
     if base > 0x140000000 and base < 0x150000000:
@@ -392,7 +395,7 @@ def match_emu(ea=None, size=None, path=None, retnAll=False):
                 for level1 in range(64):
                     counter = counter + 1
                     p.update(counter)
-                    basepart = os.path.join(path, "{}/{}/*/*.bin".format(_subdir, level1))
+                    basepart = os.path.join(path, "{}/{:02}/*/*.bin".format(_subdir, level1))
                     for fn in glob(basepart):
                         bn = os.path.basename(fn)
                         prefix    = string_between('', '_', bn)
@@ -662,3 +665,6 @@ def spread_files(path):
                 os.unlink(srcname)
         else:
             bad += 1
+
+# force laod of database
+match_emu(ea=0x13fffffff)

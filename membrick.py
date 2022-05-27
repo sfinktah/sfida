@@ -1027,7 +1027,7 @@ def FunctionsMatching(regex=None, exclude=None, filter=lambda x: x, flags=0):
         result = [a for a in result if not re.search(regex, idc.get_name(a))]
     return result
 
-def NamesMatching(regex=None, exclude=None, filstop=lambda x: x, flags=0):
+def NamesMatching(regex=None, exclude=None, filter=lambda x: x, flags=0):
     if regex and not isinstance(regex, re.Pattern):
         regex = re.compile(regex, flags)
     if exclude and not isinstance(exclude, re.Pattern):
