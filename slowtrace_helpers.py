@@ -2975,35 +2975,6 @@ def FindDestructs(pattern="f6 c3 01 74 08 48 8b cf e8"):
         recurse(ea)
 
 
-def _isCall_mnem(mnem): return mnem.startswith("call")
-
-
-def _isJmp_mnem(mnem): return mnem.startswith("jmp")
-
-
-def _isAnyJmp_mnem(mnem): return mnem.startswith("j")
-
-def _isAnyJmpOrCall(mnem): return mnem.startswith(("j", "call"))
-
-
-def _isConditionalJmp_mnem(mnem): return mnem.startswith("j") and not mnem.startswith("jmp")
-
-
-def _isUnconditionalJmp_mnem(mnem): return mnem.startswith("jmp")
-def _isOffset(mnem): return mnem.startswith(("dq offset", "dd offset"))
-def _isInterrupt_mnem(mnem): return mnem.startswith("int")
-
-
-def _isUnconditionalJmpOrCall_mnem(mnem): return isUnconditionalJmp(mnem) or isCall(mnem)
-
-
-def _isRet_mnem(mnem): return mnem.startswith("ret")
-
-
-def _isPushPop_mnem(mnem): return mnem.startswith("push") or mnem.startswith("pop")
-def _isPop_mnem(mnem): return mnem.startswith("pop")
-
-def _isNop_mnem(mnem): return mnem.startswith("nop") or mnem.startswith("pop")
 
 def _unlikely_mnems(): return [
         'in', 'out', 'loop', 'cdq', 'lodsq', 'xlat', 'clc', 'adc', 'stc',
@@ -3018,16 +2989,13 @@ def _unlikely_mnems(): return [
         'lodsb', 'lodsd', 'movsb', 'movsd', 'out', 'outs', 'sahf',
         'scasb', 'scasd', 'stc', 'std', 'sti', 'stosb', 'stosd', 'wait',
         'xlat', 'fisttp', 'fbstp', 'fxch4', 'fld', 'fisubr', 'fsubr', 'bnd', 'db', # 'xlat byte [rbx+al]'
+        'punpckhdq', 
         ]
 def _isUnlikely_mnem(mnem): return mnem in _unlikely_mnems()
 
-def _isFlowEnd_mnem(mnem): return mnem in ('ret', 'retn', 'jmp', 'int', 'ud2', 'leave', 'iret')
-
-def _isInt(mnem): return mnem in ('int', 'ud2', 'int1', 'int3')
 
 def perform(fun, *args, **kwargs):
     return fun(*args, **kwargs)
-
 
 def preprocessIsX(fun, arg):
     if not arg:
@@ -3044,16 +3012,37 @@ def preprocessIsX(fun, arg):
         return perform(fun, mnem)
     raise Exception("Unknown type: {}".format(type(arg)))
 
+def _isCall_mnem(mnem): return mnem.startswith("call")
+def _isJmp_mnem(mnem): return mnem.startswith("jmp")
+def _isAnyJmp_mnem(mnem): return mnem.startswith("j")
+def _isAnyJmpOrCall(mnem): return mnem.startswith(("j", "call"))
+def _isConditionalJmp_mnem(mnem): return mnem.startswith("j") and not mnem.startswith("jmp")
+def _isUnconditionalJmp_mnem(mnem): return mnem.startswith("jmp")
+def _isOffset(mnem): return mnem.startswith(("dq offset", "dd offset"))
+def _isInterrupt_mnem(mnem): return mnem.startswith("int")
+def _isUnconditionalJmpOrCall_mnem(mnem): return isUnconditionalJmp(mnem) or isCall(mnem)
+def _isRet_mnem(mnem): return mnem.startswith("ret")
+def _isPushPop_mnem(mnem): return mnem.startswith("push") or mnem.startswith("pop")
+def _isPop_mnem(mnem): return mnem.startswith("pop")
+def _isNop_mnem(mnem): return mnem.startswith("nop") or mnem.startswith("pop")
+def _isFlowEnd_mnem(mnem): return mnem in ('ret', 'retn', 'jmp', 'int', 'ud2', 'leave', 'iret')
+def _isInt(mnem): return mnem in ('int', 'ud2', 'int1', 'int3')
 
 def isUnlikely(arg): return preprocessIsX(_isUnlikely_mnem, arg)
 def isFlowEnd(arg): return preprocessIsX(_isFlowEnd_mnem, arg)
-def isInt(arg): return preprocessIsX(_isInt_mnem, arg)
+def isInt(arg): return preprocessIsX(_isInt, arg)
 def isAnyJmp(arg): return preprocessIsX(_isAnyJmp_mnem, arg)
 def isOffset(arg): return preprocessIsX(_isOffset, arg)
-
+def isRet(arg): return preprocessIsX(_isRet_mnem, arg)
 def isAnyJmpOrCall(arg): return preprocessIsX(_isAnyJmpOrCall, arg)
-
 def isCall(arg): return preprocessIsX(_isCall_mnem, arg)
+def isConditionalJmp(arg): return preprocessIsX(_isConditionalJmp_mnem, arg)
+def isJmp(arg): return preprocessIsX(_isJmp_mnem, arg)
+def isPushPop(arg): return preprocessIsX(_isPushPop_mnem, arg)
+def isPop(arg): return preprocessIsX(_isPop_mnem, arg)
+def isUnconditionalJmp(arg): return preprocessIsX(_isUnconditionalJmp_mnem, arg)
+def isUnconditionalJmpOrCall(arg): return preprocessIsX(_isUnconditionalJmpOrCall_mnem, arg)
+def isInterrupt(arg): return preprocessIsX(_isInterrupt_mnem, arg)
 
 def isJmpOrObfuJmp(ea, patch=0):
     if ea is None:
@@ -3095,14 +3084,6 @@ def isCallOrObfuCall(ea, patch=0):
 def isCallOrObfuCallPatch(ea):
     return isCallOrObfuCall(ea, 1) #  or SkipJumps(ea) != ea
 
-def isConditionalJmp(arg): return preprocessIsX(_isConditionalJmp_mnem, arg)
-
-
-def isJmp(arg): return preprocessIsX(_isJmp_mnem, arg)
-
-def isPushPop(arg): return preprocessIsX(_isPushPop_mnem, arg)
-
-def isPop(arg): return preprocessIsX(_isPop_mnem, arg)
 
 
 def isNop(ea): 
@@ -3115,7 +3096,6 @@ def isNop(ea):
     return idc.get_wide_word(ea) == 0x9066
     return GetInsn
 
-def isUnconditionalJmp(arg): return preprocessIsX(_isUnconditionalJmp_mnem, arg)
 
 def isOpaqueJmp(ea):
     if isUnconditionalJmp(ea):
@@ -3129,11 +3109,8 @@ def isOpaqueJmp(ea):
     return False
 
 
-def isUnconditionalJmpOrCall(arg): return preprocessIsX(_isUnconditionalJmpOrCall_mnem, arg)
-def isInterrupt(arg): return preprocessIsX(_isInterrupt_mnem, arg)
 
 
-def isRet(arg): return preprocessIsX(_isRet_mnem, arg)
 
 def isCodeish(a, minlen=16):
     if IsCode_(a):

@@ -168,7 +168,7 @@ def find_all_regs(s):
 
 if "helper" not in globals():
     out("constructing helper")
-    helper = flare_emu.EmuHelper()
+    emu_helper = flare_emu.EmuHelper()
 else:
     out("using existing helper")
 
@@ -247,6 +247,11 @@ def insnHookActual(unicornObject, address, instructionSize, userData):
     helper = userData["EmuHelper"]
     if "breakpoints" not in userData:
         userData['breakpoints'] = set([0x14022232b]) # 2b
+
+    if not address:
+        out("Jumped to unknown location (probably external library)")
+        userData["EmuHelper"].stopEmulation(userData)
+        
     if address in userData["breakpoints"]:
         out("{:x} Breakpoint!".format(address))
         userData["EmuHelper"].stopEmulation(userData)
@@ -529,7 +534,7 @@ def memHook(unicornObject, accessType, memAccessAddress, memAccessSize, memValue
 def checksummer1(fn):
     global initialFnName
     global functions
-    global helper
+    global emu_helper
     global count
     global last_count
     global max_count
@@ -739,7 +744,7 @@ def checksummers(*args, **kwargs):
 
 
 def aligned_hash(argv):
-    global helper
+    global emu_helper
     if eax('aligned_joaat'):
         out("emulating range")
         helper.emulateRange(
@@ -816,7 +821,7 @@ def emu_sub(fn, steps=100, single=None, regs=None, args={}):
     global called_functions
     global count
     global functions
-    global helper
+    global emu_helper
     global initialFnName
     global last_count
     global last_regs
@@ -907,7 +912,7 @@ def emu_sub(fn, steps=100, single=None, regs=None, args={}):
     return helper.getRegVal("rax")
 
 def calc_expr(s):
-    global helper
+    global emu_helper
     def re_sub(m):
         reg = m.group(0)
         return str(helper.getRegVal(reg))

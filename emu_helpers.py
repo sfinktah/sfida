@@ -4,6 +4,7 @@ import pickle, os
 import idc, idaapi, ida_ida, ida_funcs, ida_bytes, idautils
 from bisect import bisect_left, bisect_right, bisect
 from collections import defaultdict
+from hashwords import words_to_long, long_to_words
 
 import lzma
 import re
@@ -25,6 +26,9 @@ except ModuleNotFoundError:
 from choose_multi import *
 from di import diInsns, MyGetInstructionLength
 from file_get_contents import *
+
+def unhasword(fn):
+    return re.sub(r'\b[a-z]+_[a-z]+_[a-z]+\b', lambda match: "{:x}".format(0x140000000 + words_to_long(match.group(1))), fn)
 
 def file_get_contents_bin_spread(fn):
     fn = smart_path(fn)
@@ -172,12 +176,15 @@ def make_native_patchfile(ea=None, outFilename=None, noImport=False, width=76):
                 "    from base64 import b64decode", 
                 "    from ida_bytes import put_bytes",
                 "    from lzma import decompress",
+                "    def nativ(ea, lbl):",
+                "        if not ((idc.get_full_flags(_get_ea_by_any(ea)) & ",
+                "                 idc.FF_ANYNAME) == idc.FF_NAME):",
+                "            idc.set_name(unbase(ea), lbl, idc.SN_AUTO | idc.SN_NOWARN)",
                 "    min_ea = ida_ida.cvar.inf.min_ea & ~0xffff",
                 "    max_ea = (ida_ida.cvar.inf.max_ea + 1) & ~0xffff",
                 "    unbase = lambda ea: ea - 0x140000000 + min_ea",
                 "    put64  = lambda ea, b64: put_bytes(unbase(ea), b64decode(b64))",
                 "    lzp64  = lambda ea, b64: put_bytes(unbase(ea), decompress(b64decode(b64)))",
-                "    nativ  = lambda ea, lbl: idc.set_name(unbase(ea), lbl, idc.SN_AUTO | idc.SN_NOWARN)",
                 ""
                 ]
     else:
@@ -520,7 +527,8 @@ def check_emu(ea=None, size=None, path=None, auto=None, xxd=False):
                             file_get_contents_bin_spread(fullfn)[0:64], ea=base)])
                         asm = re.sub(r'0x[0-9a-fA-F]{8,}', lambda x, *a: get_name_by_any(x[0]), asm)
                     results[_subdir][asm] = "{:x} - {:x} {} {}".format(base, base + length, fn, asm)
-                    p.append((_subdir, fn, hex(base), hex(base + length) + " ({})".format(length), asm[0:128]))
+                    fn = re.sub(r'^CheckFunc_([0-9a-fA-F]{9})$', lambda match: long_to_words(-0x140000000 + int(match.group(1), 16)), fn)
+                    p.append((_subdir, fn, hex(base), "({}) ".format(length) + hex(base + length), asm[0:128]))
                     p2.append(fullfn)
                 except FileNotFoundError:
                     print("File Not Found: " + fullfn)

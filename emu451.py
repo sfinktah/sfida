@@ -185,7 +185,7 @@ def find_all_regs(s):
 
 if "helper" not in globals():
     out("constructing helper")
-    helper = flare_emu.EmuHelper()
+    emu_helper = flare_emu.EmuHelper()
 else:
     out("using existing helper")
 
@@ -422,9 +422,9 @@ def callHook(address, arguments, fnName, userData):
         #  #  healer_src[args[0]] = address
         #  helper.skipInstruction(userData)
     elif 'ArxanGetNextRange' in fnName:
-        gu, ra = ArxanGetNextRange(helper.getRegVal("rcx"), arxan_range(rdx=helper.getRegVal("rdx")))
-        helper.uc.reg_write(helper.regs["rcx"], gu.ea)
-        helper.uc.reg_write(helper.regs["rdx"], ra.asQword())
+        _guide, _range = ArxanGetNextRange(helper.getRegVal("rcx"), arxan_range(rdx=helper.getRegVal("rdx")))
+        helper.uc.reg_write(helper.regs["rcx"], _guide.ea)
+        helper.uc.reg_write(helper.regs["rdx"], _range.asQword())
         helper.skipInstruction(userData)
     elif fnName == last_function:
         out("{:x} re-entrant function call detected".format(address))
@@ -467,8 +467,8 @@ def memHook(unicornObject, accessType, memAccessAddress, memAccessSize, memValue
 
     if False and (accessType & 1) and memAccessSize == 8 and (sp + 0x48) < memAccessAddress < (sp + 0x320):
         spd = memAccessAddress - sp
-        out("; [{:05x}] SP+{:04x}={:09x}".format(helper.getRegVal("rsp"), spd, helper.getEmuPtr(memAccessAddress)))
-        sp_writes.append("0x{:x},0x{:x},0x{:x}".format(sp, memAccessAddress, helper.getEmuPtr(memAccessAddress)))
+        out("; [{:05x}] SP+{:04x}={:09x}".format(emu_helper.getRegVal("rsp"), spd, emu_helper.getEmuPtr(memAccessAddress)))
+        sp_writes.append("0x{:x},0x{:x},0x{:x}".format(sp, memAccessAddress, emu_helper.getEmuPtr(memAccessAddress)))
     elif memAccessAddress >= 0x140000000 and memAccessAddress < 0x150000000:
         if accessType & 1 == 0:
             #  out("memAccessHook: RIP: {:9x} state {} {:9x} ({:x})".format(userData['currAddr'], state, memAccessAddress, memAccessSize))
@@ -480,7 +480,7 @@ def memHook(unicornObject, accessType, memAccessAddress, memAccessSize, memValue
 def checksummer1(fn):
     global initialFnName
     global functions
-    global helper
+    global emu_helper
     global count
     global last_count
     global max_count
@@ -673,8 +673,8 @@ def checksummers(*args, **kwargs):
                         filename = ddir + '/memcpy/memcpy_{:x}_{:x}_{}.bin'.format(r.start, r.length, fnName)
                         if not file_exists(filename):
                             if comment: Commenter(r.start, 'line').add("{} bytes healed by {}".format(fnName, r.length)).commit()
-                            if patch: PatchBytes(r.start, helper.getEmuBytes(r.start, r.length), "Patched by {}".format(fnName))
-                            file_put_contents_bin(filename, helper.getEmuBytes(r.start, r.length))
+                            if patch: PatchBytes(r.start, emu_helper.getEmuBytes(r.start, r.length), "Patched by {}".format(fnName))
+                            file_put_contents_bin(filename, emu_helper.getEmuBytes(r.start, r.length))
 
                             for head in idautils.Heads(r.start, r.last):
                                 if IsFuncHead(head):
@@ -697,7 +697,7 @@ def checksummers(*args, **kwargs):
                         filename = ddir + '/read/read_{:x}_{:x}_{}.bin'.format(r.start, r.length, fnName)
                         if not file_exists(filename):
                             if comment: Commenter(r.start, 'line').add("{} bytes read by {}".format(fnName, r.length)).commit()
-                            file_put_contents_bin(filename, helper.getEmuBytes(r.start, r.length))
+                            file_put_contents_bin(filename, emu_helper.getEmuBytes(r.start, r.length))
 
                             for head in idautils.Heads(r.start, r.last):
                                 if IsFuncHead(head):
@@ -721,8 +721,8 @@ def checksummers(*args, **kwargs):
                         filename = ddir + '/written/written_{:x}_{:x}_{}.bin'.format(r.start, r.length, fnName)
                         if not file_exists(filename):
                             if comment: Commenter(r.start, 'line').add("{} bytes written by {}".format(fnName, r.length)).commit()
-                            if patch: PatchBytes(r.start, helper.getEmuBytes(r.start, r.length), "Patched(W) by {}".format(fnName))
-                            file_put_contents_bin(filename, helper.getEmuBytes(r.start, r.length))
+                            if patch: PatchBytes(r.start, emu_helper.getEmuBytes(r.start, r.length), "Patched(W) by {}".format(fnName))
+                            file_put_contents_bin(filename, emu_helper.getEmuBytes(r.start, r.length))
 
                             for head in idautils.Heads(r.start, r.last):
                                 if IsFuncHead(head):
@@ -751,7 +751,7 @@ def checksummers(*args, **kwargs):
 
 
 def aligned_hash(s, seed=0):
-    global helper
+    global emu_helper
     if eax('aligned_joaat'):
         helper.emulateRange(
             helper.analysisHelper.getNameAddr("aligned_joaat"),
@@ -761,7 +761,7 @@ def aligned_hash(s, seed=0):
     return 0;
 
 def partial_hash(s, seed=0):
-    global helper
+    global emu_helper
     if eax('joaat_partial'):
         helper.emulateRange(
             helper.analysisHelper.getNameAddr("joaat_partial"),
