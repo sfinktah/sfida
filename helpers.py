@@ -323,7 +323,7 @@ def smartTraversalFactory(fn1, direction = -1):
         
         if not noJump:
             Jump(target)
-            idc.set_color(target, CIC_ITEM, colorsys_rgb_to_dword(lighten(int_to_rgb(color_here(target)))))
+            idc.set_color(target, CIC_ITEM, 0xffffffff & colorsys_rgb_to_dword(lighten(int_to_rgb(color_here(target)))))
             return pos(target)
         return target
     return next
@@ -1323,6 +1323,12 @@ def mark_end():
     #  print("mark_end")
     idc.put_bookmark(idc.get_screen_ea() + idc.get_item_size(idc.get_screen_ea()), 0, 0, 0, 19, 'mark_end')
 
+@static_vars(group=[])
+def mark_group():
+    if ms() and ms() != idc.BADADDR and me() and me != idc.BADADDR:
+        mark_group.group.append((ms(), me()))
+
+
 def make_store_bookmark_fn(i):
     def func():
         #  print("stored 0x{:x} in bookmark {}".format(idc.here(), i))
@@ -1775,18 +1781,19 @@ HELPER_HOTKEYS.append(MyHotkey("Ctrl-Alt-N", make_nops))
 HELPER_HOTKEYS.append(MyHotkey("Ctrl-Alt-O", make_offset))
 HELPER_HOTKEYS.append(MyHotkey("Ctrl-Alt-S", sig_maker))
 HELPER_HOTKEYS.append(MyHotkey("Ctrl-Alt-U", hotkey_unpatch))
-HELPER_HOTKEYS.append(MyHotkey("Alt-P", fake_cli_factory("hotkey_patch()")))
+# HELPER_HOTKEYS.append(MyHotkey("Alt-P", fake_cli_factory("hotkey_patch()")))
 HELPER_HOTKEYS.append(MyHotkey("J", lambda: hotkey_switch_jumptype(shift=0)))
 HELPER_HOTKEYS.append(MyHotkey("Ctrl-J", lambda: hotkey_skipjumps()))
 HELPER_HOTKEYS.append(MyHotkey("Shift-Alt-F", makeFunctionFromInstruction))
 HELPER_HOTKEYS.append(MyHotkey("Shift-Alt-J", down))
 HELPER_HOTKEYS.append(MyHotkey("Shift-Alt-K", up))
 HELPER_HOTKEYS.append(MyHotkey("Shift-Alt-N", nextFn))
-HELPER_HOTKEYS.append(MyHotkey("Shift-Alt-O", lambda *a: obfu._patch(here())))
+HELPER_HOTKEYS.append(MyHotkey("Shift-Alt-O", fake_cli_factory("hotkey_patch()")))
 HELPER_HOTKEYS.append(MyHotkey("Shift-Alt-P", prev))
 HELPER_HOTKEYS.append(MyHotkey("Shift-Alt-U", hotkey_unchunk))
 HELPER_HOTKEYS.append(MyHotkey("Shift-Alt-[", mark_start))
 HELPER_HOTKEYS.append(MyHotkey("Shift-Alt-]", mark_end))
+HELPER_HOTKEYS.append(MyHotkey("Shift-Alt-+", mark_group))
 HELPER_HOTKEYS.append(MyHotkey("Shift-Ctrl-Alt-U", UnpatchUn))
 HELPER_HOTKEYS.append(MyHotkey("Shift-Ctrl-J", hotkey_join_to_parent))
 HELPER_HOTKEYS.append(MyHotkey("Shift-J", lambda: hotkey_switch_jumptype(shift=1)))

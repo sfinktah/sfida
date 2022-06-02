@@ -27,8 +27,8 @@ from choose_multi import *
 from di import diInsns, MyGetInstructionLength
 from file_get_contents import *
 
-def unhasword(fn):
-    return re.sub(r'\b[a-z]+_[a-z]+_[a-z]+\b', lambda match: "{:x}".format(0x140000000 + words_to_long(match.group(1))), fn)
+def unhashword(fn):
+    return re.sub(r'\b([a-z]+_[a-z]+_[a-z]+)\b', lambda match: "{:x}".format(0x140000000 + words_to_long(match.group(1))), fn)
 
 def file_get_contents_bin_spread(fn):
     fn = smart_path(fn)
@@ -156,6 +156,12 @@ def read_emu_glob(fn, subdir='*', path=None):
         print("No path set")
         return
 
+    uhw = unhashword(fn)
+    try:
+        if int(uhw, 16) > 0x140000000:
+            fn = '*_{}*'.format(uhw)
+    except ValueError:
+        pass
     fns = os.path.normpath(os.path.join(match_emu._path, subdir, '*', '*', fn))
     globbed = list(glob(fns))
     print('globbing... {} - {} files. {}'.format(fns, len(globbed), globbed[0:64]))
@@ -504,7 +510,7 @@ def check_emu(ea=None, size=None, path=None, auto=None, xxd=False):
     # }
     for _subdir, r in res.items():
         if auto:
-            r = _.filter(r, lambda x, *a: re.search(auto, x[2]))
+            r = _.filter(r, lambda x, *a: auto in x[2])
         results[_subdir] = dict()
         if r:
             for base, length, base_and_fn in r:
@@ -527,7 +533,7 @@ def check_emu(ea=None, size=None, path=None, auto=None, xxd=False):
                             file_get_contents_bin_spread(fullfn)[0:64], ea=base)])
                         asm = re.sub(r'0x[0-9a-fA-F]{8,}', lambda x, *a: get_name_by_any(x[0]), asm)
                     results[_subdir][asm] = "{:x} - {:x} {} {}".format(base, base + length, fn, asm)
-                    fn = re.sub(r'^CheckFunc_([0-9a-fA-F]{9})$', lambda match: long_to_words(-0x140000000 + int(match.group(1), 16)), fn)
+                    fn = re.sub(r'^(?:CheckFunc|BalanceFunc)_([0-9a-fA-F]{9})$', lambda match: long_to_words(-0x140000000 + int(match.group(1), 16)), fn)
                     p.append((_subdir, fn, hex(base), "({}) ".format(length) + hex(base + length), asm[0:128]))
                     p2.append(fullfn)
                 except FileNotFoundError:

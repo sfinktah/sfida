@@ -1055,7 +1055,13 @@ def decompile_function(ea):
     # print("decompiled_function_type: line_split", type(f))
     return f
 
-def decompile_function_search(ea, regex, flags = 0):
+#  list(
+#  decompile_function_search( 
+    #  [x for x in GetFuncStart(xrefs_to(eax('AddBonusCheck'))) if x < idc.BADADDR], 
+    #  r'AddBonusCheck.*', 
+    #  iteratee=lambda ea, n: LabelAddressPlus(ea, "init_AnotherFishyElement_{}".format(string_between('ACID_', ')', n) ))
+#  ))
+def decompile_function_search(ea, regex, iteratee=None, flags = 0):
     if not isinstance(ea, list):
         ea = [ea]
     for addr in ea:
@@ -1064,6 +1070,9 @@ def decompile_function_search(ea, regex, flags = 0):
             if isinstance(cfunc, str):
                 m = re.findall(regex, cfunc, flags)
                 for x in m:
+                    if iteratee:
+                        print("iteratee({:#x}, '{}')".format(addr, x))
+                        iteratee(addr, x)
                     yield x
         except ida_hexrays.DecompilationFailure:
             pass

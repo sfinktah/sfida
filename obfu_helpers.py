@@ -912,7 +912,7 @@ def ida_resolve(assembly):
     return "".join(_mnem)
 
 
-def nassemble(ea, string = None, apply=None):
+def nassemble(ea, string = None, apply=None, quiet=False):
     """ assemble with nasm
 
     :param ea: target address
@@ -935,7 +935,7 @@ def nassemble(ea, string = None, apply=None):
     string = "\n".join(string.split(';'))
     if len(string.strip()) == 0:
         return []
-    result = nasm64(ea, ida_resolve(string))
+    result = nasm64(ea, ida_resolve(string), quiet=quiet)
     if obfu_debug: print("[nassemble] result:{}".format(result))
     if result[0]:
         #  r = bytes_as_hex(result[1])

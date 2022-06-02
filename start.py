@@ -119,6 +119,7 @@ filenames = [
             "attrdict1.py",
             "sfida/sf_is_flags.py",
             "circularlist.py",
+            "iced.py",
             "di.py",
             "nasm.py",
             "sfida/sf_common.py",

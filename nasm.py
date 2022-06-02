@@ -44,7 +44,7 @@ def nasm_process_mapfile():
             pass
 
 nasm_cache = dict()
-def nasm64(ea, string):
+def nasm64(ea, string, quiet=False):
     global nasm_cache
     input = list()
     if debug:
@@ -279,7 +279,8 @@ def nasm64(ea, string):
                 # print("retrying with:\n{}".format(indent(8, string)))
 
             if not retry:
-                print("Failed to assemble at {:x}:\n{}".format(ea, indent(4, string)))
+                if not quiet:
+                    print("Failed to assemble at {:x}:\n{}".format(ea, indent(4, string)))
                 raise RelocationAssemblerError("\n".join(errors))
 
     return r

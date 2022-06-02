@@ -813,8 +813,8 @@ def retrace(address=None, color="#280c01", retails=False, redux=False, unpatchFi
                     for x in range(sbi, sbi+8):
                         if idc.get_wide_dword(x) == 0:
                             dontraise = True
-                            printi("reverting dword at 0x{:x}".format(x))
-                            UnPatch(sbi, x+4)
+                            printi("would have reverted dword at 0x{:x}".format(x))
+                            # UnPatch(sbi, x+4)
 
 
                 if '0xffffffffffffffff' in str(e):
@@ -3176,10 +3176,12 @@ def slowtrace2(ea=None,
                 if GetOpType(ea, 0) in (idc.o_near, idc.o_far):
                     while True:
                         if target == ida_search.find_binary(target, target + 32, "55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24 e9 ?? ?? ?? ??", 16, SEARCH_CASE | SEARCH_DOWN | SEARCH_NOSHOW):
-                            if obfu._patch(target)[0]:
-                                if isCall(target):
-                                    target = GetTarget(target)
-                                    continue
+                            _patch_result = obfu._patch(target)
+                            if isinstance(_patch_result, list) and _patch_result:
+                                if _patch_result[0]:
+                                    if isCall(target):
+                                        target = GetTarget(target)
+                                        continue
                         break
                     
 

@@ -634,6 +634,14 @@ def patch_single_rsp_push_call_jump(search, replace, original, ea, addressList, 
     17: 48 87 2c 24             xchg   QWORD PTR [rsp],rbp
     1b: ff e0                   jmp    rax
     """
+    if (search[0] == 0x55 and isUnconditionalJmp(addressList[1+7]+4)):
+        _asm = ["call {:#x}".format(GetTarget(addressList[1+7]+4)), "jmp {:#x}".format(addressList[1] + 7 + MakeSigned(idc.get_wide_dword(addressList[1]+3))), "int3"]
+        try:
+            nassemble(_asm)
+            return _asm
+        except RelocationAssemblerError:
+            print('nope')
+            pass
     if (search[0] == 0x48):
         jmpAddress = idc.get_operand_value(addressList[0x10], 1)
         callOffset = idc.get_operand_value(addressList[0], 1)
@@ -1442,6 +1450,33 @@ def obfu_append_patches():
             reflow=1
             )
 
+    obfu.append("", "call 2nd then return to 1st, mangled",
+            # From:
+            #  55                                            push    rbp             
+            #  48 8D 2D 08 00 00 00                          lea     rbp, loc_140A2EBF0 
+            #  48 87 2C 24                                   xchg    rbp, [rsp]
+            #  E9 0B 00 00 00                                jmp     loc_140A2EC00
+            #
+            # To:
+            #  E8 17 00 00 00                                call    loc_140A2EC00   ; lea rsp, qword ptr [rsp-8]; mov [rsp], rbp [140a2ebe4–140a2ebec]
+            #  E9 06 00 00 00                                jmp     loc_140A2EBF0   ; call 2nd then return to 1st, via double push rsp and ret [140a2ebe4–140a2ec04]
+            #
+            #
+            hex_pattern([
+                        "55",                   # 1  push rbp
+                        "48 8d 2d ?? ?? ?? ??", # 7  lea rbp, jmp_loc
+                        "48 87 2c 24",          # 4  xchg rbp, [rsp]
+                        "e9 ?? ?? ?? ??",       # 5  jmp call_loc
+            ]),
+            [],
+            replFunc = lambda _search, replace, original, ea, addressList, patternComment, addressListWithNops, **kwargs: \
+                    ["call {:#x}".format(GetTarget(addressList[1+7+4])), "jmp {:#x}".format(GetTarget(addressList[1])), "int3"],
+            safe=1,
+            resume=1,
+            priority=1
+
+    )
+
     obfu.append("", "call 2nd then return to 1st, via lossy rbp manip and ret",
             hex_pattern([
                 "48 8d 64 24 f8",
@@ -1823,12 +1858,33 @@ def obfu_append_patches():
 
     if obfu_debug: printi("slow_load: 1")
 
+    #  48 8B 04 24                                   mov     rax, [rsp]
+    #   or
+    #  4C 8B 04 24                                   mov     r8, [rsp]
+    #   then
+    #  48 8D 64 24 08                                lea     rsp, [rsp+8]
     obfu.append(""" """, "mov {}, [rsp]; lea rsp, [rsp+8] => pop {}",
             bit_pattern("48&fb 8b 04&c7 24 48 8d 64 24 08"),
             "",
             lambda a, b, c, *args, **kwargs: (len(a), [0x58 | ((c[2] & 0x38) >> 3)] if not c[0] & 4 else [0x41, 0x58 | ((c[2] & 0x38) >> 3)]),
             label='pop', resume=1,
     )
+
+
+    # 41 52        push r10        ; \
+    # 8b 04 24     mov eax, [rsp]  ;  > mov eax, r10d \
+    # 41 5a        pop r10         ; /                 > mov [rbx], r10d
+    # 87 03        xchg [rbx], eax ;                  /
+    
+    # "41 52 8b 04 24 41 5a 87 03" -> "44 89 13"
+
+    obfu.append(""" """, "push r10, mov eax, [rsp], pop r10, xchg [rbx], eax => mov [rbx], r10d",
+            bit_pattern("41 52 8b 04 24 41 5a 87 03"),
+            "",
+            lambda a, b, c, *args, **kwargs: (len(a), [0x44, 0x89, 0x13]),
+            resume=1,
+    )
+
     #  for src in r64:
         #  # skip possibly dangerous rsp
         #  if src == 'rsp':
@@ -2865,14 +2921,14 @@ def obfu_append_patches():
             safe=1, reflow=1
     )
 
-    obfu.append("", "call 2nd then return to 1st, via push rsp and jmp",
+    obfu.append("", "jmp via push rsp and retn",
             hex_pattern([
                 "55",
                 "48 8d 2d ?? ?? ?? ??",
                 "48 87 2c 24",
             ]),
             [],
-            patch_single_rsp_push_call_jump
+            patch_single_rsp_push_call_jump,
             )
 
 #  .tramp1:000000013FFEF053 FF 25 00 00 00 00                             jmp     cs:qword_13FFEF059

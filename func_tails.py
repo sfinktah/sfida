@@ -249,6 +249,10 @@ class AdvanceInsnList(object):
         return self._list_insns[-1].target
 
     @property
+    def targets(self):
+        return list(filter(lambda v, *a: v != idc.BADADDR, [GetTarget(i.ea) for i in self._list_insns]))
+
+    @property
     def bytes(self):
         return b''.join([insn.bytes for insn in self._list_insns])
 
@@ -275,10 +279,22 @@ class AdvanceInsnList(object):
         x = self
         # yield "loc_{:X}:".format(x.ea)
         yield from x.insns
-        while x.next and x.next not in visited:
-            yield from x.next.insns
-            visited.add(x)
-            x = x.next
+
+        if isinstance(x.next, set):
+            _queue = list(x.next)
+            while _queue:
+                _next = _queue.pop(0)
+                if _next not in visited:
+                    yield from _next.insns
+                    visited.add(_next)
+                    if _next.next:
+                        _queue.append(_next)
+
+        else:
+            while x.next and x.next not in visited:
+                yield from x.next.insns
+                visited.add(x)
+                x = x.next
 
 
     #  def errors(self): return self._list_errors
@@ -690,6 +706,13 @@ class FuncTailsInsn(object):
     def target(self):
         return self._insn_target
 
+    @property
+    def force_labeled_value(self):
+        if self._insn_labels:
+            _label = self._insn_labels[0]
+        else:
+            _label = "loc_{:X}".format(self._insn_ea)
+        return "{}: {}".format(_label, self._insn_insn)
     @property
     def labeled_value(self):
         if len(self._insn_refs_to) or len(self._insn_labels):

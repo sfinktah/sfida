@@ -21,6 +21,7 @@ import idc
 import inspect
 import time
 import os
+import ida_auto
 from itertools import islice
 from idc import *
 from PyQt5 import QtCore
@@ -1505,6 +1506,7 @@ def hotkey_edit_nasm():
         if _new_asm:
             if not nassemble(chunkStart, _new_asm, apply=True):
                 continue
+            ida_auto.plan_and_wait(chunkStart, chunkEnd)
         break
 
 def hotkey_unpatch():

@@ -2481,16 +2481,17 @@ def my_add_enum(enum, value, name, toupper=False):
     
     id = idc.get_enum(enum)
     print("get_enum({}): {:x}".format(enum, id))
-    if id == BADADDR:
-        for x, y in get_struc_ordinal_re(enum, re.I):
-            name = y
-            id = idc.get_enum(id)
-            print("Found enum {} (#{})".format(name, id))
+    if False:
+        if id == BADADDR:
+            for x, y in get_struc_ordinal_re(enum, re.I):
+                name = y
+                id = idc.get_enum(id)
+                print("Found enum {} (#{})".format(name, id))
     if id == BADADDR:
         print("id: {}, Adding new enum: {}".format(id, enum))
         id = idc.add_enum(-1, enum, idaapi.hex_flag())
 
-    r = idc.add_enum_member(id, name, value, -1)
+    r = idc.add_enum_member(id, name, value, ida_enum.DEFMASK)
     repeat = 1
     while repeat:
         repeat = 0

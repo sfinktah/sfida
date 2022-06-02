@@ -96,6 +96,8 @@ def FindStackMutators(ea=None, skipRetrace=False, path=None, **kwargs):
         #  printi("[debug] align:{:x}, offset:{:x}, location:{:x}, arg:{:x}".format(align, offset, location, arg))
         
         _ori_location = idc.get_qword(location)
+        if not _ori_location:
+            raise Exception("Invalid location (0) at {:#x}".format(location))
         location = SkipJumps(_ori_location)
         if False and not skipRetrace:
             args = kwargs.copy()

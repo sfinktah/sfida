@@ -591,6 +591,20 @@ def find_rolls():
             LabelAddressPlus(ea, 'OrphanedArxanRoll')
     return results
 
+def fix_obfu_scan():
+    patched = []
+    for ea in [e for e in FindInSegments('48 8D 64 24 F8 48 89 2C 24', '.text')]:
+        obfu._patch(ea)
+        patched.append(ea)
+    for ea in [e for e in FindInSegments('48 89 6C 24 F8 48 8D 64 24 F8', '.text')]:
+        obfu._patch(ea)
+        obfu._patch(ea)
+        patched.append(ea)
+
+    for ea in _.uniq(patched):
+        obfu._patch(ea)
+        EaseCode(ea, noExcept=1, forceStart=1)
+
 def fix_old_balances():
     patterns = [
         # '48 8d 64 24 f8 48 89 2c 24 48 8d 2d 76 31 ff ff 48 87 2c 24 55 48 8d 2d 30 5a 48 00 48 87 2c 24 c3',
@@ -618,6 +632,7 @@ def fix_old_balances():
                     ZeroFunction(ea - 10)
                 else:
                     SetFuncEnd(ea + 10, ea + 10)
+    fix_obfu_scan()
 
 
 

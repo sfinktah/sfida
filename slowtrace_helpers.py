@@ -1351,7 +1351,10 @@ def ForceFindRefsTo(ea=None):
 
     return PerformInSegments(finder)
     
-def GetTarget(ea, flow=0, calls=1, conditionals=1, operand=0, failnone=False):
+def GetTarget(ea, flow=0, calls=1, conditionals=1, operand=1, failnone=False):
+    """
+    @param operand bitmask 1 | 2 == 3 
+    """
     if isIterable(ea):
         return [GetTarget(x, flow=flow, calls=calls, conditionals=conditionals, operand=operand, failnone=failnone)
                 for x in ea]
@@ -1378,27 +1381,41 @@ def GetTarget(ea, flow=0, calls=1, conditionals=1, operand=0, failnone=False):
                 raise AdvanceFailure(msg)
             return None if failnone else BADADDR
     
-    if mnem == "jmp" or (calls and mnem == "call") or (conditionals and mnem[0] == "j"):
-        opType = idc.get_operand_type(ea, operand)
+    rv = None
+    if operand & 1 and (mnem == "jmp" or (calls and mnem == "call") or (conditionals and mnem[0] == "j")):
+        opType = idc.get_operand_type(ea, 0)
         if opType in (idc.o_near, idc.o_mem):
-            return idc.get_operand_value(ea, operand)
+            rv = idc.get_operand_value(ea, 0)
+        elif opType == idc.o_reg:
+            # 'call    rax ; j_smth_metric_tamper'
+            s = string_between('; ', '', disasm).strip()
+            if s:
+                result = eax(s)
+                if ida_ida.cvar.inf.min_ea <= result < ida_ida.cvar.inf.max_ea:
+                    rv = result
+
+    if operand & 2 and (mnem == "mov" or mnem == "lea"):
+        opType = idc.get_operand_type(ea, 1)
+        if opType in (idc.o_near, idc.o_mem):
+            return idc.get_operand_value(ea, 1)
         if opType == idc.o_reg:
             # 'call    rax ; j_smth_metric_tamper'
             s = string_between('; ', '', disasm).strip()
             if s:
                 result = eax(s)
                 if ida_ida.cvar.inf.min_ea <= result < ida_ida.cvar.inf.max_ea:
-                    return result
-
+                    rv = result
         #  printi("[warn] can't follow opType {} from {:x}".format(opType, ea))
 
-    if flow:
+    if not rv and flow:
         if idc.next_head(ea) == ea + idc.get_item_size(ea) and idc.is_flow(idc.get_full_flags(idc.next_head(ea))):
-            return idc.next_head(ea)
+            rv = idc.next_head(ea)
         else:
             if debug: printi("{:x} no flow".format(ea))
 
     # printi("{:x} GetTarget: no idea what to do with '{}' [flow={},calls={},conditionals={}]".format(ea, diida(ea), flow, calls, conditionals))
+    if rv and ida_ida.cvar.inf.min_ea <= rv < ida_ida.cvar.inf.max_ea:
+        return rv
     return None if failnone else BADADDR
 
 def GetTarget7(ea):
@@ -2999,7 +3016,7 @@ def perform(fun, *args, **kwargs):
 
 def preprocessIsX(fun, arg):
     if not arg:
-        raise Exception("Invalid argument: {}".format(type(arg)))
+        raise Exception("Invalid argument: {} ({})".format(arg, type(arg)))
     if isinstance(arg, str):
         return perform(fun, arg)
     if isinstance(arg, integer_types):
