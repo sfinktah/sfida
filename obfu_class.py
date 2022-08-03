@@ -4,14 +4,14 @@ COMB_RET = 0x10
 COMB_UNC_BRANCH = 0x40
 COMB_CND_BRANCH = 0x80
 
-_base = os.path.abspath(__file__.replace('_class.py', ''))
-check_for_updates = [
-        make_auto_refresh(_base + '.py'),
-        make_auto_refresh(_base + '_patches.py'),
-        make_auto_refresh(_base + '_helpers.py'),
-        make_auto_refresh(_base + '_generators.py'),
-]
-check_for_update = lambda: (x() for x in check_for_updates)
+#  _base = os.path.abspath(__file__.replace('_class.py', ''))
+#  check_for_updates = [
+        #  make_auto_refresh(_base + '.py'),
+        #  make_auto_refresh(_base + '_patches.py'),
+        #  make_auto_refresh(_base + '_helpers.py'),
+        #  make_auto_refresh(_base + '_generators.py'),
+#  ]
+#  check_for_update = lambda: (x() for x in check_for_updates)
 
 def _to_string(o):
     return str(o)
@@ -399,16 +399,13 @@ class Obfu(object):
         self.patterns_bitwise.append(BitwisePattern(search, mask, replFunc, brief, safe, **kwargs))
 
 
-    def process_replacement(self, search, repl, addressList, patternComment, addressListWithNops, addressListFull, pat, length=None):
+    def process_replacement(self, search, repl, addressList, patternComment, addressListWithNops, addressListFull, pat=None, context=None, length=None):
         assemble = nassemble
         if obfu_debug: printi("[process_replacement] repl:{}".format(listAsHex(repl)))
         if isinstance(repl, list):
             #  printi("addressList")
             #  pp(addressList)
             if isinstance(repl[0], str):
-                if False and repl[-1].lower().lstrip().startswith("ret"):
-                    fprint("** Added int3 to pattern '{}'".format(patternComment))
-                    repl.append("int3")
                 #  length = length or sum(_.map(repl, lambda x, *a: len(assemble(x, addressList[0]))))
                 length = length or len(search)
                 repl = length, repl
@@ -469,7 +466,7 @@ class Obfu(object):
             #  _end -= 1
 
             try:
-                _end_value = addressList[_end - 1]
+                _end_address = addressList[_end - 1]
             except IndexError:
                 # dprint("[IndexError] _end, len(addressList)")
                 printi("[IndexError] _end:{}, len(addressList):{}, _search:{}".format(_end, len(addressList), _search))
@@ -477,19 +474,20 @@ class Obfu(object):
                                                                                     addressListWithNops))
                 raise IndexError("pfft")
 
-            _nop_end = addressListWithNops.index(_end_value)
-            if _nop_end == -1:
+            _nop_end_index = addressListWithNops.index(_end_address)
+            if _nop_end_index == -1:
                 raise RuntimeError("couldn't match addressListWithNops to addressList")
             else:
-                _nop_end += 1
+                _nop_end_index += 1
 
-            # dprint("[hm] _end, _nop_end, addressList, addressListWithNops, addressListFull")
+            # dprint("[hm] _end, _nop_end_index, addressList, addressListWithNops, addressListFull")
 
               
             is_int3 = False
 
             # XXX
-            targetRanges = GenericRanger(addressListWithNops[0:_nop_end], sort=0, outsort=0)
+            usedAddresses = set()
+            targetRanges = GenericRanger(addressListWithNops[0:_nop_end_index], sort=0, outsort=0)
             if isinstance(_repl, list) and isinstance(_repl[0], str) and _repl[-1] == 'int3' \
                     or \
                     isinstance(_repl, list) and isinstance(_repl[0], int) and _repl[-1] == 'cc':
@@ -592,6 +590,8 @@ class Obfu(object):
                                 if obfu_debug: printi(("assemble (0x%x) '%s': %s" % (r.start, asm, listAsHex(assembled))))
                             length = len(assembled)
                             PatchBytes(r.start, assembled, code=1, comment="{} {}".format(patternComment, _targetRanges))
+                            for _addr in range(r.start, r.start + len(assembled)):
+                                usedAddresses.add(_addr)
 
                             forceCode(r.start)
                             if not IsCode_(r.start):
@@ -619,8 +619,8 @@ class Obfu(object):
                             #  printi(("couldn't find room for '%s' in %s" % (asm, _targetRanges)))
                             #  raise ObfuFailure("assemble: {}".format(asm))
 
-                    if not is_int3:
-                        usedRanges.extend(targetRanges)
+                    #  if not is_int3:
+                        #  usedRanges.extend(targetRanges)
                     if obfu_debug:
                         printi("usedRanges: {}".format(pf(usedRanges)))
                     for r in usedRanges:
@@ -630,6 +630,14 @@ class Obfu(object):
                             if obfu_debug:
                                 printi("usedRangesNopping: {:x}, {:x}, {}".format(start, length, patternComment))
                             PatchNops(start, length, patternComment)
+                    remainingRanges = GenericRanger(usedAddresses, sort=1, outsort=0)
+                    for r in difference(targetRanges, remainingRanges): # usedRanges
+                        start, last, length = r.start, r.last, r.length
+                        if length > 0:
+                            ## ZeroCode(start, length)
+                            if obfu_debug:
+                                printi("remainingRangesNopping: {:x}, {:x}, {}".format(start, length, patternComment))
+                            PatchNops(start, length, patternComment)
                     return True
         else:
             printi(("ProcessReplacement: Unexpected type (exected tuple): %s" % type(repl)))
@@ -637,7 +645,7 @@ class Obfu(object):
         return False
 
     # def replace_pattern_bitwise(self, search, mask, replFunc, patternComment, addressList, ea, addressListWithNops, safe):
-    def replace_pattern_bitwise(self, pat, ea, addressList, addressListWithNops, addressListFull):
+    def replace_pattern_bitwise(self, pat, ea, addressList, addressListWithNops, addressListFull, context=None):
             # result = self.replace_pattern_bitwise(pattern[0], pattern[1], pattern[2], pattern[3], list(addressList), ea, list(addressListWithNops), pattern[4], pattern[5])
             # result = self.replace_pattern_bitwise(pattern, ea, list(addressList), list(addressListWithNops))
         #  printi(json.dumps(searchIndex))
@@ -657,15 +665,13 @@ class Obfu(object):
             if repl:
                 if debug: printi("Replace bitwise with {}:".format(pfh(repl)))
                 # pp(repl)
-                if self.process_replacement(search, repl, addressList, brief, addressListWithNops, addressListFull, pat=pat):
+                if self.process_replacement(search, repl, addressList, brief, addressListWithNops, addressListFull, pat=pat, context=context):
                     return {'addressList': addressList, 'pattern': pat}
 
         return False
 
-    #   def replace_pattern_ex(  search,     repl,    replFunc, searchIndex, brief, addressList,       ea):
-    # if self.replace_pattern_ex(pattern[0], pattern[1], pattern[2],      pattern[3],  pattern[4],     list(addressList), ea):
     def replace_pattern_ex(self, search, repl, replFunc, searchIndex, patternComment, addressList, ea,
-                           addressListWithNops, addressListFull, safe, pat, context=None):
+                           addressListWithNops, addressListFull, safe, pat=None, context=None):
         # inslen = MyGetInstructionLength(ea)
         # buf = GetManyBytes(ea, ItemSize(ea))
         #  printi(json.dumps(searchIndex))
@@ -705,7 +711,7 @@ class Obfu(object):
             original = [idc.get_wide_byte(x) for x in addressList]
 
             repl = replFunc(search, repl, original, ea, addressList, patternComment,
-                            addressListWithNops=addressListWithNops, addressListFull=addressListFull, context=context)
+                            addressListWithNops=addressListWithNops, addressListFull=addressListFull, pat=pat, context=context)
             if not repl:
                 return False
             # printi("Replace:")
@@ -713,22 +719,22 @@ class Obfu(object):
 
             # 141057f05 Search|Replace (A): 21|('0x15', ['<generator object recursive_map at 0x0000021AAAFC8F48>', '<generator object recursive_map at 0x0000021AAAFC8F48>'])
             #          jmp via push rbp, xchg, lea rsp, jmp rsp-8
-            printi("{:x} replFunc: Search: {}\n                   Replace: {}\n                   Comment: {}"
+            printi("{:x} replFunc:    Search: {}\n                   Replace: {}\n                   Comment: {}"
                     .format(ea, 
                         listAsHex(search), 
-                        repl, 
+                        ahex(repl), 
                         patternComment)) # listAsHex(search), 
 
-            if self.process_replacement(search, repl, addressList, patternComment, addressListWithNops, addressListFull, length=len(search), pat=pat):
+            if self.process_replacement(search, repl, addressList, patternComment, addressListWithNops, addressListFull, length=len(search), pat=pat, context=context):
                 return {'addressList': addressList, 'safe': safe}
         elif repl:
             #  printi("{:x} Search|Replace (B): {}|{}\n          {}".format(ea, listAsHex(search), ahex(repl), patternComment))
-            printi("{:x} repl:     Search: {}\n                   Replace: {}\n                   Comment: {}"
+            printi("{:x} repl:        Search: {}\n                   Replace: {}\n                   Comment: {}"
                     .format(ea, listAsHex(search), 
                         ahex(repl), 
                         patternComment)) # listAsHex(search), 
             if self.process_replacement(search, (search, repl), addressList, patternComment,
-                                        addressListWithNops, addressListFull, pat=pat):
+                                        addressListWithNops, addressListFull, pat=pat, context=context):
                 return {'addressList': addressList, 'safe': safe}
         elif not repl:
             printi(("0x%x: No replacement for patch %s" % (ea, patchComment)))
@@ -1270,7 +1276,6 @@ class Obfu(object):
                 if obfu_debug: printi("[Obfu::_patch] checking: {}".format(pat.brief))
                 searches += 1
 
-                # def replace_pattern_ex(  search,     repl,    replFunc, searchIndex, patternComment, addressList,       ea, addressListWithNops,       safe):
                 q = [pat]
                 results = []
                 while q and not count:
@@ -1279,7 +1284,7 @@ class Obfu(object):
                     if obfu_debug: printi("addressList: {}".format(hex(addressList)))
 
                     result = self.replace_pattern_ex(tuple(pat.search), tuple(pat.repl), pat.replFunc, pat.searchIndex, pat.brief,
-                                                     list(addressList), ea, list(addressListWithNops), list(addressListFull), pat.safe, context=context, pat=pat)
+                                                     list(addressList), ea, list(addressListWithNops), list(addressListFull), pat.safe, pat=pat, context=context)
                     if result:
                         count += 1
                         if obfu_debug:

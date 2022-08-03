@@ -166,7 +166,7 @@ def find_all_regs(s):
     
 
 
-if "helper" not in globals():
+if "emu_helper" not in globals():
     out("constructing helper")
     emu_helper = flare_emu.EmuHelper()
 else:
@@ -246,7 +246,7 @@ def insnHookActual(unicornObject, address, instructionSize, userData):
 
     helper = userData["EmuHelper"]
     if "breakpoints" not in userData:
-        userData['breakpoints'] = set([0x14022232b]) # 2b
+        userData['breakpoints'] = set() # [0x14022232b]) # 2b
 
     if not address:
         out("Jumped to unknown location (probably external library)")
@@ -257,22 +257,23 @@ def insnHookActual(unicornObject, address, instructionSize, userData):
         userData["EmuHelper"].stopEmulation(userData)
 
     if abort:
+        out("{:x} Abort!".format(address))
         userData["EmuHelper"].stopEmulation(userData)
 
     for ea in range(address, address + instructionSize):
         visited.add(ea)
 
-    if address == 0x1421D1EFB:
-        # .text:00000001421D1EFB 0E0 D3 85 90 00 00 00                             rol     [rbp+0B0h+rolling_code], cl
-        if single_step:
-            out("rol by {:x}".format(helper.getRegVal('rcx') & 0x1f))
-
-    if address == 0x1421D1F0C:
-        if single_step:
-            out("rolling_code {:x}".format(helper.getRegVal('edx')))
-
-    if address == 0x1402CCF1B:
-        userData["EmuHelper"].stopEmulation(userData)
+    #  if address == 0x1421D1EFB:
+        #  # .text:00000001421D1EFB 0E0 D3 85 90 00 00 00                             rol     [rbp+0B0h+rolling_code], cl
+        #  if single_step:
+            #  out("rol by {:x}".format(helper.getRegVal('rcx') & 0x1f))
+#  
+    #  if address == 0x1421D1F0C:
+        #  if single_step:
+            #  out("rolling_code {:x}".format(helper.getRegVal('edx')))
+#  
+    #  if address == 0x1402CCF1B:
+        #  userData["EmuHelper"].stopEmulation(userData)
 
 
     fnName = GetFuncName(address) or hex(address)
@@ -295,7 +296,7 @@ def insnHookActual(unicornObject, address, instructionSize, userData):
                 functions.add(fnName)
                 # out("function: {} ({})".format(fnName, len(functions)))
                 if len(functions) > 500:
-                    out("aborting")
+                    out("aborting (functions > 500)")
                     userData["EmuHelper"].stopEmulation(userData)
 
     count += 1
@@ -372,6 +373,8 @@ def insnHookActual(unicornObject, address, instructionSize, userData):
                 stepout("{:9} {:5} {}".format('', '', ida_lines.tag_remove(cmt)))
             if stack_pointer is not None:
                 _spd = helper.getRegVal('rsp') - stack_pointer
+                if _spd:
+                    _spd = hex(_spd)
             else:
                 _spd = 'unset'
             stack_pointer = helper.getRegVal('rsp')
@@ -851,10 +854,10 @@ def emu_sub(fn, steps=100, single=None, regs=None, args={}):
     clean = False
     # idc.set_func_flags(ea, (idc.get_func_flags(ea) | 0x0) & ~0x22)
 
-    #  if 'breakpoints' in helper.userData:
-        #  helper.userData['breakpoints'] = set()
-    #  if 'arxan_range' in helper.userData:
-        #  helper.userData['arxan_range'] = set()
+    #  if 'breakpoints' in emu_helper.userData:
+        #  emu_helper.userData['breakpoints'] = set()
+    #  if 'arxan_range' in emu_helper.userData:
+        #  emu_helper.userData['arxan_range'] = set()
     r64 = make_reg_list().r64
     registers = {}
     idx = 0
@@ -883,8 +886,8 @@ def emu_sub(fn, steps=100, single=None, regs=None, args={}):
         for head in Heads(startea, endea):
             addresses.add(head)
 
-    rv = helper.emulateFrom(
-            # helper.analysisHelper.getNameAddr(fn), 
+    rv = emu_helper.emulateFrom(
+            # emu_helper.analysisHelper.getNameAddr(fn), 
             fnLoc,
             #  registers = registers, # {"arg1": 0xaa, "arg2": 0xbb, "arg3": 0xcc, "arg4": 0xdd},
             registers = args,
@@ -909,13 +912,13 @@ def emu_sub(fn, steps=100, single=None, regs=None, args={}):
             Commenter(head, 'line').add('dead code').commit()
             #  PatchNops(head, idc.get_item_size(head), comment="emu")
         func_tails(ea)
-    return helper.getRegVal("rax")
+    return emu_helper.getRegVal("rax")
 
 def calc_expr(s):
     global emu_helper
     def re_sub(m):
         reg = m.group(0)
-        return str(helper.getRegVal(reg))
+        return str(emu_helper.getRegVal(reg))
 
     def repl_sub(s):
         re_regs = r'\b([re][abcd]x|[re][bs]p|[re][ds]i|r[89][dwb]?|r1[012345]9[dwb]?|[acdb][xl])\b'

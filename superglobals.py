@@ -189,7 +189,7 @@ def hasglobal(key):
     if base is not None:
         return _ohas(base, path[-1])
 
-def getglobal(path, default=None, _type=None):
+def getglobal(path, default=None, _type=None, _set=False):
     """
     getglobal(key[, default]) -> value
     
@@ -215,6 +215,9 @@ def getglobal(path, default=None, _type=None):
             #            if fail:
             #                raise TypeError('_type must be a type or tuple of types')
 
+    if _set:
+        setglobal(path, default)
+        return getglobal(path)
     return default
 
 def setglobal(key, value):

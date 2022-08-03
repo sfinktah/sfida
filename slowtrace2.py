@@ -473,10 +473,10 @@ def retrace_list(address, pre=None, post=None, recolor=0, func=0, color="#280c01
         except AttributeError as e:
             raise
 
-        except Exception as e:
-            printi("* pre outer: Exception: {}: {}".format(e.__class__.__name__, str(e)))
-            fail(ea, post)
-            pass
+        #  except Exception as e:
+            #  printi("* pre outer: Exception: {}: {}".format(e.__class__.__name__, str(e)))
+            #  fail(ea, post)
+            #  pass
 
         bad += 1
 
@@ -975,6 +975,7 @@ def slowtrace2(ea=None,
                anal=False,
                codeRefsTo=set(),
                color=None,
+               count=None,
                cursor=False,
                follow=False,
                delsp=False,
@@ -997,6 +998,7 @@ def slowtrace2(ea=None,
                limit=BADADDR,
                live=False,
                max_depth=32,
+               midfunc=None,
                modify=True,
                noAppendChunks=False,
                noDenyJmp=False,
@@ -1031,6 +1033,7 @@ def slowtrace2(ea=None,
                vim=False,
                vimedit=False,
                vimlike=False,
+               #  willVisit=set(),
                which=None,
                appendChunks=False,
                ):
@@ -1141,7 +1144,7 @@ def slowtrace2(ea=None,
 
     slvars2.appendLines = []
     slvars2.outputLines = []
-    slvars2.previousHeads = CircularList(32)
+    slvars2.previousHeads = CircularList(64)
 
     # note: these two can apply to the whole function, or just a chunk (if a chunk is what we're working with)
     idc.auto_wait()
@@ -1154,7 +1157,7 @@ def slowtrace2(ea=None,
     slvars.fakedAddresses = []
 
     # new slvars
-    slvars.willVisit = set()
+    slvars.willVisit = set();
     slvars.justVisited = set()
     slvars.justVisitedRsp = dict()
     slvars.branchStack = []
@@ -1231,8 +1234,10 @@ def slowtrace2(ea=None,
         vim_filename = 'cmdvim.bat'
         if path is None:
             vim_executable_filepath = r'C:\Program Files (x86)\Vim\vim82\gvim.exe'
-            if not os.path.exists(dot_executable_filepath):
-                raise Exception("Please install gvim from https://www.vim.org/download.php")
+            if not os.path.exists(vim_executable_filepath):
+                vim_executable_filepath = r'C:\Program Files (x86)\Vim\vim90\gvim.exe'
+                if not os.path.exists(vim_executable_filepath):
+                    raise Exception("Please install gvim from https://www.vim.org/download.php")
         else:
             vim_executable_filepath = os.path.join(path, vim_filename)
 
@@ -1331,6 +1336,7 @@ def slowtrace2(ea=None,
             try:
                 end = EaseCode(new, forceStart=1) 
             except AdvanceFailure as e:
+                printi("History: {}".format(hex([x.source for x in slvars2.previousHeads])))
                 printi("slowtrace threw {}: {}".format(e.__class__.__name__, str(e)))
                 sb = string_between('advance past ', '', str(e))
                 if sb:
@@ -1394,9 +1400,12 @@ def slowtrace2(ea=None,
             if len(slvars.addresses) % slvars.notification_interval == 0:
                 #  slvars.addressesRemoved += len(slvars.addresses)
                 #  slvars.addresses.clear()
-                printi("{}k chunks...".format((slvars.addressesRemoved + len(slvars.addresses)) / 1024.0))
+                printi("{}k chunks... {:x}".format((slvars.addressesRemoved + len(slvars.addresses)) / 1024.0, old))
                 #  slvars.notification_interval *= 2
             if GetChunkNumber(old) != GetChunkNumber(new):
+                if applySkipJumps and isAnyJmp(ea):
+                    new = SkipJumps(ea, apply=1, skipNops=1)
+
                 #  fix_non_func(new, old)
                 CheckChunkChange(new, old)
                 slvars.currentChunk = new
@@ -1419,6 +1428,10 @@ def slowtrace2(ea=None,
             raise SlowtraceSingleStep("single-step enabled")
         if not len(slvars2.previousHeads):
             printi("no previous heads to reverse to")
+            return current_ea
+
+        if not IsFunc_(slvars2.previousHeads[0].source):
+            printi("previous heads was removed")
             return current_ea
 
         branch = slvars2.previousHeads[0]
@@ -1670,16 +1683,18 @@ def slowtrace2(ea=None,
         #  if idc.is_flow(ida_bytes.get_flags(_next_head)) and not isFlowEnd(current_ea) and _next_head == _next_insn:
                 #  sprint("0x%x: Adjusting fnEnd from 0x%x to 0x%x" % (current_ea, fnEnd, NextNotTail(nextHead)))
                 # TODO: should we be doing this, is this causing overspill?
-                if GetChunkStart(fnEnd) == GetFuncStart(fnEnd):
-                    if debug: printi("SetFuncEnd(0x{:x}, 0x{:x})".format(fnEnd - 1, NextNotTail(nextHead)))
-                    SetFuncEnd(current_ea, NextNotTail(nextHead))
-                else:
-                    printi("SetChunkEnd(0x{:x}, 0x{:x})".format(fnEnd - 1, NextNotTail(nextHead)))
-                    try:
-                        SetChunkEnd(current_ea, NextNotTail(nextHead))
-                    except TypeError as e:
-                        printi("Exception calling SetChunkEnd({:#x}, {:#x})".format(current_ea, idc.next_not_tail(nextHead)))
-                        raise e
+                if not vim:
+                    if GetChunkStart(fnEnd) == GetFuncStart(fnEnd):
+                        if debug: printi("SetFuncEnd(0x{:x}, 0x{:x})".format(fnEnd - 1, NextNotTail(nextHead)))
+                        SetFuncEnd(current_ea, NextNotTail(nextHead))
+                    else:
+                        if IsChunked(ea):
+                            printi("SetChunkEnd(0x{:x}, 0x{:x})".format(current_ea, NextNotTail(nextHead)))
+                            try:
+                                SetChunkEnd(current_ea, NextNotTail(nextHead))
+                            except TypeError as e:
+                                printi("Exception calling SetChunkEnd({:#x}, {:#x})".format(current_ea, idc.next_not_tail(nextHead)))
+                                raise e
             else:
                 if debug: sprint("considering extending function.. nope")
             CheckChunkChange(nextHead, current_ea)
@@ -1898,7 +1913,12 @@ def slowtrace2(ea=None,
         if IsExtern(fnLoc):
             return setIsRealFunc("IsExtern(0x{:x})".format(fnLoc))
         if not IsCode_(fnLoc): # idc.is_code(ida_bytes.get_flags(fnLoc)):
-            insLen = forceCode(fnLoc)
+
+            try:
+                insLen = forceCode(fnLoc)
+            except AdvanceFailure as e:
+                printi("History: {}".format(hex([x.source for x in slvars2.previousHeads])))
+                raise e
             if not insLen:
                 if debug: sprint((_file, 'is_real_func'), AdvanceFailure("Couldn't convert code at jmp fnLoc {:x}".format(fnLoc)))
         target_flags = ida_bytes.get_flags(fnLoc)
@@ -2149,6 +2169,10 @@ def slowtrace2(ea=None,
         if cn >= stop: raise Exception("Stop!")
         fatal = False
         ShouldAddChunk(lastEa, ea)
+        if count and len(slvars.addresses) > count:
+            printi("... count reached #2")
+            return 0
+                
         for step in range(5):
             cn += 1
             if cn >= stop: raise Exception("Stop!")
@@ -2192,6 +2216,9 @@ def slowtrace2(ea=None,
         #
         # while idc.is_code(ida_bytes.get_flags(ea)) or idc.plan_and_wait(ea, EndOfContig(ea)) or idc.create_insn(ea):
         while idc.is_code(ida_bytes.get_flags(ea)): # or idc.plan_and_wait(ea, EndOfContig(ea)) or idc.create_insn(ea):
+            if count and len(slvars.addresses) > count:
+                printi("... count reached #3 ({})".format(count))
+                return 0
             if ea == slvars.startLoc:
                 new_ea = skip_initial_jumps(ea)
                 if new_ea == False:
@@ -2201,6 +2228,11 @@ def slowtrace2(ea=None,
 
             if ea == slvars.startLoc and not IsFuncHead(ea):
                 MyMakeFunction(ea)
+            if midfunc and ea != slvars.startLoc:
+                printi("jumped to midfunc")
+                slvars2.previousHeads.clear()
+                ea = midfunc
+                midfunc = 0
             forceJump = None
             forceJumpRsp = None
             if debug: sprint("Top of loop, type rspHist: {}".format(type(slvars.rspHist)))
@@ -2319,7 +2351,7 @@ def slowtrace2(ea=None,
                         # intentionally dumbing this down to match IDA's new capability
                         # which applies the SPD to the `call _alloca_probe` not the
                         # subsequent sub slvars.rsp.
-                        if sti[-1] == "call __alloca_probe" and \
+                        if sti[-1] == "call _alloca_probe" or sti[-1] == "call __alloca_probe"  and \
                            sti[-2].startswith("mov eax, "):
                             s = sti[-2]
                         #  if \
@@ -2422,7 +2454,7 @@ def slowtrace2(ea=None,
                             sprint("*** {} ***".format(m))
 
 
-                    if True:
+                    if True and True:
                         m = sti.multimatch([
                             r'mov rax, rsp',
                             # sub rsp, 0xb8
@@ -2465,45 +2497,46 @@ def slowtrace2(ea=None,
                         #  r'mov byte.*'
                     #  ])
                     setglobal('sti', sti)
-                    m = sti.multimatch([
-                        # load r11 with stack adjustment: lea r11, [slvars.rsp+xxx]
-                        r'lea r11, \[rsp\+(0x[0-9a-fA-F]+|[0-9a-fA-F]+h)]',
+                    if True and True:
+                        m = sti.multimatch([
+                            # load r11 with stack adjustment: lea r11, [slvars.rsp+xxx]
+                            r'lea r11, \[rsp\+(0x[0-9a-fA-F]+|[0-9a-fA-F]+h)]',
 
-                        # a bunch of mov and movabs statements
+                            # a bunch of mov and movabs statements
 
-                        # then either mov slvars.rsp, r11; lea slvars.rsp, [r11];
-                        # or push r11 & pop slvars.rsp
-                        r'mov rsp, r11|lea rsp, \[r11]|pop rsp'
-                    ])
-                    
-                    if m:
-                        #  sprint("*** found r11 spd shennanigans***")
-                        setglobal('_m', m)
-                        sti.clear()
-                        #  stack = string_between(
-                                #  ["[rsp+0x", "[rsp+" ], 
-                                #  [      "]",    "h]" ], 
-                                #  m.default[0].group(0)) 
-                        stack = string_between(
-                                "[rsp+0x", "]", 
-                                m.default[0], retn_all_on_fail=1) 
+                            # then either mov slvars.rsp, r11; lea slvars.rsp, [r11];
+                            # or push r11 & pop slvars.rsp
+                            r'mov rsp, r11|lea rsp, \[r11]|pop rsp'
+                        ])
+                        
+                        if m:
+                            #  sprint("*** found r11 spd shennanigans***")
+                            setglobal('_m', m)
+                            sti.clear()
+                            #  stack = string_between(
+                                    #  ["[rsp+0x", "[rsp+" ], 
+                                    #  [      "]",    "h]" ], 
+                                    #  m.default[0].group(0)) 
+                            stack = string_between(
+                                    "[rsp+0x", "]", 
+                                    m.default[0], retn_all_on_fail=1) 
 
-                        if stack:
-                            if debug: sprint("m.default: {}".format(m.default))
-                            
-                            spd = int(stack, 16)
-                            if m.default[1] == 'pop rsp':
-                                spd += 8
-                                # slvars.rsp += 8
+                            if stack:
+                                if debug: sprint("m.default: {}".format(m.default))
+                                
+                                spd = int(stack, 16)
+                                if m.default[1] == 'pop rsp':
+                                    spd += 8
+                                    # slvars.rsp += 8
 
-                            idc.add_user_stkpnt(idc.next_head(ea), spd)
+                                idc.add_user_stkpnt(idc.next_head(ea), spd)
 
-                            cmt = "[SSPD=%s]" % hex(spd)
-                            #  if not Commenter(ea, "line").match(r'^\[SPD='):
-                            Commenter(ea, "line").remove_matching(r'^\[SSPD=')
-                            Commenter(ea, "line").add(cmt)
-                        else:
-                            sprint("couldn't get stack adjustment from %s" % m.default[0])
+                                cmt = "[SSPD=%s]" % hex(spd)
+                                #  if not Commenter(ea, "line").match(r'^\[SPD='):
+                                Commenter(ea, "line").remove_matching(r'^\[SSPD=')
+                                Commenter(ea, "line").add(cmt)
+                            else:
+                                sprint("couldn't get stack adjustment from %s" % m.default[0])
 
                     #  if \
                     #  sti[-1] == "mov rsp, r11" or \
@@ -2556,50 +2589,69 @@ def slowtrace2(ea=None,
                     #  printi("no-obfu option: {} {}".format(noObfu, type(noObfu)))
                 else:
                     if debug: sprint("checking for patches")
+                    must_reverse = False
                     _loop = True
                     while _loop:
                         _loop = False
-                        patch_result = True
+                        patch_result = False
                         patch_results = []
-                        while patch_result:
-                            patch_result = obfu._patch(ea, context={'slvars': slvars, 'slvars2': slvars2}, depth=depth)
-                            if patch_result:
-                                patch_results = patch_result
-                        if patch_results:
-                            #  printi("patch at insn {}".format(slvars.insnCount))
-                            if isinstance(patch_results, list):
-                                patch_results = patch_results[0]
-                            if isinstance(patch_results, PatternResult):
-                                if isinstance(returnPatches, list):
-                                    returnPatches.append(patch_results)
-                                    if debug: sprint("found patternresult")
+                        if not isNop(ea) and not isUnconditionalJmp(ea):
+                            patch_result = True
+                            while patch_result:
+                                patch_result = obfu._patch(ea, context={'slvars': slvars, 'slvars2': slvars2}, depth=depth)
+                                if patch_result:
+                                    if isinstance(patch_result, list):
+                                        patch_result = patch_result[0]
+                                    if debug: printi("patch_result: {}".format(patch_result))
+                                    if isinstance(patch_result, PatternResult):
+                                        pat, result = patch_result.pat, patch_result.result
+                                        must_reverse = forceReflow or getattr(pat.options, 'reflow', None) or noResume
+                                        # this is all backwards
+                                        if must_reverse:
+                                            _loop = True
+                                            continue
+                                    else:
+                                        # this is all backwards
+                                        if forceReflow or noResume:
+                                            must_reverse = True
+                                            _loop = True
+                                            continue
+                            if patch_results:
+                                #  printi("patch at insn {}".format(slvars.insnCount))
+                                if isinstance(patch_results, list):
+                                    patch_results = patch_results[0]
+                                if isinstance(patch_results, PatternResult):
+                                    if isinstance(returnPatches, list):
+                                        returnPatches.append(patch_results)
+                                        if debug: sprint("found patternresult")
 
-                                if debug: sprint("found one")
-                                pat, result = patch_results.pat, patch_results.result
-                                patches += 1
-                                must_reverse = forceReflow or getattr(pat.options, 'reflow', None) #  or noResume
-                                if must_reverse is None:
-                                    must_reverse = not getattr(pat.options, 'resume', False)
-                                    _loop = getattr(pat.options, 'resume', False)
-                                if False and len(slvars.justVisited) > 100:
-                                    # we don't want to have to restart later if were're this far in 
-                                    must_reverse = True
-                                EaseCode(ea)
-                                [GetDisasm(x) for x in idautils.Heads(ea, ea+32)]
-                                idc.auto_wait()
-                            elif isinstance(patch_results, int):
-                                if debug: sprint("patch_results wre int {} (0 is good)".format(patch_results))
-                                if patch_results != 0:
-                                    raise ObfuFailure("patchresults was non-zero int")
-                            else:
-                                msg = "cannot handle patch result type: {}".format(type(patch_results))
-                                raise ObfuFailure(msg)
+                                    if debug: sprint("found one")
+                                    pat, result = patch_results.pat, patch_results.result
+                                    patches += 1
+                                    must_reverse = forceReflow or getattr(pat.options, 'reflow', None) or noResume
+                                    if must_reverse is None:
+                                        must_reverse = not getattr(pat.options, 'resume', False)
+                                        #  _loop = getattr(pat.options, 'resume', False)
+                                    if False and len(slvars.justVisited) > 1000:
+                                        # we don't want to have to restart later if were're this far in 
+                                        must_reverse = True
+                                    _loop = not must_reverse
+                                    EaseCode(ea)
+                                    [GetDisasm(x) for x in idautils.Heads(ea, ea+32)]
+                                    idc.auto_wait()
+                                elif isinstance(patch_results, int):
+                                    if debug: sprint("patch_results wre int {} (0 is good)".format(patch_results))
+                                    if patch_results != 0:
+                                        raise ObfuFailure("patchresults was non-zero int")
+                                else:
+                                    msg = "cannot handle patch result type: {}".format(type(patch_results))
+                                    raise ObfuFailure(msg)
                     #  if result and result[0]:
                         #  for r in patch_results[1]:
                             #  patched.extend(r['addressList'])
             # If we patched something, we need to start the trace again
             # or do we? should we?
-            if patches:
+            if patches or must_reverse:
                 patches = 0
                 if single:
                     raise SlowtraceSingleStep()
@@ -2808,6 +2860,7 @@ def slowtrace2(ea=None,
                                             idc.append_func_tail(slvars.startLoc, _chunk_start, _chunk_end)
                                     if GetChunkNumber(_chunk_start, _chunk_owner) > 0:
                                         if not idc.remove_fchunk(_chunk_owner, _chunk_start):
+                                            printi("ZeroFunction({:x})".format(_chunk_owner))
                                             ZeroFunction(_chunk_owner)
                                             if _chunk_owner in GetChunkOwners(_chunk_start()):
                                                 msg = "couldn't fix chunk 0x{:x}".format(idc.next_head(ea))
@@ -3161,6 +3214,10 @@ def slowtrace2(ea=None,
             #  if slvars.rsp > 0:
                 #  line = output("rsp was positive")
                 #  break
+                #
+            if isUnlikely(mnem):
+                sprint("unlikely instruction {}".format(mnem))
+
 
             target = GetTarget(ea)
 
@@ -3279,7 +3336,7 @@ def slowtrace2(ea=None,
 
                         push_count, new_ea, unused2 = CountConsecutiveMnem(balanceLoc, ["push", "pushf", "pushfq"])
                         #  Commenter(ea).add(sprint("ArxanStackBalance: push_count: " + str(push_count)))
-                        if push_count > 8 or diida(new_ea) == 'test rsp, 0xf':
+                        if push_count > 6 or diida(new_ea) == 'test rsp, 0xf':
                             if not HasUserName(balanceLoc):
                                 LabelAddressPlus(balanceLoc, "ArxanBalance")
                             #  with DebugMode(0):
@@ -3388,17 +3445,17 @@ def slowtrace2(ea=None,
 
                                             
                                         if _.indexOf(returnAddresses, None) == -1:
-                                            count = 0
+                                            smth_count = 0
                                             balanceCalls.reverse()
 
                                             for call_loc, retn_loc in _.zip(balanceCalls, returnAddresses):
-                                                count += 1
+                                                smth_count += 1
                                                 if retn_loc is None:
                                                     printi("[arxan] retn_loc is None")
                                                 else: 
-                                                    Commenter(ea).add("Arxan Return {}: {:x} {} {}".format(count, retn_loc, idc.print_insn_mnem(SkipJumps(retn_loc)), idc.get_name(retn_loc)))
+                                                    Commenter(ea).add("Arxan Return {}: {:x} {} {}".format(smth_count, retn_loc, idc.print_insn_mnem(SkipJumps(retn_loc)), idc.get_name(retn_loc)))
 
-                                            count = -1
+                                            smth_count = -1
                                             if cont_count == 0:
                                                 if _extra:
                                                     raise ArxanFailure("No effective returns, but extra code after balance present")
@@ -3413,13 +3470,13 @@ def slowtrace2(ea=None,
                                             elif cont_count == 1 and _extra is None:
                                                 skip_next = 0
                                                 for call_loc, retn_loc in _.zip(balanceCalls, returnAddresses):
-                                                    count += 1
+                                                    smth_count += 1
                                                     if skip_next:
                                                         skip_next = 0
                                                         continue
 
                                                     if idc.print_insn_mnem(SkipJumps(retn_loc)).startswith('ret'):
-                                                        printi("[arxan] skipping retn_loc {} {:x} (call_loc {:x})".format(count, retn_loc, call_loc))
+                                                        printi("[arxan] skipping retn_loc {} {:x} (call_loc {:x})".format(smth_count, retn_loc, call_loc))
                                                         # skip_next = 1
                                                         continue
 
@@ -3428,7 +3485,7 @@ def slowtrace2(ea=None,
                                                         call_loc = ea
                                                     if not IsValidEA(retn_loc):
                                                         printi("retn_loc was invalid '{}'".format(retn_loc))
-                                                    printi("[arxan] using retn_loc {} {:x} (call_loc {:x})".format(count, retn_loc, call_loc))
+                                                    printi("[arxan] using retn_loc {} {:x} (call_loc {:x})".format(smth_count, retn_loc, call_loc))
                                                     nassemble(call_loc, "{} {:#x}".format(arxanJmpOrCall, retn_loc), apply=1)
                                                     ForceFunction(retn_loc)
                                                     if not HasUserName(retn_loc):
@@ -3436,7 +3493,7 @@ def slowtrace2(ea=None,
                                                     Commenter(ea).add("ArxanCheck with single return redirected from {:x} to {:x}".format(target, retn_loc))
                                                     Commenter(call_loc).add("ArxanCheck with single return redirected from {:x} to {:x}".format(target, retn_loc))
                                                     Commenter(call_loc).add("[ARXAN-PATCHED]")
-                                                    SkipJumps(ea, apply=1)
+                                                    SkipJumps(ea, skipNops=1, apply=1)
                                                     continue
                                             else:
                                                 with InfAttr(idc.INF_AF, lambda v: v & 0xdfe60008):
@@ -3453,12 +3510,9 @@ def slowtrace2(ea=None,
                                                     remaining = cave_end - cave_start
                                                     cave_pos = cave_start
 
-                                                    _locations = SkipJumps(_.pluck(
-                                                                        _.sortBy(
-                                                                            #  _.filter(_stackMut, lambda x, *a: not x['mnem'].startswith('ret')), 
-                                                                            _stackMut,
-                                                                        lambda x, *a: x['offset']), 
-                                                                    'location'), skipNops=1)
+                                                    _locations = SkipJumps(_.pluck( _.sortBy(_stackMut, lambda x, *a: x['offset']), 'location'), skipNops=1)
+                                                    setglobal('_locations', _locations)
+                                                    _locations = _.uniq(_locations)
 
                                                     #  _locations = _.sortBy(_stackMut, lambda x, *a: x['offset'])
                                                     #  _locations_used = _.map(_locations, lambda x, *a: not x['mnem'].startswith('ret')) 
@@ -3502,6 +3556,8 @@ def slowtrace2(ea=None,
                                                         Commenter(ea, 'line').add("[ArxanQuickFix] {:x} -> {:x}".format(ea, _filtered[0].ea))
                                                         nassemble(ea, "{} 0x{:x}".format(arxanJmpOrCall, _filtered[0].ea), apply=1)
                                                         EaseCode(_filtered[0].ea, forceStart=1)
+                                                        SkipJumps(ea, skipNops=1, apply=1)
+                                                        ea = ReverseHead(ea)
                                                         continue
 
 
@@ -3579,7 +3635,8 @@ def slowtrace2(ea=None,
                                                     #   if len(sizes) > 2 and sizes[-1] == 0:
                                                     #       arxanJmpOrCall = 'call'
                                                     nassemble(ea, "{} 0x{:x}".format(arxanJmpOrCall, cave_start), apply=1)
-                                                    SkipJumps(ea, apply=1)
+                                                    EaseCode(_filtered[0].ea, forceStart=1)
+                                                    SkipJumps(ea, skipNops=1, apply=1)
                                                     #  if arxanJmpOrCall == 'jmp':
                                                         #  SetFuncEnd(ea, ea + 5)
                                                     # cave_pos += len(nassemble(cave_pos, "ret", apply=1))
@@ -3596,6 +3653,7 @@ def slowtrace2(ea=None,
                                                     Commenter(cave_start).add("Arxan Code Cave for 0x{:x}".format(ea))
                                                     # SetFuncEnd(cave_start, 
 
+                                                    ea = ReverseHead(ea)
                                                     continue
 
 
@@ -3606,8 +3664,8 @@ def slowtrace2(ea=None,
                                                 #  patch_target = 0
     #  
                                                 #  for call_loc, retn_loc in _.zip(balanceCalls, returnAddresses):
-                                                    #  count += 1
-                                                    #  printi("[arxan] call_loc {} of {}.{}".format(count, len(balanceCalls), len(returnAddresses)))
+                                                    #  smth_count += 1
+                                                    #  printi("[arxan] call_loc {} of {}.{}".format(smth_count, len(balanceCalls), len(returnAddresses)))
     #  
                                                     #  if skip_next:
                                                         #  skip_next = 0
@@ -3616,12 +3674,13 @@ def slowtrace2(ea=None,
                                                     #  elif patch_target == 1:
                                                         #  patch_target = call_loc
     #  
-                                                    #  if idc.print_insn_mnem(SkipJumps(retn_loc)).startswith('ret'):
-                                                        #  printi("[arxan] skipping retn_loc {} {:x} (call_loc {:x})".format(count, retn_loc, call_loc))
+
+        #  if idc.print_insn_mnem(SkipJumps(retn_loc)).startswith('ret'):
+                                                        #  printi("[arxan] skipping retn_loc {} {:x} (call_loc {:x})".format(smth_count, retn_loc, call_loc))
                                                         #  skip_next = 1
                                                         #  continue
     #  
-                                                    #  printi("[arxan] adding retn_loc {} {:x} (call_loc {:x})".format(count, retn_loc, call_loc))
+                                                    #  printi("[arxan] adding retn_loc {} {:x} (call_loc {:x})".format(smth_count, retn_loc, call_loc))
                                                     #  asm += '; '.join(AdvanceToMnemEx(SkipJumps(retn_loc), 'retn', inclusive=0)[1])
                                                     #  asm = re.sub(r';\s*jmp [^;].*$', '; ', asm)
                                                     #  skip_next = 1
@@ -3718,18 +3777,18 @@ def slowtrace2(ea=None,
 
                                             
                                         #  if _.indexOf(returnAddresses, None) == -1:
-                                            #  count = -1
+                                            #  smth_count = -1
                                             #  balanceCalls.reverse()
                                             #  if cont_count == 1:
                                                 #  skip_next = 0
                                                 #  for call_loc, retn_loc in _.zip(balanceCalls, returnAddresses):
-                                                    #  count += 1
+                                                    #  smth_count += 1
                                                     #  if skip_next:
                                                         #  skip_next = 0
                                                         #  continue
     #  
                                                     #  if idc.print_insn_mnem(SkipJumps(retn_loc)).startswith('ret'):
-                                                        #  printi("[arxan] skipping retn_loc {} {:x} (call_loc {:x})".format(count, retn_loc, call_loc))
+                                                        #  printi("[arxan] skipping retn_loc {} {:x} (call_loc {:x})".format(smth_count, retn_loc, call_loc))
                                                         #  skip_next = 1
                                                         #  continue
     #  
@@ -3751,8 +3810,8 @@ def slowtrace2(ea=None,
                                                 #  patch_target = 0
     #  
                                                 #  for call_loc, retn_loc in _.zip(balanceCalls, returnAddresses):
-                                                    #  count += 1
-                                                    #  printi("[arxan] call_loc {} of {}.{}".format(count, len(balanceCalls), len(returnAddresses)))
+                                                    #  smth_count += 1
+                                                    #  printi("[arxan] call_loc {} of {}.{}".format(smth_count, len(balanceCalls), len(returnAddresses)))
     #  
                                                     #  if skip_next:
                                                         #  skip_next = 0
@@ -3762,11 +3821,11 @@ def slowtrace2(ea=None,
                                                         #  patch_target = call_loc
     #  
                                                     #  if idc.print_insn_mnem(SkipJumps(retn_loc)).startswith('ret'):
-                                                        #  printi("[arxan] skipping retn_loc {} {:x} (call_loc {:x})".format(count, retn_loc, call_loc))
+                                                        #  printi("[arxan] skipping retn_loc {} {:x} (call_loc {:x})".format(smth_count, retn_loc, call_loc))
                                                         #  skip_next = 1
                                                         #  continue
     #  
-                                                    #  printi("[arxan] adding retn_loc {} {:x} (call_loc {:x})".format(count, retn_loc, call_loc))
+                                                    #  printi("[arxan] adding retn_loc {} {:x} (call_loc {:x})".format(smth_count, retn_loc, call_loc))
                                                     #  asm += '; '.join(AdvanceToMnemEx(SkipJumps(retn_loc), 'retn', inclusive=0)[1])
                                                     #  asm = re.sub(r';\s*jmp [^;].*$', '; ', asm)
                                                     #  skip_next = 1
@@ -3916,6 +3975,8 @@ def slowtrace2(ea=None,
                     # sprint("0x%x: Adding add_comment: %s" % (ea, add_comment))
                     Commenter(target, repeatable=1).add(add_comment)
 
+            # added extra mnem = because retn keeps showing up as a jmp
+            mnem = idc.print_insn_mnem(ea)
             if isAnyJmp(mnem):
                 target = GetTarget(ea) # target = GetOperandValue(ea, 0)
                 if target == idc.BADADDR:
@@ -4204,6 +4265,7 @@ def slowtrace2(ea=None,
                     slvars.retSps.add(slvars.rsp)
                 if len(callStack) < 1:
                     line = output("\t; call stack is empty; END OF BRANCH")
+                    printi(line)
                     break
                 else:
                     slvars.rsp_diff = +8
@@ -4284,7 +4346,7 @@ def slowtrace2(ea=None,
         aborted = -1
         while len(slvars.branchStack):
             if len(slvars.branchNumber):
-                output("\n; First chance: resuming from branch stack (%s)\n" % (slvars.branchNumber[0]))
+                if debug: printi("\n; First chance: resuming from branch stack (%s)\n" % (slvars.branchNumber[0]))
                 slvars.branchNumber.pop(0)
             else:
                 printi("branchNumber was shorter than branchStack: {} < {}".format(len(slvars.branchNumber), len(slvars.branchStack)))
@@ -4292,7 +4354,7 @@ def slowtrace2(ea=None,
             # output("; checking branchStrack::len")
             branch = slvars.branchStack.pop(0)
             if branch.target in slvars.justVisited or branch.target in slvars.justVisited:
-                output("; aborting branch to already slvars.justVisited location")
+                if debug: printi("; aborting branch to already slvars.justVisited location")
                 aborted = 1
                 continue
             aborted = 2
@@ -4650,7 +4712,7 @@ def slowtrace2(ea=None,
                     later2.add(addr)
             #  later = later.union(later_pending)
             #  later2 = later2.union(later_pending)
-        if rv == 0 or forceRemoveChunks:
+        if midfunc is None and (rv == 0 or forceRemoveChunks):
             _chunks = [x for x in idautils.Chunks(slvars.startLoc)]
             chunks = GenericRanger([GenericRange(x[0], trend=x[1])           for x in _chunks],            sort = 1)
             keep   = GenericRanger([GenericRange(a, trend=a + IdaGetInsnLen(a)) for a in slvars.justVisited], sort = 1)

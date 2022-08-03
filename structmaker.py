@@ -554,6 +554,24 @@ def get_tinfo_by_parse(name):
     tinfo.deserialize(idaapi.cvar.idati, tp, fld, None)
     return tinfo
 
+def get_structnames_by_ordinal():
+    idati = ida_typeinf.get_idati()
+    ti = ida_typeinf.tinfo_t()
+
+    for ordinal in range(1, ida_typeinf.get_ordinal_qty(idati)+1):
+        if ti.get_numbered_type(idati, ordinal):
+            yield ti.dstr()
+
+def StructsMatching(regex=None, exclude=None, filter=lambda x: x, flags=0):
+    if regex and not isinstance(regex, re.Pattern):
+        regex = re.compile(regex, flags)
+    if exclude and not isinstance(exclude, re.Pattern):
+        exclude = re.compile(exclude, flags)
+    result = [a for a in get_structnames_by_ordinal() if filter(a) and (not regex or re.match(regex, a))]
+    if exclude:
+        result = [a for a in result if not re.search(regex, idc.get_name(a))]
+    return result
+
 def get_tinfo_brute(name):
     idati = ida_typeinf.get_idati()
     ti = ida_typeinf.tinfo_t()
@@ -2567,14 +2585,13 @@ def rage_map(name, T):
     return idc.parse_decls(s)
 
 def rage_vector(name, T):
-    s = """
-        struct {}
+    s = f"""
+        struct {name}
         {{
-            {}* elements;
+            {T}* elements;
             uint16_t size;
             uint16_t reserved;
-        }};
-    """.format(name, T)
+        }};""" # .format(name, T)
     return idc.parse_decls(s)
 
 

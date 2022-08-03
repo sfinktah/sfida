@@ -144,6 +144,7 @@ class AdvanceInsnList(object):
         """
         if isinstance(ea, GenericRange) or isinstance(ea, tuple) and len(ea) == 2:
             _s, _e = ea[0], ea[-1]
+            #  print("AdvanceInsnList: {:x} - {:x}".format(_s, _e))
             if _e < _s:
                 _e += _s
             insns=[FuncTailsInsn(x) for x in idautils.Heads(_s, _e)]
@@ -274,21 +275,23 @@ class AdvanceInsnList(object):
 
         return result
 
-    def join(self):
-        visited = set()
+    def join(self, visited=set()):
         x = self
         # yield "loc_{:X}:".format(x.ea)
+        #  print('yielding initial insns')
         yield from x.insns
 
         if isinstance(x.next, set):
             _queue = list(x.next)
             while _queue:
-                _next = _queue.pop(0)
-                if _next not in visited:
-                    yield from _next.insns
-                    visited.add(_next)
-                    if _next.next:
-                        _queue.append(_next)
+                item = _queue.pop(0)
+                if item not in visited:
+                    yield from item.insns
+                    visited.add(item)
+                    if item.next:
+                        #  print('join: appending {}'.format(item.next))
+                        for x in item.next:
+                            _queue.append(x)
 
         else:
             while x.next and x.next not in visited:
@@ -753,7 +756,7 @@ class FuncTailsInsn(object):
 
 
 def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
-               code=True, patches=None, dead=False, showEa=True, showUnused=False, showNops=False, output=None,
+               code=True, patches=None, dead=False, showEa=False, showUnused=False, showNops=False, output=None,
                quiet=False, removeLabels=True, disasm=False, externalTargets=None,
                returnAddrs=False, returnFormat=None, fmt=None, fmtLabel=None,
                showComments=True, extra_args=dict()):
@@ -1039,7 +1042,10 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
                 continue
             heads.append(head)
 
-            if isAnyJmp(head):
+            # dprint("[format_bb] head, idc.get_operand_type(head)")
+            # print("[format_bb] head:{}, idc.get_operand_type(head):{}".format(head, idc.get_operand_type(head, 0)))
+            
+            if isAnyJmp(head) and idc.get_operand_type(head, 0) in (idc.o_near, ):
                 target = GetTarget(head)
                 ctarget = OurGetChunkStart(target, _chunks)
                 jump_info = [head, idc.print_insn_mnem(head), GetTarget(head)]
@@ -1165,7 +1171,7 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
 
             if isCall(head):
                 _externalTargets.append(SkipJumps(head))
-            if isAnyJmpOrCall(head):
+            if isAnyJmpOrCall(head) and idc.get_operand_type(head, 0) in (o_near, ):
                 conditional = isConditionalJmp(head)
                 iscall = isCall(head)
                 target = GetTarget(head)

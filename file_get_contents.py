@@ -69,10 +69,10 @@ def file_get_filtered(fn, predicate=None):
     for line in filter(predicate, fr):
         yield line[0:-1]
 
-def file_enumerate_lines(fn, index=0):
+def file_enumerate_lines(fn, index=0, encoding='utf-8'):
     """ reads 1 line at a time from file """
     fn = smart_path(fn)
-    fr = open(os.path.normpath(fn), encoding='utf-8', newline=None)
+    fr = open(os.path.normpath(fn), encoding=encoding, newline=None)
     count = index
     for line in fr:
         yield count, line[0:-1]

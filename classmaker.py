@@ -147,17 +147,24 @@ def get_ordinal_by_name(name):
 
 def get_struc_idx_re(pattern, flags = 0):
     i = get_first_struc_idx(); 
-    while i != BADADDR:
+    while i != idc.BADADDR:
         name = idc.get_struc_name(idc.get_struc_by_idx(i))
-        if re.match(pattern, name, flags):
-            yield (i, name)
+        try:
+            if re.match(pattern, name, flags):
+                yield (i, name)
+        except TypeError as e:
+            print("**EXCEPTION** {}: {} ({}, {})".format(e.__class__.__name__, str(e), pattern, name))
         i = get_next_struc_idx(i)
 
 def get_struc_ordinal_re(pattern, flags = 0):
     for i in range(1, idc.get_ordinal_qty()):
         name = idc.get_numbered_type_name(i)
-        if re.match(pattern, name, flags):
-            yield (i, name)
+        if name:
+            try:
+                if re.match(pattern, name, flags):
+                    yield (i, name)
+            except TypeError as e:
+                print("**EXCEPTION** {}: {} ({}, {})".format(e.__class__.__name__, str(e), pattern, name))
 
 def get_all_struc_ordinals_and_tinfo():
     idati = ida_typeinf.get_idati()

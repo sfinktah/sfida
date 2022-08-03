@@ -1684,6 +1684,9 @@ class membrick_memo(object):
             return self.error_return()
         return idc.get_wide_dword(self.obj)
 
+    def get_dword(self):
+        return self.dword()
+
     def As(self, type):
         if self.in_error():
             return self.error_return()

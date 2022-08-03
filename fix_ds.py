@@ -33,13 +33,15 @@
 import idautils
 
 def fix_dataseg_offsets(base=None, ori_base=None, size=None, seg_name='.data', step=8):
+    _from('winpe import WinPE')
     pe = idautils.peutils_t()
     base = base or pe.imagebase
-    size = size or idc.get_wide_dword(base + 0x194)
+    pe = WinPE(64)
+    size = size or pe.nt['SizeOfCode'] # idc.get_wide_dword(base + 0x194)
     end = base + size
 
     if not ori_base:
-        ori_base = idc.get_qword(base + 0x1a8)
+        ori_base = pe.nt['ImageBase']
 
     #  ori_base = ori_base or idc.get_qword(base + 0x150) # smth like 0x7ff657b50000
     ori_end = ori_base + size
@@ -84,3 +86,5 @@ def fix_dataseg_offsets(base=None, ori_base=None, size=None, seg_name='.data', s
 # print("offsets: {}".format(fix_dataseg_offsets(base=0x140000000, ori_base=0x7FF760840000 , size=0x04BF2000, seg_name='seg000', step=1)))
 
 # hex([5386337203, 5382357257, 5375347798, 5375347338, 5392275149, 5387340589, 5387253557, 5392264341, 5392008049, 5369872401, 5375711599, 5384351238, 5389280991, 5370993570, 5388437913, 5392309929, 5387320469, 5389830667, 5386187055, 5370102881, 5389337983, 5389431269, 5379674749, 5370561959, 5370561181, 5382922461, 5386508585, 5386709636, 5389355797, 5386638746, 5386528183, 5392298521, 5392211397, 5386713635, 5386866189, 5388483273, 5392193055, 5392259673, 5392188203, 5387048605, 5386886799, 5376863291, 5386886663, 5386886527, 5386886255, 5386886119, 5386886935, 5386887071, 5386354151, 5386817801, 5392127251, 5391558155, 5382736087, 5389784969, 5382699413, 5382017329])
+#
+# auspost/mobile 0478 253 511

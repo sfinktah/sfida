@@ -544,7 +544,7 @@ def autobase(ea, base = 0):
     if originalImageBase == BADADDR:
         originalImageBase = imageBase
         # we have no originalImageBase, flip it around
-        baseDifference = imageBase - 0x140000000
+        baseDifference = imageBase - idc.MinEA()
     else:
         baseDifference = imageBase - originalImageBase
 
@@ -554,7 +554,7 @@ def autobase(ea, base = 0):
     # This probably won't work so well if you happen to have other segments loaded
     imageLen = idaapi.cvar.inf.maxEA - idaapi.cvar.inf.minEA
 
-    # for GTA5.exe+0x12345 offsets
+    # for xxxx.exe+0x12345 offsets
     if ea < imageLen:
         return ea + imageBase
     #  if ea >= idaapi.cvar.inf.minEA && ea < idaapi.cvar.inf.maxEA: 
@@ -975,7 +975,7 @@ def unpatch_func2(funcea=None, unpatch=True):
 patchedBytes = []
 def RecordPatchedByte(ea, fpos, org_val, patch_val):
     # print("%x, %x, %x, %x" % (ea, fpos, org_val, patch_val))
-    patchedBytes.append([ea - 0x140000000, patch_val])
+    patchedBytes.append([ea - idc.MinEA(), patch_val])
     #  idaapi.patch_byte(ea, org_value)
 
 def RecordPatches1(ranges):
@@ -1077,6 +1077,63 @@ def get_version_globals():
     #  show_string("g_savegame_version_number", mb(get_version_mb()).add(7).add(0x16f).rip(4))
     #  show_string("g_replay_version_number", mb(get_version_mb()).add(7).add(0x1a4).rip(4))
 
+def get_version_summary():
+    build_version = asString(get_build_version())
+    online_version = asString(get_online_version())
+    build_date = asString(get_build_date())
+    return build_version, online_version, build_date
+
+
+def get_version_resource():
+    import lief
+    b = lief.parse(os.path.join(GetIdbDir(), GetInputFile()))
+    r = b.resources
+    c = r
+    while getattr(c, 'numberof_id_entries', 0): c = c.childs[c.numberof_id_entries - 1]
+    ba = bytearray(c.content)
+    bs = ba.decode('utf-16le')
+    src = [(x.split('-')) for x in [x.replace('\x00', '-') for x in bs.split('\x01')]]
+    res = \
+    _.filterObject(
+    _.fromPairs(
+        _.pluck(_.filter(src, lambda v, *a: len(v) > 3 and v[0] and v[2] and not v[1] and not v[3]), [0, 2]) + \
+        _.pluck(_.filter(src, lambda v, *a: len(v) > 2 and v[0]          and     v[1]             ), [0, 1])
+    ), lambda v, k, *a: v and k and v[0].isascii() and k[0].isascii())
+    return bs
+    #{ CompanyName: str,
+    #  FileDescription: str,
+    #  FileVersion: str,
+    #  InternalName: str,
+    #  LegalCopyright: str,
+    #  OriginalFilename: str,
+    #  ProductName: str,
+    #  ProductVersion: str }
+    return string_between('\x01ProductVersion\x00', '\x00', bs)
+
+def comment_version(ea=None):
+    """
+    comment_version
+
+    @param ea: linear address
+    """
+    if isinstance(ea, list):
+        return [comment_version(x) for x in ea]
+
+    ea = GetFuncStart(eax(ea))
+    
+    build_version = asString(get_build_version())
+    online_version = asString(get_online_version())
+    build_date = asString(get_build_date());
+    build_platform = "retail (non-steam)" if not is_steam() else "steam"
+
+    c = Commenter(GetFuncStart(ea))
+    c.add("/=============[BUILD INFO]==============")
+    c.add("function offset: GTA5.exe+{:#x}".format(ea - idc.MinEA()))
+    #  if ProtectScan("44 8b f9 41 8a dc").add(-32): c.add('signature:       ("44 8b f9 41 8a dc").add(-32)')
+    c.add("build number:    {}".format(asStringRaw(build_version)))
+    c.add("online version:  {} {}".format(asStringRaw(online_version), build_platform))
+    c.add("build timestamp: {}".format(build_date))
+    c.add("=======================================/")
 
 def get_build_version():
     r = get_version_mb()
@@ -1095,11 +1152,26 @@ def get_online_version():
       or get_version_mb().add(7).add(0x105).rip(4).str()
 
 def is_steam():
-    execfile('winpe')
-    pe = WinPE(64)
-    pdb = os.path.basename(pe.dirs[5].data.entries[0].data.entries[0].data.PdbFileName)
-    print("pdb: {}".format(pdb))
-    return 'steam' in pdb
+    _from('winpe import WinPE')
+    try:
+        pe = WinPE(64)
+        pdb = os.path.basename(pe.dirs[5].data.entries[0].data.entries[0].data.PdbFileName)
+        print("pdb: {}".format(pdb))
+        return 'steam' in pdb
+    except:
+        return False
+    
+
+def get_build_date():
+    try:
+        from datetime import datetime
+        _from('winpe import WinPE')
+        pe = WinPE(64)
+        return datetime.utcfromtimestamp(pe.nt['TimeDateStamp']).strftime('%Y-%m-%d %H:%M:%S UTC')
+        # 2017-03-31 15:40:12 UTC
+    except:
+        return ""
+
 
 def constant_factory(value):
     return itertools.repeat(value).next
@@ -1742,6 +1814,16 @@ def pprev(ea=None, data=0, stop=None, depth=0, show=0):
 
     for path in deadpaths:
         # if not ida_funcs.is_same_func(path.ea, start_ea):
+        print("{}: {:3} {:32} {:x} {:20} {}".format(
+            path.terminated,
+            path.depth, 
+            GetFuncName(path.ea), 
+            path.ea, 
+            diida(path.ea), 
+            diida(GetTarget(path.ea)),
+            # diida(path.prev),
+            # get_name_or_hex(path.history[1]) if len(path.history) > 1 else ''
+        ))
         if path.terminated == 'branch':
             print("depth: {:3} {:32} {:x} {:20} {}".format(
                 path.depth, 
@@ -1774,6 +1856,7 @@ for i in range(10):
     HELPER_HOTKEYS.append(MyHotkey("Shift-{}".format(i), make_store_bookmark_fn(i)))
     HELPER_HOTKEYS.append(MyHotkey("{}".format(i), make_goto_bookmark_fn(i)))
 HELPER_HOTKEYS.append(MyHotkey("Alt-R", fake_cli_factory("retrace(adjustStack=1)")))
+HELPER_HOTKEYS.append(MyHotkey("Alt-C", fake_cli_factory("check_emu()")))
 HELPER_HOTKEYS.append(MyHotkey("Alt-Z", lambda: ZeroFunction(GetFuncStart(here()))))
 HELPER_HOTKEYS.append(MyHotkey("Ctrl-Alt-C", chunk_adder))
 HELPER_HOTKEYS.append(MyHotkey("Ctrl-Alt-D", sig_maker_data))

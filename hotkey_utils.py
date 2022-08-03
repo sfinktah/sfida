@@ -1516,7 +1516,10 @@ def hotkey_unpatch():
     if chunkEnd > chunkStart and chunkEnd < BADADDR and chunkEnd - chunkStart < 8192:
         UnPatch(chunkStart, chunkEnd)
         # ida_auto.plan_range(chunkStart, chunkEnd)
-        EaseCode(chunkStart, chunkEnd, forceStart=1)
+        try:
+            EaseCode(chunkStart, chunkEnd, forceStart=1)
+        except:
+            pass
         return
         ea = idc.get_item_head(chunkStart)
         n = True
@@ -1532,7 +1535,7 @@ def hotkey_unpatch():
 def hotkey_skipjumps():
     chunkStart, chunkEnd = get_selection_or_ea()
     for ea in idautils.Heads(chunkStart, chunkEnd):
-        SkipJumps(ea, apply=1)
+        SkipJumps(ea, skipNops=1, apply=1)
 
 def hotkey_unchunk():
     def hotkey_unchunk_expand_ea(ea, *args):

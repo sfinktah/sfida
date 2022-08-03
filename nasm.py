@@ -9,12 +9,13 @@ from exectools import _find as find
 # from sfcommon import forceAllAsCode
 # from slowtrace2 import RelocationAssemblerError
 # from sftools import MyMakeFunction
-# from start import debug, home
+# from start import nasm_debug, home
 
 
 from exectools import make_refresh
 refresh_nasm = make_refresh(os.path.abspath(__file__))
 refresh = make_refresh(os.path.abspath(__file__))
+nasm_debug = 0
 
 def extend(obj, *args):
     """
@@ -47,8 +48,16 @@ nasm_cache = dict()
 def nasm64(ea, string, quiet=False):
     global nasm_cache
     input = list()
-    if debug:
-        print("debug: {}".format(type(debug)))
+
+    if len(string.splitlines()) == 1 and string.startswith(('j', 'call', 'ret')):
+        string = re.sub(r'\b0x([0-9a-fA-F]+)\b', r'\1h', string)
+        string = string.replace('retn', 'ret')
+        qr = qassemble(ea, string)
+        if isinstance(qr, list):
+            if nasm_debug: print("shunted to qassemble: {}".format(string))
+            return True, {'output': qr, 'input': 'via qassemble'}
+        else:
+            print("Couldn't shunt {} to qassemble".format(string))
 
     # have to align nasm on on a 4byte paragraph or it does alignment thing
     if ea is None:
@@ -64,7 +73,10 @@ def nasm64(ea, string, quiet=False):
     string = string.replace('\r', '')
     string = re.sub(r'\n0x([0-9a-fA-F]+)(?=:)', r'\nloc_\1', "\n" + string)
 
-    ori_string = string[:]
+    ori_string = string
+    if ori_string in nasm_cache:
+        if nasm_debug: print("cached: {}".format(ori_string))
+        return nasm_cache[ori_string]
 
     options = dict()
     for line in string.split('\n'):
@@ -102,14 +114,14 @@ def nasm64(ea, string, quiet=False):
     string = string.replace('\r', '')
 
 
-    if string in nasm_cache:
-        return nasm_cache[string]
+    #  if string in nasm_cache:
+        #  return nasm_cache[string]
 
     retry = 2
     while retry:
         retry -= 1
 
-        if debug: print("NasmAssemble:\n{}".format(indent(4, string)))
+        if nasm_debug: print("NasmAssemble:\n{}".format(indent(4, string)))
         # r = NasmAssemble(adjusted_ea, string)
 
         fw = tempfile.NamedTemporaryFile(mode='w', suffix='.asm', delete=False)
@@ -151,7 +163,7 @@ def nasm64(ea, string, quiet=False):
                 ret = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True, startupinfo=startupinfo)
             # ret = ret.decode('ascii')
             # dprint("[nasm len(ret)] ret")
-            if debug: print("[nasm len(ret)] ret:{} type(ret):{}".format(ret, type(ret)))
+            if nasm_debug: print("[nasm len(ret)] ret:{} type(ret):{}".format(ret, type(ret)))
             if len(ret):
                 # we have output? we have error? actually I think this is never called
                 # Unexpect ret: E:\APPDAT~1\tmpp6mlb3dh.asm:11: warning: value does not fit in signed 32 bit field
@@ -183,26 +195,26 @@ def nasm64(ea, string, quiet=False):
                     # assembled = length - shift, bytearray(o)[shift:]
                     assembled = bytearray(o)[shift:]
                     # dprint("[nasm64 single r] assembled, ret")
-                    if debug: print("[nasm64 single r] assembled:{}, ret:{}".format(assembled, ret))
+                    if nasm_debug: print("[nasm64 single r] assembled:{}, ret:{}".format(assembled, ret))
 
-                    # dprint("[debug] retry")
+                    # dprint("[nasm_debug] retry")
                     
                     if ori_string not in nasm_cache:
                         if retry > 0 and ("0x" not in ori_string or "+0x" in ori_string or "-0x" in ori_string):
-                            if debug: print("[caching]\n{}".format(indent(8, ori_string)))
-                            nasm_cache[ori_string] = assembled
+                            if nasm_debug: print("[caching]\n{}".format(indent(8, ori_string)))
+                            nasm_cache[ori_string] = True, {'output': assembled, 'input': input}
                         else:
-                            if debug: print("[not caching]\n{}".format(indent(8, ori_string)))
+                            if nasm_debug: print("[not caching]\n{}".format(indent(8, ori_string)))
 
                     
-                    if debug: print("assembled at 0x{:x}:\n{}".format(ea, indent(8, ori_string)))
+                    if nasm_debug: print("assembled at 0x{:x}:\n{}".format(ea, indent(8, ori_string)))
                     return True, {'output': assembled, 'input': input}
                     #  r = True, assembled
                 else:
                     return False, {'output': '', 'input': ''}
 
         except subprocess.CalledProcessError as e:
-            if debug:
+            if nasm_debug:
                 print("CalledProcessError: %s" % e.__dict__)
             r = False, e.__dict__
             # return False, e.__dict__
@@ -213,7 +225,7 @@ def nasm64(ea, string, quiet=False):
             except FileNotFoundError:
                 pass
 
-        if debug:
+        if nasm_debug:
             print('r: {}'.format(pfh(r)))
 
         if r[0]:
@@ -259,7 +271,7 @@ def nasm64(ea, string, quiet=False):
                 error_display_str = "{:8} {:3} {} {:18} {}".format(level, line, message, '', r2['input'][int(line)-1].strip())
                 error_store_str = "{}: {} ({})".format(level, message, r2['input'][int(line)-1].strip())
                 errors.append(error_store_str)
-                if debug: print("[nasm error] " + error_display_str)
+                if nasm_debug: print("[nasm error] " + error_display_str)
                 #  print("fn, line, level, message", fn, line, level, message)
                     
             for sym in re.findall(r"undefined symbol `([^']+)", output):
@@ -270,7 +282,7 @@ def nasm64(ea, string, quiet=False):
                         raise Exception("Couldn't find address of %s" % sym)
                 repl = hex(repl).rstrip('L')
 
-                if debug: print("{:13}replacing {} with {}".format('', re.escape(sym), repl))
+                if nasm_debug: print("{:13}replacing {} with {}".format('', re.escape(sym), repl))
                 #  print("types", type(sym), type(repl), type(string))
                 # string = re.sub(r"(?<=[^\w]){}(?=[^\w])".format(re.escape(sym)), repl, string)
                 string = re.sub(r"\b{}\b".format(re.escape(sym)), repl, string)

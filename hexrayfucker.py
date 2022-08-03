@@ -4,7 +4,7 @@ import idaapi
 from exectools import make_refresh, make_auto_refresh, execfile
 refresh_hexrayfucker = make_refresh(os.path.abspath(__file__))
 refresh = make_refresh(os.path.abspath(__file__))
-check_for_update = make_auto_refresh(os.path.abspath(__file__))
+#  check_for_update = make_auto_refresh(os.path.abspath(__file__))
 
 _import("from columns import MakeColumns")
 _import("from underscoretest import _")
@@ -959,7 +959,7 @@ def find_in_path(name, paths=None):
         paths = [paths]
     for path in paths:
         if os.path.isfile(os.path.join(path, name)):
-            return os.path.join(root, name)
+            return os.path.join(path, name)
 
 #  # And this will find all matches:
 #  
@@ -1109,7 +1109,9 @@ def decompile_hashes(ea=None):
     ea = eax(ea)
     if not getglobal('mega', None):
         execfile('e:/git/gta5utilities/megahash.py')
-    return [mega.Lookup(int(x, 16)) for x in re.findall(r'\b0x[0-9A-F]{5,8}', str(decompile(ea)))]
+    return \
+            [mega.Lookup(int(x, 16)) for x in re.findall(r'\b0x[0-9A-F]{5,8}', str(decompile(ea)))] + \
+            [mega.Lookup(int(x, 10)) for x in re.findall(r' -?[1-9][0-9]{6,10}\b', str(decompile(ea)))]
 
 def decompile_hashes_regex(ea=None, regex=None):
     """
@@ -2139,7 +2141,7 @@ def FuncGuessType(funcea=None):
 
 
 def get_decl_args(decl):
-    check_for_update()
+    #  check_for_update()
 
     # strings tilib.exe | grep __
     # __array_ptr __bad_cc __builtin_va_list __cdecl __closure __clrcall

@@ -1,4 +1,4 @@
-import struct, os, re
+import struct, os, re, idc, ida_bytes
 #  import idc
 #  import idaapi
 from datetime import datetime
@@ -136,7 +136,7 @@ class data_directory(helper_mixin, section_header):
     ]
 
     def __init__(self, base, data, number):
-        print("[data_directory] base:{:x}, data:{}, number:{}, name:{}".format(base, data, number, self._names[min(number, len(self._names) - 1)]))
+        # print("[data_directory] base:{:x}, data:{}, number:{}, name:{}".format(base, data, number, self._names[min(number, len(self._names) - 1)]))
         super(data_directory, self).__init__(base, data)
         if number < len(self._names):
             self.data.Name = self._names[number]

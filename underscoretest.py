@@ -17,7 +17,7 @@ from collections import Sequence
 import six
 from six.moves import builtins
 
-def oget(obj, key, default=None, call=False):
+def _oget(obj, key, default=None, call=False):
     """Get attribute or dictionary value of object
     Parameters
     ----------
@@ -63,6 +63,12 @@ def oget(obj, key, default=None, call=False):
         r = r()
 
     return r
+
+def _pluck(obj, key):
+    if _.isInt(key):
+        return list(list(zip(*obj))[key])
+
+    return [_oget(x, key, call=1) for x in obj]
 
 def _shuffleSize(array, size=None):
     """
@@ -164,11 +170,47 @@ def _recursive_map(seq, func):
 def _recursive_obj_map(seq, func):
     for key, item in _.items(seq):
         if isinstance(item, Sequence):
-            yield key, type(item)(_recursive_map(item, func))
+            yield key, type(item)(_recursive_obj_map(item, func))
         elif isinstance(item, Collection):
-            yield key, type(item)(_recursive_map(item, func))
+            yield key, type(item)(_recursive_obj_map(item, func))
         else:
             yield func(item)
+
+def _map_recursive(item, func, path=None):
+    if path is None: path = []
+    if _isIterable(item):
+        for key in _.keys(item):
+            #  if isinstance(item[key], dict):
+                #  merge(item[key], func, path + [str(key)])
+            #  else:
+            k, v = func(item[key], key, item)
+            if v is not None and v != item[key]:
+                item[key] = v
+            if k is not None and k != key:
+                if k in item:
+                    raise Exception("key {} already in item".format(k))
+                item[k] = item[key]
+                del item[key]
+                key = k
+            _map_recursive(item[key], func, path + [str(key)])
+    return item
+
+def _extend_recursive(dst, item, func, path=None):
+    if path is None: path = []
+    if _isIterable(item):
+        for key in _.keys(item):
+            #  if isinstance(item[key], dict):
+                #  merge(item[key], func, path + [str(key)])
+            #  else:
+            k, v = func(item[key], key, item)
+            if v is None:
+                v = item[key]
+            if k is None:
+                k = key
+            dst[k] = v
+            _extend_recursive(dst[key], item[key], func, path + [str(key)])
+    return item
+
 
 def _recursive_obj_map_wrapper(seq, func):
     return type(seq)(next(_recursive_obj_map(seq, func)))
@@ -190,8 +232,14 @@ def _makeSequenceMapper(f):
 def _isIterable(o):
     return hasattr(o, '__iter__') and not hasattr(o, 'ljust')
 
+def _isIterableWithLength(o):
+    return hasattr(o, '__iter__') and hasattr(o, '__len__')
+
 def _isDictlike(o):
     return hasattr(o, 'items') and hasattr(o, 'values') and hasattr(o, 'keys') and hasattr(o, 'get')
+
+def _isListlike(o):
+    return _.all(_.getmanyattr(o, 'append', 'remove', '__len__', None), lambda x, *a: callable(x))
 
 def _values(o):
     """ Retrieve the values of an object's properties.
@@ -387,8 +435,8 @@ class underscore(object):
         else:
             return val
 
-    def _oget(self, obj, key, default=None, call=False):
-        return oget(obj, key, default=default, call=call)
+    def oget(self, obj, key, default=None, call=False):
+        return _oget(obj, key, default=default, call=call)
         """Get attribute or dictionary value of object
         Parameters
         ----------
@@ -475,6 +523,13 @@ class underscore(object):
                     break
         return self._wrap(self)
     forEach = each
+
+    def mapDeep(self, func):
+        return self._wrap(_map_recursive(self._clean.obj, func))
+
+    def extendDeep(self, src, func):
+        return self._wrap(_extend_recursive(self.obj, src, func))
+
 
     def mapObject(self, func):
         """ Return the results of applying the iterator to each element.
@@ -728,18 +783,28 @@ class underscore(object):
         # allow pluck to operate on numeric indexes to quickly
         # grab items from tuples and lists
         if _.isInt(key):
-            return list(list(zip(*self.obj))[key])
+            return self._wrap(list(list(zip(*self.obj))[key]))
 
+        if _isIterable(key):
+            return self._wrap(list(zip(*[_pluck(self.obj, x) for x in key])))
+
+        return self._wrap(_pluck(self.obj, key))
+
+    def pluckAsObject(self, key):
+        """
+        """
+
+        # allow pluck to operate on numeric indexes to quickly
+        # grab items from tuples and lists
         if _.isList(key) or _.isTuple(key) and len(key) == 2:
             r1 = []
             for x in self.obj:
                 r2 = []
                 for _key in key:
-                    r2.append(self._oget(x, _key, call=1))
+                    r2.append(_oget(x, _key, call=1))
                 r1.append(tuple(r2))
             return(r1) 
 
-        return self._wrap([self._oget(x, key, call=1) for x in self.obj])
 
     def re_findall(self, pattern, flags=0):
         """
@@ -1070,10 +1135,12 @@ class underscore(object):
         values in the array.
         The **guard** check allows it to work with `_.map`.
         """
-        res = self.obj[-n:]
+        keys = _.keys(self.obj)[-n:]
+        res = [self.obj[x] for x in keys]
         if len(res) == 1:
-            res = res[0]
+            res = res[-1]
         return self._wrap(res)
+
 
     def rest(self, n=1):
         """
@@ -1522,8 +1589,12 @@ class underscore(object):
         #  keys = self.obj.keys()
         #  if type(keys) == "<class 'dict_keys'>":
             #  keys = [x for x in keys]
-        if self._clean.isList() or self._clean.isTuple():
-            return self._wrap(_.map(_.range(len(self.obj))))
+        if _isDictlike(self.obj):
+            return self._wrap(list(self.obj.keys()))
+        if _isListlike(self.obj) or self._clean.isTuple():
+            return self._wrap(list(range(len(self.obj))))
+        if _isIterableWithLength(self.obj):
+            return self._wrap(list(range(len(self.obj))))
         
         try:
             return self._wrap(list(self.obj.keys()))
@@ -1721,6 +1792,19 @@ class underscore(object):
         """ Check if the given object is an int
         """
         return self._wrap(type(self.obj) is int)
+
+    def isIntString(self):
+        """ Check if the given object is an int
+        """
+        isint = False
+        if isinstance(self.obj, str):
+            for c in self.obj:
+                if c < '0' or c > '9':
+                    return False
+                else:
+                    isint = True
+
+        return self._wrap(isint)
 
     def isIntegral(self):
         """ Check if the given object is integral (from C++11)

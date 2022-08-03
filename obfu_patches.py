@@ -110,6 +110,9 @@ def simple_patch_factory(s):
         # dprint("[simple_patch_factory] result")
         printi("[simple_patch_factory] result:{}".format(result))
 
+        return list(result)
+        # is this causing the results to be totally nopped sometimes? probably
+        # not, but lets see if it makes a difference to do it the above way
         return (len(search), list(result))
 
     return patch
@@ -128,14 +131,23 @@ def mark_sp_factory(mark):
         #  printi('search: {}'.format(search))
 
         # sometimes we get passed a context of None
+        spd = idc.get_spd(ea)
         context = kwargs.get('context', None)
-        context = context or dict()
-        slvars = context.get('slvars', None)
-        if slvars is None:
-            printi("[mark_sp_factory] no context.slvars passed, using ida's spd")
-            spd = idc.get_spd(ea)
+        if not context:
+            #  printi("[mark_sp_factory] no context ({}), using ida's spd".format(type(context)))
+            #  spd = idc.get_spd(ea)
+            pass
         else:
-            spd = -slvars.rsp
+            slvars = context.get('slvars', None)
+            if slvars is None:
+                printi("[mark_sp_factory] no context.slvars passed, using ida's spd")
+                spd = idc.get_spd(ea)
+            else:
+                spd = -slvars.rsp
+        if spd is None:
+            printi("[simple_patch_factory] No spd at {:x}".format(ea))
+            return []
+
         #  try:
         if idc.get_operand_type(ea, 1) == o_displ:
             disp = MakeSigned(idc.get_operand_value(ea, 1), 64)
@@ -637,7 +649,7 @@ def patch_single_rsp_push_call_jump(search, replace, original, ea, addressList, 
     if (search[0] == 0x55 and isUnconditionalJmp(addressList[1+7]+4)):
         _asm = ["call {:#x}".format(GetTarget(addressList[1+7]+4)), "jmp {:#x}".format(addressList[1] + 7 + MakeSigned(idc.get_wide_dword(addressList[1]+3))), "int3"]
         try:
-            nassemble(_asm)
+            nassemble(_asm, quiet=1)
             return _asm
         except RelocationAssemblerError:
             print('nope')
@@ -1407,7 +1419,9 @@ def obfu_append_patches():
             brief    = "jmp locret",
             search   = PatternGroup(nassemble("retn"), nassemble("retn 0")),
             replFunc = lambda _search, replace, original, ea, addressList, patternComment, addressListWithNops, **kwargs: \
-                    [] if kwargs['addressListFull'][0] == ea else ["retn"]
+                    [] if kwargs['addressListFull'][0] == ea else ["retn"],
+            safe=1, reflow=1
+
     )
 
 
@@ -2269,6 +2283,47 @@ def obfu_append_patches():
             )
 
     if obfu_debug: printi("slow_load: 1")
+
+    
+
+    obfu.append("""
+        Text description, and copy of output from dissasembly with offsets usually goes here.
+
+        55                               push    rbp                                  
+        48 BD 2C C6 23 46 01 00 00 00    mov     rbp, 14623C62Ch                      
+        48 87 2C 24                      xchg    rbp, [rsp]                           
+        53                               push    rbx                                  
+        50                               push    rax                                  
+        48 8B 5C 24 10                   mov     rbx, [rsp+10h]                       
+        48 8B 05 7E FE FF FF             mov     rax, qword ptr cs:loc_147311A93      
+        48 0F 43 D8                      cmovnb  rbx, rax                             
+        48 89 5C 24 10                   mov     [rsp+10h], rbx                       
+        58                               pop     rax                                  
+        5B                               pop     rbx                                  
+        C3                               retn                                         
+        """,
+        "cmovz-partial-deobfu",
+        hex_pattern([
+            "55",
+            "48 BD ?? ?? ?? ?? ?? ?? ?? ??",
+            "48 ?? 2C 24",
+            "53",
+            "50",
+            "48 8B 5C 24 10",
+            "48 8B ?? ?? ?? ?? ??",
+            "48 0F 43 d8",
+            "48 89 ?? 24 10",
+            "??",
+            "??",
+            "C3",
+        ]),
+        [], # This can be a replacement hex pattern as above, of any length, if the replacement is simple, otherwise
+        generate_cmov_patch3(0x01, 0x16 + 1, "jb"),
+        reflow=1
+        )
+
+
+
     obfu.append("""
         Text description, and copy of output from dissasembly with offsets usually goes here.
 
@@ -2310,6 +2365,55 @@ def obfu_append_patches():
             "48 8b ?? 24",
             "48 8d 64 24 08",
             "48 8d 64 24 08",
+            #  "ff 64 24 f8",
+            #  "e9 ?? ?? ?? ??"
+        ]),
+        [], # This can be a replacement hex pattern as above, of any length, if the replacement is simple, otherwise
+        generate_cmov_abs_patch(0x02 + 9, 0x27 + 9, "jz"),
+        reflow=1
+        )
+
+    obfu.append("""
+        Text description, and copy of output from dissasembly with offsets usually goes here.
+
+                                                                         Undetected (leaves before stack is balanced)
+        0:  48 ?? ?? ?? ?? ?? ?? ?? ?? ??    movabs rbp, location_1      48 bd 8b bd 72 44 01 00 00 00      mov     rbp, offset location_1
+        a:  48 87 2c 24             xchg   [rsp],rbp                     48 87 2c 24                        xchg    rbp, [rsp]
+        e:  48 8d 64 24 f8          lea    rsp,[rsp-0x8]                 48 8d 64 24 f8                     lea     rsp, [rsp-8]
+        13: 48 89 ?? 24             mov    [rsp],ONE                     48 89 14 24                        mov     [rsp], ONE
+        17: 48 8d 64 24 f8          lea    rsp,[rsp-0x8]                 48 8d 64 24 f8                     lea     rsp, [rsp-8]
+        1c: 48 89 ?? 24             mov    [rsp],TWO                     48 89 1c 24                        mov     [rsp], TWO
+        20: 48 8b ?? 24 10          mov    ONE,[rsp+0x10]                48 8b 54 24 10                     mov     ONE, [rsp+10h]
+        25: 48 ?? ?? ?? ?? ?? ?? ?? ?? ??    movabs TWO, location_2      48 bb ac 82 a1 40 01 00 00 00      mov     TWO, offset location_2
+        2f: 48 0f 44 ??             cmovz  ONE,TWO                       48 0f 44 d3                        cmovz   ONE, TWO
+        33: 48 89 ?? 24 10          mov    [rsp+0x10],ONE                48 89 54 24 10                     mov     [rsp+10h], ONE
+        38: 48 8b ?? 24             mov    TWO,[rsp]                     48 8b 1c 24                        mov     TWO, [rsp]
+        3c: 48 8d 64 24 08          lea    rsp,[rsp+0x8]                 48 8d 64 24 08                     lea     rsp, [rsp+8]
+        41: 48 8b ?? 24             mov    ONE,[rsp]                     48 8b 14 24                        mov     ONE, [rsp]
+        45: 48 8d 64 24 08          lea    rsp,[rsp+0x8]                 48 8d 64 24 08                     lea     rsp, [rsp+8]
+        4a: 48 8d 64 24 08          lea    rsp,[rsp+0x8]                 48 8d 64 24 08                     lea     rsp, [rsp+8]
+        4f: ff 64 24 f8             jmp    [rsp-0x8]                     ff 64 24 f8                        jmp     qword ptr [rsp-8]
+        53:
+        """,
+        "cmovz abs jump",
+        hex_pattern([
+            "48 8d 64 24 f8",
+            "48 89 2c 24",
+            "48 ?? ?? ?? ?? ?? ?? ?? ?? ??",
+            "48 87 2c 24",
+            "48 8d 64 24 f8",
+            "48 89 ?? 24",
+            "48 8d 64 24 f8",
+            "48 89 ?? 24",
+            "48 8b ?? 24 10",
+            "48 ?? ?? ?? ?? ?? ?? ?? ?? ??",
+            "48 0f 44 ??",
+            "48 89 ?? 24 10",
+            "48 8b ?? 24",
+            "48 8d 64 24 08",
+            "48 8b ?? 24",
+            "48 8d 64 24 08",
+            "c3",
             #  "ff 64 24 f8",
             #  "e9 ?? ?? ?? ??"
         ]),
@@ -2448,7 +2552,7 @@ def obfu_append_patches():
         ]),
         [], # This can be a replacement hex pattern as above, of any length, if the replacement is simple, otherwise
         generate_compact_cmov_abs_patch(0x03, 0x18, 0x22),
-        safe=1, resume=1
+        safe=1, reflow=1
         )
 
     obfu.append("push qword rel; retn", "push qword rel tailcall",
@@ -2471,8 +2575,9 @@ def obfu_append_patches():
             hex_pattern([
                 "FF 20"
             ]),
-            safe=1,
-            resume=1,
+            #  safe=1,
+            #  resume=1,
+            safe=1, reflow=1
             )
 
     if False:
@@ -2614,19 +2719,34 @@ def obfu_append_patches():
     .text:1439983d3   68       39 0d fb 70 38 fe             	cmp [g_pickup_related], ecx
     ---
 
-    .text:143e84f4b   68   -8  55                            	push rbp
-    .text:143e84f55   70       48 bd 6e 10 4d 43 01 00 00 00 	mov rbp, loc_1434D106E
-    .text:140d25baa   70       48 87 2c 24                   	xchg [rsp], rbp
-    .text:1440f2631   70   -8  52                            	push rdx
-    .text:140a637bd   78   -8  53                            	push rbx
-    .text:143515b59   80       48 8b 54 24 10                	mov rdx, [rsp+0x10]
-    .text:143515b5e   80       48 bb 5d f6 ca 40 01 00 00 00 	mov rbx, loc_140CAF65D
-    .text:143515b68   80       48 0f 44 d3                   	cmovz rdx, rbx
-    .text:143515b6c   80       48 89 54 24 10                	mov [rsp+0x10], rdx
-    .text:144009cc4   80    8  5b                            	pop rbx
-    .text:144009ccd   78    8  48 8d 64 24 08                	lea rsp, [rsp+8]
-    .text:143eac9cc   70    8  5a                            	pop rdx
+    .text:143e84f4b   68   -8  55                            	push rbp                        55                               push    rbp                                  
+    .text:143e84f55   70       48 bd 6e 10 4d 43 01 00 00 00 	mov rbp, loc_1434D106E          48 BD 2C C6 23 46 01 00 00 00    mov     rbp, 14623C62Ch                      
+    .text:140d25baa   70       48 87 2c 24                   	xchg [rsp], rbp                 48 87 2C 24                      xchg    rbp, [rsp]                           
+    .text:1440f2631   70   -8  52                            	push rdx                        53                               push    rbx                                  
+    .text:140a637bd   78   -8  53                            	push rbx                        50                               push    rax                                  
+    .text:143515b59   80       48 8b 54 24 10                	mov rdx, [rsp+0x10]             48 8B 5C 24 10                   mov     rbx, [rsp+10h]                       
+    .text:143515b5e   80       48 bb 5d f6 ca 40 01 00 00 00 	mov rbx, loc_140CAF65D          48 8B 05 7E FE FF FF             mov     rax, qword ptr cs:loc_147311A93      
+    .text:143515b68   80       48 0f 44 d3                   	cmovz rdx, rbx                  48 0F 43 D8                      cmovnb  rbx, rax                             
+    .text:143515b6c   80       48 89 54 24 10                	mov [rsp+0x10], rdx             48 89 5C 24 10                   mov     [rsp+10h], rbx                       
+    .text:144009cc4   80    8  5b                            	pop rbx                         58                               pop     rax                                  
+    .text:144009ccd   78    8  48 8d 64 24 08                	lea rsp, [rsp+8]                5B                               pop     rbx                                  
+    .text:143eac9cc   70    8  5a                            	pop rdx                         C3                               retn                                         
     .text:143eac9d5   68       ff 64 24 f8                   	jmp qword [rsp-8]
+
+         147311BF6 27D8        39 CA                            cmp     edx, ecx
+         147311BF8 27D8        55                               push    rbp
+         147311BF9 27E0        48 BD 2C C6 23 46 01 00 00 00    mov     rbp, 14623C62Ch
+         147311C03 27E0        48 87 2C 24                      xchg    rbp, [rsp]
+         147311C07 27E0        53                               push    rbx
+         147311C08 27E8        50                               push    rax
+         147311C09 27F0        48 8B 5C 24 10                   mov     rbx, [rsp+10h]
+         147311C0E 27F0        48 8B 05 7E FE FF FF             mov     rax, qword ptr cs:loc_147311A93
+         147311C15 27F0        48 0F 43 D8                      cmovnb  rbx, rax
+         147311C19 27F0        48 89 5C 24 10                   mov     [rsp+10h], rbx
+         147311C1E 27F0        58                               pop     rax
+         147311C1F 27E8        5B                               pop     rbx
+         147311C20 27E0        C3                               retn
+
 
     ---
 
@@ -2904,7 +3024,8 @@ def obfu_append_patches():
         #  process_hex_pattern([
             #  "c3"
             #  ])
-        safe=1, reflow=1
+        #  safe=1, reflow=1
+            safe=1, reflow=1
         )
 
 
@@ -2929,6 +3050,7 @@ def obfu_append_patches():
             ]),
             [],
             patch_single_rsp_push_call_jump,
+            safe=1, reflow=1
             )
 
 #  .tramp1:000000013FFEF053 FF 25 00 00 00 00                             jmp     cs:qword_13FFEF059
@@ -3400,5 +3522,37 @@ TheJudge_0_0_0:
 41 5c                         	pop r12             
 5d                            	pop rbp             
 c3                            	retn                
+
+---
+.text:00000001463AF5F2 0C0 58                                            pop     rax             ; mov/lea->pop#2 order swap: rax [1463af5f2–1463af5fb]
+.text:00000001463AF5F2                                                                           ; mov {}, [rsp]; lea rsp, [rsp+8] => pop {} [1463af5f2–1463af5fa]
+.text:00000001463AF5F3 0C0 0F 1F 84 00 00 00 00 00                       nop     dword ptr [rax+rax+00000000h] ; mov {}, [rsp]; lea rsp, [rsp+8] => pop {}
+.text:00000001463AF5FB 0C0 90                                            nop                     ; mov/lea->pop#2 order swap: rax
+.text:00000001463AF5FC 0C0 48 8B 05 81 26 C2 FF                          mov     rax, cs:RemoveVectoredExceptionHandler
+.text:00000001463AF603 0C0 48 8B 55 28                                   mov     rdx, [rbp+28h]
+.text:00000001463AF607 0C0 52                                            push    rdx
+.text:00000001463AF608 0C0 59                                            pop     rcx
+.text:00000001463AF609 0C0 55                                            push    rbp
+.text:00000001463AF60A 0C0 48 8D 2D E0 41 CC 00                          lea     rbp, loc_1470737F1
+.text:00000001463AF611 0C0 48 87 2C 24                                   xchg    rbp, [rsp]
+.text:00000001463AF615 0C0 FF E0                                         jmp     rax
+
+---
+not a stack obfu, but a jmp obfu
+sub_142E13908:
+    ; ...
+    mov rax, [rel g_stack_cookie]
+    mov ecx, eax
+    xor rax, [rel qword_145AE0C10]
+    and ecx, 0x3f
+    ror rax, cl
+    lea rcx, [rel unk_145AE0BF8]
+    add rsp, 0x28
+    jmp qword [rel off_14329CF38]
+off_14329CF38:
+    dq offset loc_143270ED0
+loc_143270ED0:
+    jmp rax
+
 
 """

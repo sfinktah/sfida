@@ -112,7 +112,6 @@ except:
 # with open(scriptDir + os.sep + 'refresh.py', 'r') as f: exec(compile(f.read().replace('__BASE__', os.path.basename(__file__).replace('.py', '')).replace('__FILE__', __file__), __file__, 'exec'))
 refresh_start = make_refresh(os.path.abspath(__file__))
 refresh = make_refresh(os.path.abspath(__file__))
-# from GTA5 import load_address_array, get_stripped_lines, load_hex_tuple_dict, section_indices_323_372, section_indices_current, section_names, load_dehasher, joaat
 debug = 0
 
 filenames = [
@@ -162,6 +161,7 @@ filenames = [
             #  "tmp.py",
             #  "m.py",
             #  "emu.py"
+            "initFishyElements.py",
     ]
 
 def append_if_file_exists(l, fn):

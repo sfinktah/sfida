@@ -604,6 +604,221 @@ def generate_cmov_abs_patch(fn1Offset, fn2Offset, condition = "jnz"):
         return result
     return patch
 
+def generate_cmov_patch3(fn1Offset, fn2Offset, condition = "jnz"):
+    """
+    Conversion from cmov* to j*
+    0:  48 0f 4d c1             cmovge rax,rcx              48 0f 4d ?? becomes 0f 8d
+    4:  0f 8d 00 00 00 00       jge    a <_main+0xa>
+    a:  48 0f 44 c1             cmove  rax,rcx              48 0f 44 ?? becomes 0f 84
+    e:  0f 84 00 00 00 00       je     14 <_main+0x14>
+    14: 48 0f 45 ca             cmovne rcx,rdx              48 0f 45 ?? becomes 0f 85
+    18: 0f 85 00 00 00 00       jne    1e <_main+0x1e>
+
+        48 0f 42 d8             cmovb   rbx, rax
+        0F 82 00 00 00 00       jb      near ptr sub_140A2F5AC
+
+    """
+    def patch(search, replace, original, ea, addressList, patternComment, addressListWithNops, **kwargs):
+        addressList = addressList[:len(search)]
+        i = 0
+        length = len(search)
+        while i < length:
+            assembled = MakeCodeAndWait(addressList[i])
+            if not assembled:
+                assembled = forceAsCode(addressList[i], 15)
+            if not assembled:
+                raise ObfuFailure("0x%x: could not assemble line 0x%x" % (ea, addressList[i]))
+                return []
+            i += assembled
+        # result = [0xcc]*len(search) # preallocate result with 0xcccccc...
+        if GetMnem(addressList[fn1Offset]) != 'mov' or MakeCodeAndWait(addressList[fn1Offset]) != 10:
+            print("0x%x: incorrectly detected movabs: 0x%x: %s" % (ea, addressList[fn1Offset], idc.generate_disasm_line(ea, GENDSM_FORCE_CODE)))
+            return None
+
+        result = []
+
+        addr1 = get_operand_value(addressList[fn1Offset], 1)
+        insn2 = diida(addressList[fn2Offset])
+        tgt2 = string_between(', ', '', insn2)
+        Wait()
+
+        #  fn1 = Name(addr1)
+        #  fn2 = Name(addr2)
+#  
+        #  if len(fn1) == 0:
+            #  MakeCodeAndWait(addr1, 1)
+            #  fn1 = Name(addr1)
+        #  if len(fn2) == 0:
+            #  MakeCodeAndWait(addr2, 1)
+            #  fn2 = Name(addr2)
+#  
+        #  if len(fn1) == 0:
+            #  err = "0x%x: Couldn't parse fn1 at 0x%x processing pattern '%s'" % (ea, addressList[fn1Offset], patternComment)
+            #  MyMakeUnkn(idc.prev_head(idc.next_head(addressList[fn1Offset])), 1)
+            #  print("ObfuFailure: %s" % err)
+            #  raise ObfuFailure(err)
+            #  return []
+
+
+        toAssemble = "%s %xh" % (condition, addr1)
+        result.append(toAssemble)
+        #  asm = qassemble(addressList[len(result)], toAssemble)
+        #  if not asm:
+            #  raise ObfuFailure("0x%x: Expected 2-5 (4-7) byte list from assembling '%s', got: '%s'" % (addressList[0], toAssemble, str(buffer)))
+            #  return []
+#  
+        #  result += asm
+        #  #  ptr = ptr + len(buffer[1])
+
+        toAssemble = "jmp %s" % tgt2
+        result.append(toAssemble)
+
+        return result
+
+        #  asm = qassemble(addressList[len(result)], toAssemble)
+        #  if not asm:
+            #  raise ObfuFailure("0x%x: Expected 2-5 byte list from assembling '%s', got: '%s'" % (addressList[len(result)], toAssemble, str(buffer)))
+            #  return []
+#  
+        #  result += asm
+
+        # End of code from below
+
+        requiredLen = len(result)
+
+        useListEx = False
+        target = BADADDR
+        translatedAddressList = []
+        for i in range(len(search)):
+            translatedAddressList.append(addressList[i])
+
+        #  for i in range(len(search) - requiredLen):
+            #  if (addressList[i + requiredLen] - addressList[i] == requiredLen):
+                #  target = i
+                #  break
+
+        r = len(search) - requiredLen + 1
+        print("range: %i" % r)
+        for i in range(r):
+            if (addressList[i + requiredLen - 1] - addressList[i] == requiredLen - 1):
+                target = i
+                break
+
+        print("target: %i" % target)
+
+        if target == BADADDR:
+            print("0x%x: %i contiguous bytes not found at target with addressList" % (ea, requiredLen))
+            print("translatedAddressList", listAsHexWith0x(translatedAddressList))
+
+            translatedAddressList = []
+            for i in range(len(search)):
+                translatedAddressList.append(addressListWithNops[i])
+            for i in range(len(search) - 17):
+                if (addressListWithNops[i + 17] - addressListWithNops[i] == 17):
+                    target = i
+                    break
+
+            if target == BADADDR:
+                raise ObfuFailure("0x%x: %i contiguous bytes not found at target with addressListWithNops" % (ea, requiredLen))
+                return []
+
+            raise ObfuFailure("0x%x: %i contiguous WERE found using addressListWithNops, but we haven't coded that yet" % (ea, requiredLen))
+            useListEx = True
+            # Now how the fuck are we going to cope with using a list that
+            # includes nops, when the search patterns all rely on fixed
+            # positions **without** nops.
+            #
+            # Step #1: Move the assembly code above the addressList checking
+            #          code, as sometimes we don't even need 17 bytes (short jumps)
+
+        # Step #1: Move the assembly code above the addressList checking
+        #          code, as sometimes we don't even need 17 bytes (short jumps)
+        #
+        # result = [0x48, 0x8d, 0x64, 0x24, 0x08, 0x75, 0x05] # lea rsp,[rsp+0x08]
+
+        # If initial padding with nops is needed
+
+        result = []
+        if i:
+            if debug: print("Making %i nops" % i)
+            nopAddresses = [addressList[n] for n in range(i)]
+            nopRanges = GenericRanger(nopAddresses, sort=0, outsort=0)
+            for r in nopRanges:
+                if debug: print("%i nops" % r['length'])
+                result += MakeNops(r['length'])
+
+        # We don't need this anymore, as we're replacing the crap that caused loading up of RSP
+        # result = result + [0x48, 0x8d, 0x64, 0x24, 0x08] # lea rsp,[rsp+8]
+        addr1 = Qword(addressList[fn1Offset])
+        addr2 = Qword(addressList[fn2Offset])
+        #  print("fn1Offset: 0x%x" % addr1)
+        #  print("fn2Offset: 0x%x" % addr2)
+
+        fn1 = Name(addr1)
+        fn2 = Name(addr2)
+
+        if len(fn1) == 0:
+            MakeCodeAndWait(addr1, 1)
+            fn1 = Name(addr1)
+
+        if len(fn2) == 0:
+            MakeCodeAndWait(addr2, 1)
+            fn2 = Name(addr2)
+
+        if len(fn1) == 0:
+            err = "0x%x: Couldn't parse fn1 at 0x%x processing pattern '%s'" % (ea, addressList[fn1Offset], patternComment)
+            MyMakeUnkn(idc.prev_head(idc.next_head(addressList[fn1Offset])), 1)
+            print("ObfuFailure: %s" % err)
+            raise ObfuFailure(err)
+            return []
+
+        if len(fn2) == 0:
+            err = "0x%x: Couldn't parse fn2 0x%x: %s at 0x%x (%i, %i, %s) processing pattern '%s'" % (ea, (addressList[fn2Offset] - 2), 
+                    idc.generate_disasm_line((addressList[fn2Offset]) - 2, GENDSM_FORCE_CODE), addressList[fn2Offset], fn1Offset, fn2Offset, condition, patternComment)
+            MyMakeUnkn(idc.prev_head(idc.next_head(addressList[fn2Offset])), 1)
+            print("ObfuFailure: %s" % err)
+            raise ObfuFailure(err)
+            return []
+
+        #  ptr = len(result)
+
+        toAssemble = "%s %s" % (condition, fn2)
+        asm = qassemble(addressList[len(result)], toAssemble)
+        if not asm:
+            raise ObfuFailure("0x%x: Expected 2-6 (4-8) byte list from assembling '%s', got: '%s'" % (addressList[0], toAssemble, str(buffer)))
+            return []
+
+        result += asm
+        #  ptr = ptr + len(buffer[1])
+
+        toAssemble = "jmp %s" % fn1
+        asm = qassemble(addressList[len(result)], toAssemble)
+        if not asm:
+            raise ObfuFailure("0x%x: Expected 2-5 byte list from assembling '%s', got: '%s'" % (addressList[len(result)], toAssemble, str(buffer)))
+            return []
+
+        result += asm
+        #  while len(result) < len(search):
+            #  result.append(0xcc)
+            #  idaapi.del_item_color(addressList[len(result)-1])
+            #  Commenter(addressList[len(result) - 1], 'line').add("[PATCH-INT] cmovz/nz")
+
+        for i in range(len(search), len(search) - len(result) - 1):
+            Commenter(addressList[i], 'line').add("[PATCH-INT] %i cmov: %s" % (contigCount, patternComment))
+            idaapi.del_item_color(addressList[i])
+
+        #  result.extend(MakeTerms(len(search) - len(result)))
+
+        if Byte(addressList[len(search) - 1] + 1) == 0xe9:
+            if len(list(idautils.CodeRefsFrom(addressList[len(search) - 1] + 1, 1))) == 0:
+                #  PatchBytes(addressList[len(search) - 1] + 1, MakeNops(5), patternComment)
+                idaapi.del_item_color(addressList[len(search)-1] + 1)
+                Wait();
+                Commenter(addressList[len(search) - 1] + 1, 'line').add("[PATCH-INT] fake jump component of cmovz/nz")
+        return result
+    return patch
+
+
 def generate_mov_reg_reg_via_stack_patch():
     """
     Typical Input:
