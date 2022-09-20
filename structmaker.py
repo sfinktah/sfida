@@ -8,7 +8,7 @@ refresh = make_refresh(os.path.abspath(__file__))
 #   open function in decompiler, set type/name of variable representing struct
 #   to `__int64 self`. remember to map `v1` or similar as required.
 #
-#   execute `StructMaker(idc.ScreenEA(), "CStruct")` (replacing CStruct with w/e)
+#   execute `StructMaker(idc.get_screen_ea(), "CStruct")` (replacing CStruct with w/e)
 #
 #   change type/name of variable representing struct to `CStruct* self` and
 #   repeat previous procedure.

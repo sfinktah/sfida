@@ -8,7 +8,7 @@ import ida_search
 import idaapi
 import idautils
 import idc
-from idc import BADADDR, LocByName, MakeNameEx, Wait, SegName, Demangle, Qword, GetTrueName
+from idc import BADADDR
 from idc import SEARCH_NOSHOW, SEARCH_NEXT, SEARCH_DOWN, SEARCH_CASE, DEMNAM_FIRST
 #  from underscoretest import _
 from exectools import _import
@@ -1305,7 +1305,7 @@ def u_withrepr(reprfun):
 
 
 @u_withrepr(lambda x: "<MemBrick Object>")
-def mb(pattern, limit=1, index=0):
+def mb(pattern, limit=1, index=0, spare=0):
     """
     mb function, which creates an instance of the mem object,
     We will also assign all methods of the mem class as a method
@@ -1313,6 +1313,15 @@ def mb(pattern, limit=1, index=0):
     """
     if isinstance(pattern, (int, long_type)) or 'membrick' in str(type(pattern)):
         return membrick_memo(pattern).chain()
+    if isStringish(pattern) and isStringish(limit) and len(pattern) == len(limit):
+        # ("\x48\x8B\x47\x00\xF3\x44\x0F\x10\x9F\x00\x00\x00\x00", "xxx?xxxxx????")
+        def cvt(b, w):
+            return "{:02x}".format(ord(b)) if w != '?' else '??'
+        tmp = [cvt(x[0], x[1]) for x in zip(pattern, limit)]
+        # transpose index => limit, and spare => index
+        return mb(' '.join(tmp), index, spare)
+        
+    
     if isinstance(pattern, str):
         #  base = idaapi.cvar.inf.minEA
         #  ptr = idc.FindBinary(base, idc.SEARCH_DOWN | idc.SEARCH_CASE, pattern)

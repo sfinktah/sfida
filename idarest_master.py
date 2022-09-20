@@ -84,7 +84,7 @@ class idarest_master_plugin_t(IdaRestConfiguration, IdaRestLog, ida_idaapi.plugi
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             try:
                 # s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                s.bind((idarest_master_plugin_t.config['master_host'], port))
+                s.bind((idarest_master_plugin_t.config['master_bind_ip'], port))
             except socket.error as e:
                 return False
         return True
@@ -314,7 +314,8 @@ def idarest_master():
 
     class Master:
         def __init__(self):
-            self.worker = Worker('127.0.0.1', 28612)
+            # self.worker = Worker('127.0.0.1', 28612)
+            self.worker = Worker('0.0.0.0', 28612)
             self.worker.start()
             self.test_worker = Timer()
             self.test_worker.start()

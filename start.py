@@ -115,6 +115,7 @@ refresh = make_refresh(os.path.abspath(__file__))
 debug = 0
 
 filenames = [
+            "idc695.py",
             "attrdict1.py",
             "sfida/sf_is_flags.py",
             "circularlist.py",
@@ -221,6 +222,16 @@ def import_item(name):
 
 # ipyida
 # ipython_kernel_iteration -> do_one_iteration -> flush -> _handle_recv -> _run_callback -> dispatcher -> dispatch_shell -> execute_request -> do_execute -> run_cell -> run_cell -> _run_cell -> _pseudo_sync_runner -> run_cell_async -> run_ast_nodes -> run_code -> <module> -> retrace -> slowtrace2
+ScreenEA = idc.get_screen_ea
+LocByName = idc.get_name_ea_simple
+MakeNameEx = idc.set_name
+Wait = idc.auto_wait
+SegName = idc.get_segm_name
+Demangle = idc.demangle_name
+Qword = idc.get_qword
+GetTrueName = idc.get_name
+GetMnem = idc.print_insn_mnem
+Name = lambda x: idc.get_name(x, ida_name.GN_VISIBLE)
 def do_start():
     if str(type(execfile)) == "<class 'module'>":
         unload('execfile')
@@ -229,7 +240,7 @@ def do_start():
         home = scriptDir
         fnfull = os.path.abspath(os.path.join(home, fn))
         if os.path.exists(fnfull) and os.path.isfile(fnfull):
-            print("start-load: {}...".format(fnfull))
+            # print("start-load: {}...".format(fnfull))
             #  exec(open(fnfull).read())
 
             if str(type(execfile)) == "<class 'module'>":

@@ -14,6 +14,24 @@ except:
     class idc:
         def get_idb_path(): return '.'
 
+def GetMyLocalIp():
+    import socket
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("192.168.1.239", 80))
+    except socket.error as e:
+        raise
+    r = s.getsockname()[0]
+    s.close()
+    return r
+
+def GetMasterLocalIp():
+    myip = GetMyLocalIp()
+    if myip == '192.168.1.118' or myip == '192.168.1.123':
+        return '192.168.1.118'
+    return '127.0.0.1'
+
+
 class Namespace(object):
     pass
 
@@ -32,10 +50,12 @@ class IdaRestConfiguration:
     CFG_FILE = os.path.join(idaapi.get_user_idadir(), "idarest.cfg")
     PROJECT_CFG_FILE = os.path.join( os.path.dirname( idc.get_idb_path() ), "idarest.cfg" )
     config = {
+       'api_bind_ip':  GetMyLocalIp(),
        'api_host':     '127.0.0.1',
        'api_port':     2000,
 
-       'master_host':  '127.0.0.1',
+       'master_host':  GetMasterLocalIp(),
+       'master_bind_ip':  '0.0.0.0',
        'master_port':  28612,
 
        'api_prefix':   '/ida/api/v1.0',

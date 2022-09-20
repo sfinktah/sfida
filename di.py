@@ -284,7 +284,7 @@ def diInsns(code, ea = None, dt=distorm_64_bit_flag()):
 
 def diInsnsIter(code, ea = None, dt=distorm_64_bit_flag()):
     if ea is None:
-        ea = idc.ScreenEA()
+        ea = idc.get_screen_ea()
     if isinstance(code, list):
         code = bytearray(code)
     if isinstance(code, bytearray):

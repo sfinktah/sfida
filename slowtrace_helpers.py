@@ -4079,6 +4079,26 @@ digraph G {
 }
 """
 
+def is_prime(n):
+  if isinstance(n, list):
+      return [is_prime(x) for x in n]
+  if n == 2 or n == 3: return True
+  if n < 2 or n%2 == 0: return False
+  if n < 9: return True
+  if n%3 == 0: return False
+  r = int(n**0.5)
+  # since all primes > 3 are of the form 6n ± 1
+  # start with f=5 (which is prime)
+  # and test f, f+2 for being prime
+  # then loop by 6. 
+  f = 5
+  while f <= r:
+    print('\t',f)
+    if n % f == 0: return False
+    if n % (f+2) == 0: return False
+    f += 6
+  return True    
+
 def is_possible_cygwin_symlink(fn):
     if not os.path.isfile(fn):
         return False
@@ -8487,13 +8507,13 @@ def bytesAsInt(b):
 
 
 def MakeUniqueLabel(name, ea):
-    fnLoc = idc.LocByName(name)
+    fnLoc = idc.get_name_ea_simple(name)
     if fnLoc == BADADDR or fnLoc == ea:
         return name
     fmt = "%s_%%i" % name
     for i in range(10000):
         tmpName = fmt % i
-        fnLoc = idc.LocByName(tmpName)
+        fnLoc = idc.get_name_ea_simple(tmpName)
         if fnLoc == BADADDR or fnLoc == ea:
             return tmpName
     return ""

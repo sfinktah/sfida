@@ -102,7 +102,7 @@ class idarest_plugin_t(IdaRestConfiguration, IdaRestLog, ida_idaapi.plugin_t):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             try:
                 # s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                s.bind((idarest_plugin_t.config['api_host'], port))
+                s.bind((idarest_plugin_t.config['api_bind_ip'], port))
             except socket.error as e:
                 if e.errno != errno.EADDRINUSE:
                     if idarest_plugin_t.config['api_debug']: idc.msg(e)
@@ -134,7 +134,7 @@ class idarest_plugin_t(IdaRestConfiguration, IdaRestLog, ida_idaapi.plugin_t):
             if idarest_plugin_t.test_bind_port(port):
                 self.port = port
                 break
-        self.host = idarest_plugin_t.config['api_host']
+        self.host = idarest_plugin_t.config['api_bind_ip']
         # IDA 7 used totally new menu contexts, and I cba translating them.
         #  ret = self._add_menus()
         if idarest_plugin_t.config['api_info']: idc.msg("[idarest_plugin_t::init] done\n")
@@ -1321,7 +1321,7 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
 
 
 class Worker(threading.Thread):
-    def __init__(self, host=idarest_plugin_t.config['api_host'], port=idarest_plugin_t.config['api_port']):
+    def __init__(self, host=idarest_plugin_t.config['api_bind_ip'], port=idarest_plugin_t.config['api_port']):
         threading.Thread.__init__(self)
         self.httpd = ThreadedHTTPServer((host, port), IDARequestHandler)
         self.host = host

@@ -3231,7 +3231,7 @@ def slowtrace2(ea=None,
 
                 # Find obfu arxan
                 if GetOpType(ea, 0) in (idc.o_near, idc.o_far):
-                    while True:
+                    while IsValidEA(target):
                         if target == ida_search.find_binary(target, target + 32, "55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24 e9 ?? ?? ?? ??", 16, SEARCH_CASE | SEARCH_DOWN | SEARCH_NOSHOW):
                             _patch_result = obfu._patch(target)
                             if isinstance(_patch_result, list) and _patch_result:

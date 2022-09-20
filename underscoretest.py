@@ -719,6 +719,22 @@ class underscore(object):
         return self._wrap(self.altmp)
     every = all
 
+    def most(self, percent=0.9, func=lambda x, *a: not not x):
+        """ Determine whether all of the elements match a truth test.
+        """
+        self.altmp = True
+
+        yes = 0
+        no = 0
+        def testEach(value, index, *args):
+            if func(value, index, *args) is False:
+                no += 1
+            else:
+                yes += 1
+
+        self._clean.each(testEach)
+        return self._wrap( (yes * percent) >= (yes + no) )
+
     def same(self):
         """ 
         Determine if all of the elements hold the same value. Returns False

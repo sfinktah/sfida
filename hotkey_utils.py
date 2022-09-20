@@ -226,7 +226,7 @@ def get_selected_bytes():
     """
 
     selected = idaapi.read_selection()
-    curr_ea = idc.ScreenEA()
+    curr_ea = idc.get_screen_ea()
     print("[+] Processing range: %x - %x" % (selected[1], selected[2]))
 
     # refer to selection_is_valid comments regarding the need for this check
@@ -299,7 +299,7 @@ def make_offset():
 
        .rodata:08E30000                 dd offset _ZN29ClassAD1Ev ; ClassA::~ClassA()
     """
-    idc.OpOffset(idc.ScreenEA(), 0)
+    idc.OpOffset(idc.get_screen_ea(), 0)
 
 
 def div3(n):
@@ -878,7 +878,7 @@ def sig_protectscan(pattern, add=0, rip=-1, type_="void*", name=None, rtg=True, 
             add -= 1
         if 0:
             # seems slow
-            while find_pattern(pattern[3:]) == 1 and len(pattern):
+            while hotkey_find_pattern(pattern[3:]) == 1 and len(pattern):
                 pattern = pattern[3:]
                 add -= 1
 
@@ -1250,7 +1250,7 @@ def find_pattern_in_segment(pattern):
     count = 0
     ranges = get_segment_range()
     for r in ranges:
-        this_count = find_pattern(pattern, 2, r[0], r[1])
+        this_count = hotkey_find_pattern(pattern, 2, r[0], r[1])
         if this_count == -2:
             return this_count
         count += this_count
@@ -1260,7 +1260,7 @@ def find_pattern_in_segment(pattern):
     return count
 
 
-def find_pattern(pattern, limit=2, start=0, end=BADADDR):
+def hotkey_find_pattern(pattern, limit=2, start=0, end=BADADDR):
     global searches
     high = 0
     count = 0

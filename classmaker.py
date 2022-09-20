@@ -914,9 +914,9 @@ def ClassMaker(ea, memberType = None, className = None, famList = [], parentType
     ea should be the location of the vtable line:
         ; const rage::CSyncDataReader::`vftable'
 
-    ClassMaker(idc.ScreenEA())
+    ClassMaker(idc.get_screen_ea())
         or
-    ClassMaker(idc.ScreenEA(), "CPed *self")
+    ClassMaker(idc.get_screen_ea(), "CPed *self")
     """
 
     global __class_maker_member_names

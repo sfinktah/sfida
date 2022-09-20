@@ -134,6 +134,9 @@ class IdaRestClient(IdaRestConfiguration, object):
             except requests.exceptions.ConnectTimeout:
                 print("ConnectTimeout: {}".format(url + route))
                 continue
+            except requests.exceptions.ConnectionError:
+                print("ConnectError: {}".format(url + route))
+                continue
         # print("get_json: results: {}".format(results))
         return results
 
