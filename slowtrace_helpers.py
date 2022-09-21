@@ -7334,7 +7334,7 @@ def hex_byte_as_pattern_int(string):
 def MakeCodeAndWait(ea, force = False, comment = ""):
     """
     MakeCodeAndWait(ea)
-        Create an instruction at the specified address, and idc.Wait() afterwards.
+        Create an instruction at the specified address, and idc.auto_wait() afterwards.
         
         @param ea: linear address
         
@@ -7355,7 +7355,7 @@ def MakeCodeAndWait(ea, force = False, comment = ""):
         while not insLen and count < 16: #  and idc.next_head(ea) != NextNotTail(ea):
             count += 1
             MyMakeUnknown(ea, EndOfContig(ea) - ea, 0)
-            idc.Wait()
+            idc.auto_wait()
             insLen = MakeCodeAndWait(ea)
             #  printi("0x%x: MakeCodeAndWait: making %i unknown bytes (insLen now %i): %s" % (ea, count, insLen, GetDisasm(ea + count)))
         if count > 0:
@@ -7375,7 +7375,7 @@ def MakeCodeAndWait(ea, force = False, comment = ""):
     while IsData(ea):
         if debug: printi("0x%x: MakeCodeAndWait - FF_DATA - MyMakeUnknown" % ea)
         MyMakeUnknown(ItemHead(ea), NextNotTail(ea) - ItemHead(ea), 0)
-        idc.Wait()
+        idc.auto_wait()
 
     if isTail(idc.get_full_flags(ea)):
         if debug: printi("0x%x: Tail" % ea)
@@ -7393,13 +7393,13 @@ def MakeCodeAndWait(ea, force = False, comment = ""):
             while not insLen and count < 16: #  and idc.next_head(ea) != NextNotTail(ea):
                 count += 1
                 MyMakeUnknown(ItemHead(ea), count, 0)
-                idc.Wait()
+                idc.auto_wait()
                 insLen = MakeCodeAndWait(ea)
                 #  printi("0x%x: MakeCodeAndWait: making %i unknown bytes (insLen now %i): %s" % (ea, count, insLen, GetDisasm(ea + count)))
             if count > 0:
                 if debug: printi("0x%x: MakeCodeAndWait: made %i unknown bytes (insLen now %i): %s" % (ea, count, insLen, GetDisasm(ea + count)))
     #  printi("0x%x: MakeCodeAndWait returning %i" % (ea, count))
-    idc.Wait()
+    idc.auto_wait()
     return insLen
 
 
@@ -7592,7 +7592,7 @@ def forceAllAsCode(ea, length, hard = 0, comment = ""):
     if MyMakeUnknown(head, length + (ea - head), DOUNK_EXPAND | DOUNK_NOTRUNC) == False:
         printi("0x%x: Couldn't make unknown at 0x%x" % (ea, head))
         return 0
-    idc.Wait()
+    idc.auto_wait()
     pos = ea
     end = ea + length
     while pos < end:
@@ -7623,7 +7623,7 @@ def forceAsCode(ea, length = 1, hard = 0, comment = ""):
         if MyMakeUnknown(head, length + (ea - head), DOUNK_EXPAND | DOUNK_NOTRUNC) == False:
             printi("0x%x: forceAsCode: Couldn't make unknown at 0x%x" % (ea, head))
             return None
-        idc.Wait()
+        idc.auto_wait()
     codeLen = MakeCodeAndWait(ea, comment=comment, force=1)
 
     if codeLen:
@@ -7701,7 +7701,7 @@ def LabelAddressPlus(ea, name, force=False, append_once=False, unnamed=False, no
         else:
             if force:
                 MakeNameEx(fnLoc, "", idc.SN_NOWARN | flags)
-                idc.Wait()
+                idc.auto_wait()
                 return ThrowOnFailure(MakeNameEx(ea, name, idc.SN_NOWARN | flags))
             else:
                 name = MakeUniqueLabel(name, ea)
@@ -7714,7 +7714,7 @@ def LabelAddressPlus(ea, name, force=False, append_once=False, unnamed=False, no
 def LabelAddress(ea, name):
     if ea < BADADDR:
         #  MakeFunction(ea)
-        #  idc.Wait()
+        #  idc.auto_wait()
         fnFlags = idc.get_full_flags(ea)
         if ida_bytes.has_dummy_name(fnFlags) or not ida_bytes.has_any_name(fnFlags) or Name(ea).find('_BACK_') > -1:
             name = MakeUniqueLabel(name, ea)
