@@ -223,7 +223,7 @@ def GetInsn(*args):
     else:
         return ida_ua.decode_insn(*args)
 
-# DOUNK_NOTRUNC
+# DELIT_NOTRUNC
 def IdaGetInsnLen(*args):
     lengths = []
     if len(args) == 1:

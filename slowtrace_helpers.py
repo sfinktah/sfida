@@ -44,8 +44,8 @@ if not idc:
     from helpers import hasAnyName, hex
     from idc import BADADDR, FUNCATTR_FLAGS, CIC_FUNC, DELIT_DELNAMES, SetType, SN_NOWARN, SN_AUTO, FUNCATTR_OWNER, FUNCATTR_START, FUNCATTR_END, GetDisasm, FF_REF, FF_FLOW, DEMNAM_FIRST, get_name_ea_simple
     from idc import BADADDR, fl_JF, fl_JN, fl_CF, fl_CN, auto_wait, GetDisasm, is_data, is_head, isRef, hasName, hasUserName, is_qword, is_defarg0, is_off0, is_code, FUNCATTR_OWNER
-    from idc_bc695 import GetFunctionName, GetIdbPath, LocByName, MakeNameEx, DOUNK_DELNAMES, DOUNK_EXPAND, DOUNK_NOTRUNC, Name, PatchByte, DelFunction, GetSpDiff, SetSpDiff, Dword, Qword, ItemHead, SegName, GetSpd, Demangle, GetMnem
-    from idc_bc695 import GetOperandValue, SegName, LocByName, GetIdbPath, GetInputFile, ScreenEA, DOUNK_EXPAND, DOUNK_NOTRUNC, Wait, NextNotTail, AppendFchunk, GetFunctionName
+    from idc_bc695 import GetFunctionName, GetIdbPath, LocByName, MakeNameEx, DELIT_DELNAMES, DELIT_EXPAND, DELIT_NOTRUNC, Name, PatchByte, DelFunction, GetSpDiff, SetSpDiff, Dword, Qword, ItemHead, SegName, GetSpd, Demangle, GetMnem
+    from idc_bc695 import GetOperandValue, SegName, LocByName, GetIdbPath, GetInputFile, ScreenEA, DELIT_EXPAND, DELIT_NOTRUNC, Wait, NextNotTail, AppendFchunk, GetFunctionName
     import sfida.is_flags
     from membrick import MakeSigned
     from obfu_helpers import PatchBytes
@@ -1138,7 +1138,7 @@ def RemoveLocName(name):
 
 
 def RemoveRelocFunction(ea):
-    MyMakeUnkn(ea, DOUNK_DELNAMES | DOUNK_EXPAND | DOUNK_NOTRUNC)
+    MyMakeUnkn(ea, DELIT_DELNAMES | DELIT_EXPAND | DELIT_NOTRUNC)
     RemoveLocName(Name(ea))
     for ea in obfu.combEx(ea, oneChunk=1, includeNops=1, includeJumps=1)[0]:
         PatchByte(ea, 0)
@@ -1612,7 +1612,7 @@ def SmartAddChunkImpl(us, start, end, debug=False):
     funcStartRanges = GenericRanger(funcStart)
 
     for r in funcStartRanges:
-        MyMakeUnknown(r.start, r.length, DOUNK_NOTRUNC)
+        MyMakeUnknown(r.start, r.length, DELIT_NOTRUNC)
         ida_auto.auto_wait()
     noCode.extend(funcStart)
 
@@ -1890,7 +1890,7 @@ def SetSpDiffEx(ea, value=None):
 
 def ZeroCode(ea, length):
     return
-    MyMakeUnknown(ea, length, DOUNK_EXPAND | DOUNK_NOTRUNC)
+    MyMakeUnknown(ea, length, DELIT_EXPAND | DELIT_NOTRUNC)
     #  for addr in range(ea, ea + length):
     #  SetSpDiff(ea, 0)
 
@@ -1905,7 +1905,7 @@ def IsOffset64(ea=None, apply=False, loose=False):
     )
 
     if apply and _is_offset:
-        idc.del_items(ea, DOUNK_NOTRUNC, ptrsize())
+        idc.del_items(ea, DELIT_NOTRUNC, ptrsize())
         idc.create_qword(ea)
         idc.op_plain_offset(ea, 0, 0)
     return _is_offset
@@ -2798,9 +2798,9 @@ def RemoveNativeRegistration():
         start = r.start
         end = r.trend
         _len = end - start
-        MakeUnknown(start, _len, DOUNK_EXPAND | DOUNK_NOTRUNC)
+        MakeUnknown(start, _len, DELIT_EXPAND | DELIT_NOTRUNC)
         #  ida_bytes.put_bytes(start, b'\xcc' * _len)
-        MakeUnknown(r.start, r.trend - r.start, DOUNK_EXPAND | DOUNK_NOTRUNC)
+        MakeUnknown(r.start, r.trend - r.start, DELIT_EXPAND | DELIT_NOTRUNC)
         idc.del_func(get_start(r))
         ida_bytes.put_bytes(get_start(r), b'\xcc' * (get_last(r) - get_start(r)))
         for ea in range(start, start + _len):
@@ -5194,7 +5194,7 @@ def EndOfFlow(ea, soft=False):
 
 def MakeCodeEx(x, y):
     # del_items(ea, flags=0, nbytes=1, may_destroy=None) -> bool
-    MyMakeUnknown(x, DOUNK_EXPAND | DOUNK_NOTRUNC, y - x)
+    MyMakeUnknown(x, DELIT_EXPAND | DELIT_NOTRUNC, y - x)
     ida_auto.plan_range(x, y)
     ida_auto.auto_make_code(x)
     ida_auto.auto_wait()
@@ -5206,7 +5206,7 @@ def MakeCodeEx(x, y):
 def remake_func(ea):
     chunks = GetChunkAddresses(ea)
     for x, y in chunks:
-        MyMakeUnknown(x, y - x, DOUNK_EXPAND | DOUNK_NOTRUNC)
+        MyMakeUnknown(x, y - x, DELIT_EXPAND | DELIT_NOTRUNC)
     for x, y in chunks:
         ida_auto.revert_ida_decisions(x, y)
     for x, y in chunks:
@@ -5379,7 +5379,7 @@ def SetFuncEnd(funcea, end):
             for head in heads: 
                 idc.del_func(head)
             ce = GetChunkEnd(ptr)
-            idc.del_items(ce, DOUNK_NOTRUNC, end-ce)
+            idc.del_items(ce, DELIT_NOTRUNC, end-ce)
             printi("idc.append_func_tail(0x{:x}, 0x{:x}, 0x{:x})".format(ptr, ce, end))
             if not idc.append_func_tail(ptr, ce, end):
                 printi("[warn] idc.append_func_tail({:#x}, {:#x}, {:#x}) failed".format(ptr, ce, end))
@@ -6741,9 +6741,9 @@ def fix_location_plus_2(ea, code=False):
 
         dtype, dtyp_size = get_dtype(ea, opNum)
         _make_x = get_create_data_func(dtyp_size)
-        MyMakeUnknown(idc.get_item_head(correctTarget), 1, DOUNK_NOTRUNC)
-        MyMakeUnknown(correctTarget, dtyp_size, ida_bytes.DOUNK_EXPAND | ida_bytes.DOUNK_NOTRUNC)
-        MyMakeUnkn(correctTarget, DOUNK_NOTRUNC)
+        MyMakeUnknown(idc.get_item_head(correctTarget), 1, DELIT_NOTRUNC)
+        MyMakeUnknown(correctTarget, dtyp_size, ida_bytes.DELIT_EXPAND | ida_bytes.DELIT_NOTRUNC)
+        MyMakeUnkn(correctTarget, DELIT_NOTRUNC)
         if code:
             idc.create_insn(correctTarget)
         idc.auto_wait()
@@ -6955,7 +6955,7 @@ def make_ip(ea=None):
     @param ea: linear address
     """
     ea = eax(ea)
-    MakeUnknown(ea, 6, idc.DOUNK_EXPAND | ida_bytes.DELIT_NOTRUNC | ida_bytes.DELIT_NOTRUNC)
+    MakeUnknown(ea, 6, idc.DELIT_EXPAND | ida_bytes.DELIT_NOTRUNC | ida_bytes.DELIT_NOTRUNC)
     idc.create_data(ea, FF_DWORD, 4, ida_idaapi.BADADDR)
     idc.create_data(ea+4, FF_WORD, 2, ida_idaapi.BADADDR)
     if not HasUserName(ea):
@@ -7589,7 +7589,7 @@ def forceAllAsCode(ea, length, hard = 0, comment = ""):
     head = ItemHead(ea)
     if head == BADADDR:
         head = ea
-    if MyMakeUnknown(head, length + (ea - head), DOUNK_EXPAND | DOUNK_NOTRUNC) == False:
+    if MyMakeUnknown(head, length + (ea - head), DELIT_EXPAND | DELIT_NOTRUNC) == False:
         printi("0x%x: Couldn't make unknown at 0x%x" % (ea, head))
         return 0
     idc.auto_wait()
@@ -7620,7 +7620,7 @@ def forceAsCode(ea, length = 1, hard = 0, comment = ""):
     if head == BADADDR:
         head = ea
     if not isUnknown(idc.get_full_flags(head)):
-        if MyMakeUnknown(head, length + (ea - head), DOUNK_EXPAND | DOUNK_NOTRUNC) == False:
+        if MyMakeUnknown(head, length + (ea - head), DELIT_EXPAND | DELIT_NOTRUNC) == False:
             printi("0x%x: forceAsCode: Couldn't make unknown at 0x%x" % (ea, head))
             return None
         idc.auto_wait()

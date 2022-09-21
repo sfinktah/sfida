@@ -794,11 +794,11 @@ class Obfu(object):
         for i in range(replaceLen):
             replace_locs.append(addressList[i])
             if idc.is_code(idc.get_full_flags(ItemHead(addressList[i]))):
-                if obfu_debug: printi("[debug] MyMakeUnknown({:x}, {}, DOUNK_EXPAND | DOUNK_NOTRUNC".format(addressList[i],
+                if obfu_debug: printi("[debug] MyMakeUnknown({:x}, {}, DELIT_EXPAND | DELIT_NOTRUNC".format(addressList[i],
                                                                                                       InsnLen(
                                                                                                           addressList[
                                                                                                               i])))
-                MyMakeUnknown(addressList[i], InsnLen(addressList[i]), DOUNK_EXPAND | DOUNK_NOTRUNC)
+                MyMakeUnknown(addressList[i], InsnLen(addressList[i]), DELIT_EXPAND | DELIT_NOTRUNC)
             # SetSpDiff(addressList[i], 0)
             idaapi.patch_byte(addressList[i], repl[i])
         gr = GenericRanger(replace_locs, sort=0)
@@ -974,7 +974,7 @@ class Obfu(object):
 
                 #  if not insLen:
                 #  if recursion < 5:
-                #  MyMakeUnknown(ea, 1, DOUNK_EXPAND | DOUNK_NOTRUNC)
+                #  MyMakeUnknown(ea, 1, DELIT_EXPAND | DELIT_NOTRUNC)
                 #  Wait()
                 #  return self.comb(ea, length, recursion + 1)
                 #  printi("0x%x: Couldn't qassemble instruction at 0x%x" % (ea, ip))

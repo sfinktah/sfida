@@ -850,7 +850,7 @@ def unpatch_func(ea):
         for x, y in chunks:
             ida_auto.revert_ida_decisions(x, y)
         for x, y in chunks:
-            MyMakeUnknown(x, y - x, DOUNK_EXPAND | DOUNK_NOTRUNC)
+            MyMakeUnknown(x, y - x, DELIT_EXPAND | DELIT_NOTRUNC)
         for x, y in chunks:
             z = x
             end = y

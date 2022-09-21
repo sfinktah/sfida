@@ -222,7 +222,7 @@ def find_checksummers():
                 mem(ea).add(82).rip(4).label('ArxanGetNextRange').type("void __fastcall f(uint8_t **guide, arxan_range *range);")
             mem(ea).add(o_abs).rip(4).label('pArxanChecksum_AbsAddressSelf')
             #  mem(ea).add(o_base).rip(4).label('__ImageBase')
-            # MakeUnknown(ea, 82 + 4 + 5, DOUNK_DELNAMES)
+            # MakeUnknown(ea, 82 + 4 + 5, DELIT_DELNAMES)
             return abso
         else:
             print("rel: {:x}, abso: {:x}".format(rel, abso))
@@ -390,7 +390,7 @@ def find_checksummers5():
                 mem(ea).add(82).rip(4).label('ArxanGetNextRange').type("void __fastcall f(uint8_t **guide, arxan_range *range);")
             mem(ea).add(o_abs).rip(4).label('pArxanChecksum_AbsAddressSelf')
             mem(ea).add(o_base).rip(4).label('__ImageBase')
-            # MakeUnknown(ea, 82 + 4 + 5, DOUNK_DELNAMES)
+            # MakeUnknown(ea, 82 + 4 + 5, DELIT_DELNAMES)
             return abso
         else:
             print("rel: {:x}, abso: {:x}".format(rel, abso))
@@ -617,7 +617,7 @@ def fix_old_balances():
     for pattern in patterns:
         for ea in [e for e in FindInSegments(pattern, '.text')]:
             print("test: {:x}".format(ea))
-            MyMakeUnknown(ea, 99 // 3, DOUNK_EXPAND)
+            MyMakeUnknown(ea, 99 // 3, DELIT_EXPAND)
             m = membrick_memo(ea, pattern=pattern)
             # asm = nassemble(ea, "call 0x{:x}; jmp 0x{:x}".format(m.add(72//3).rip(4).ea, m.add(36//3).rip(4).ea))
             asm = nassemble(ea, "call 0x{:x}; jmp 0x{:x}".format(m.autorip(1).ea, m.autorip(0).ea))

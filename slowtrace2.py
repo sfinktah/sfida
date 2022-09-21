@@ -1644,7 +1644,7 @@ def slowtrace2(ea=None,
                     # The means that the next instruction is data, not good.
                     if debug: sprint("nextHead is data")
                     forceCode(nextHead)
-                    #  MyMakeUnknown(nextAny, NextNotTail(nextAny) - nextAny, DOUNK_EXPAND | DOUNK_NOTRUNC)
+                    #  MyMakeUnknown(nextAny, NextNotTail(nextAny) - nextAny, DELIT_EXPAND | DELIT_NOTRUNC)
                     #  ida_auto.auto_wait()
                     #  MakeCodeAndWait(nextAny)
                     if loop == 1:
@@ -1926,6 +1926,7 @@ def slowtrace2(ea=None,
             [x for x in list(idautils.CodeRefsTo(fnLoc, 0)) if idc.get_segm_name(x) == '.text'])
         callRefs = list([x for x in list(CallRefsTo(fnLoc)) if idc.get_segm_name(x) == '.text' and IsFunc_(x) and not idc.get_func_name(x).startswith("do_") and IdaGetInsnLen(x) > 2])
         jmpRefs = list([x for x in list(JmpRefsTo(fnLoc)) if idc.get_segm_name(x) == '.text' and IsFunc_(x) and GetFuncSize(x) > 5 and not isConditionalJmp(x)])
+        jmpRefs.sort()
         currentStackDiff = GetSpd(ea)
         targetStackDiff = GetSpd(fnLoc)
         if delsp:
@@ -2034,7 +2035,7 @@ def slowtrace2(ea=None,
                         if refHex and ourHex and refHex != ourHex or refNamespace != ourNamespace:
                             isRealFunc = setIsRealFunc("jmpRef: different hexes: {} {}".format(ourHexStr, refHexStr))
                 if not ourHexStr or not refHexStr:
-                    _jrefs = _.uniq(GetFuncName(jmpRefs))
+                    _jrefs = _.uniq(GetFuncName(jmpRefs, 1))
                     if len(_jrefs) > 1:
                         _jrefs = _.filter(_jrefs, lambda v, *a: bad_as_none(GetMinSpd(eax(v))))
                         if len(_jrefs) > 1:
@@ -2159,7 +2160,7 @@ def slowtrace2(ea=None,
         if funcSize > 9999:
             if debug: sprint("made funcSize = 1 since funcSize was {}".format(funcSize))
             funcSize = 1
-        MyMakeUnknown(ItemHead(ea), funcSize, DOUNK_EXPAND | DOUNK_NOTRUNC)
+        MyMakeUnknown(ItemHead(ea), funcSize, DELIT_EXPAND | DELIT_NOTRUNC)
         ida_auto.auto_wait()
         if debug: sprint('MAkeFunction012')
         MyMakeFunction(ea, noMakeFunction)
@@ -4224,8 +4225,8 @@ def slowtrace2(ea=None,
                             fakedAddresses = slowtrace2(fnLoc, silent=1, ignoreStack=1, fakesp=1)
                             r = GenericRanger(fakedAddresses, sort=True)
                             for i in r:
-                                MyMakeUnknown(i.start, i.length_sub_1, DOUNK_NOTRUNC)
-                            #  MyMakeUnkn(fnLoc, DOUNK_EXPAND | DOUNK_NOTRUNC)
+                                MyMakeUnknown(i.start, i.length_sub_1, DELIT_NOTRUNC)
+                            #  MyMakeUnkn(fnLoc, DELIT_EXPAND | DELIT_NOTRUNC)
                             ida_auto.auto_wait()
                             if debug: sprint('MakeFunction3209')
                             MyMakeFunction(fnLoc, noMakeFunction)
@@ -4648,7 +4649,7 @@ def slowtrace2(ea=None,
                 nextRelocation = origin + lengthPlus
                 for i in range(lengthPlus):
                     ida_bytes.revert_byte(origin + i)
-                MyMakeUnknown(origin, lengthPlus, DELIT_DELNAMES | DOUNK_NOTRUNC)
+                MyMakeUnknown(origin, lengthPlus, DELIT_DELNAMES | DELIT_NOTRUNC)
                 #  PatchBytes(origin, [0x00] * (lengthPlus) )
                 #  analyze(origin, origin + lengthPlus)
                 globals()['o'] = o

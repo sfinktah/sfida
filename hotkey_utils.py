@@ -1461,7 +1461,7 @@ def create_insns(ea1, ea2):
         if not n:
             n = GetInsnLen(ea)
             if n:
-                MyMakeUnknown(ea, n, DOUNK_NOTRUNC)
+                MyMakeUnknown(ea, n, DELIT_NOTRUNC)
                 n = idc.create_insn(ea)
         ea += n
 
@@ -1528,7 +1528,7 @@ def hotkey_unpatch():
             if not n:
                 n = GetInsnLen(ea)
                 if n:
-                    MyMakeUnknown(ea, n, DOUNK_NOTRUNC)
+                    MyMakeUnknown(ea, n, DELIT_NOTRUNC)
                     n = idc.create_insn(ea)
             ea += n
 

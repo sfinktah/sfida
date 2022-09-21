@@ -771,9 +771,9 @@ class underscore(object):
         target = _asList(target)
 
         if self._clean.isDict():
-            return self._wrap(_.any(target, lambda x, *a: x in self.obj.values()))
+            return self._wrap(_.any(target, lambda x, *a: x in self._clean.obj.values()))
         else:
-            return self._wrap(_.any(target, lambda x, *a: x in self.obj))
+            return self._wrap(_.any(target, lambda x, *a: x in self._clean.obj))
     contains = include
 
     def invoke(self, method, *args):

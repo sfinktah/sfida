@@ -58,7 +58,7 @@ def generate_patch1(jmpTargetOffset): # , oldRip = 0, newRip = 0, jmpType = 0xE9
                 fnTarget = ip
 
         if fnTarget == BADADDR:
-            MyMakeUnknown(idc.prev_head(ip), idc.next_head(ip) - idc.prev_head(ip), DOUNK_EXPAND | DOUNK_NOTRUNC)
+            MyMakeUnknown(idc.prev_head(ip), idc.next_head(ip) - idc.prev_head(ip), DELIT_EXPAND | DELIT_NOTRUNC)
             Wait()
             # MakeCodeAndWait(ip, force = 1)
             # We don't actually want a function, but we need a label fast.

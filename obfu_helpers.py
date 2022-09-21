@@ -203,7 +203,7 @@ def hideRepeatedBytes(ea):
     if count > 1:
         count += 1 # Not sure why this is always short 1
         print("0x%09x - 0x%09x (%id): 0x%x" % (start, end, count, Byte(start)))
-        MyMakeUnknown(start, count, DOUNK_DELNAMES)
+        MyMakeUnknown(start, count, DELIT_DELNAMES)
         MakeArray(start, count)
         HideArea(start, end, ('0x%x bytes nulled after de-obfu' % count), 'obfu-start-nulled', 'obfu-end-nulled', 0)
         SetHiddenArea(start, 0)
@@ -732,8 +732,8 @@ def FixTargetLabels(ea):
                     #  MakeCodeAndWait(ea)
                     #  disasm = GetDisasm(ea)
                     print("0x%x: Fixed bad label: %s" % (ea, disasm))
-                    # MyMakeUnknown(ItemHead(listedTarget), 1, DOUNK_EXPAND | DOUNK_NOTRUNC)
-                    # MyMakeUnknown(listedTarget, 1 + target - listedTarget, DOUNK_EXPAND | DOUNK_NOTRUNC)
+                    # MyMakeUnknown(ItemHead(listedTarget), 1, DELIT_EXPAND | DELIT_NOTRUNC)
+                    # MyMakeUnknown(listedTarget, 1 + target - listedTarget, DELIT_EXPAND | DELIT_NOTRUNC)
                     # MakeCodeAndWait(target)
             if not idc.is_code(idc.get_full_flags(target)):
                 if not MakeCodeAndWait(target, force = 1):
@@ -954,7 +954,7 @@ def nassemble(ea, string = None, apply=None, quiet=False):
                 nextInsn = next
             #  print("nextInsn: {:x}".format(nextInsn))
             #  with InfAttr(idc.INF_AF, lambda v: v & 0xdfe60008):
-                #  MyMakeUnknown(ea, length, DOUNK_EXPAND | ida_bytes.DELIT_NOTRUNC)
+                #  MyMakeUnknown(ea, length, DELIT_EXPAND | ida_bytes.DELIT_NOTRUNC)
             # PatchBytes(ea, r + bytes(MakeNops(nextInsn - next)))
             _was_code = IsCode_(ea)
             if _was_code:
@@ -1070,7 +1070,7 @@ def assemble_contig(startIndex, length, toAssemble, addressList, clear = False):
                 #  fnTarget = ip
 #  
         #  if fnTarget == BADADDR:
-            #  MyMakeUnknown(idc.prev_head(ip), idc.next_head(ip) - idc.prev_head(ip), DOUNK_EXPAND | DOUNK_NOTRUNC)
+            #  MyMakeUnknown(idc.prev_head(ip), idc.next_head(ip) - idc.prev_head(ip), DELIT_EXPAND | DELIT_NOTRUNC)
             #  Wait()
             #  # MakeCodeAndWait(ip, force = 1)
             #  # We don't actually want a function, but we need a label fast.

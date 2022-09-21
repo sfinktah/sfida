@@ -126,7 +126,7 @@ def makeBucketList(nextStruct):
             if name == '' or idaapi.has_dummy_name(idc.get_full_flags(ea)):
                 name = "____0x%s" % (hash)
                 if not idc.set_name(ea, name, 0):
-                    idc.MakeUnknown(ea, 5, DOUNK_DELNAMES)
+                    idc.MakeUnknown(ea, 5, DELIT_DELNAMES)
                     forceAsCode(ea, 5)
                     idc.set_name(ea, name, 0)
             print("makeBucketList: 0x%0x '%s' (%s)" % (ea, name, hash))
