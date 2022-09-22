@@ -1314,7 +1314,10 @@ idc.python_on=python_on
 idc.set_start_cs=set_start_cs
 idc.set_start_ip=set_start_ip
 idc.toEA=toEA
-
+PrevHead = idc.prev_head
+idc.PrevHead = PrevHead
+NextHead = idc.next_head
+idc.NextHead = NextHead
 
 import _ida_ua
 def decode_insn(*args):
