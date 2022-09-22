@@ -625,10 +625,12 @@ def retrace(address=None, color="#280c01", retails=False, redux=False, unpatchFi
         address = SkipJumps(eax(address))
         start_address = address
         #  depth = kwargs.get('depth', 0)
-        if not 'last_retrace' in globals() or isinstance(globals()['last_retrace'], int):
-            globals()['last_retrace'] = [hex(address)]
-        else:
-            globals()['last_retrace'].insert(0, indent(_depth, ' ', hex(address)))
+        #
+        #  what has this done for us lately
+        #  if not 'last_retrace' in globals() or isinstance(globals()['last_retrace'], int):
+            #  globals()['last_retrace'] = [hex(address)]
+        #  else:
+            #  globals()['last_retrace'].insert(0, indent(_depth, ' ', hex(address)))
         if not IsFuncHead(address) and not ForceFunction(address) and not IsFuncHead(address):
             printi("[retrace] [warn] couldn't force function at {:x}".format(address))
             
