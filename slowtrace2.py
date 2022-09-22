@@ -106,7 +106,7 @@ def indent(n, s, skipEmpty=True, splitWith='\n', joinWith='\n', n2plus=None, ski
     if isString(s):
         s = s.replace('\r', '').split(splitWith)
 
-    if width:
+    if width and width - n > 0:
         assert isinstance(width, int)
         r = []
         if skipFirst:
