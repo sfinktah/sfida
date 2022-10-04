@@ -604,7 +604,7 @@ def retrace_unpatch(address, **kwargs):
     # refresh_slowtrace2(); 
     retrace_list(address, applySkipJumps=0, forceRemoveChunks=0, once=1, pre=[GetFuncName, unpatch_func2, unpatch_func, ZeroFunction, unpatch_func2, unpatch_func, ZeroFunction, unpatch_func2, unpatch_func, ZeroFunction], **kwargs)
 
-def retrace(address=None, color="#280c01", retails=False, redux=False, unpatchFirst=False, unpatch=False, once=False, recreate=False, chunk=False, **kwargs):
+def retrace(address=None, color="#280c01", no_hash=False, no_func_tails=False,  retails=False, redux=False, unpatchFirst=False, unpatch=False, once=False, recreate=False, chunk=False, **kwargs):
     if isinstance(address, list):
         return [retrace(x, **kwargs) for x in address]
 
@@ -719,7 +719,8 @@ def retrace(address=None, color="#280c01", retails=False, redux=False, unpatchFi
                 traceOutput = []
                 patches = 0
                 # slvars.rsp_diff was none
-                _old_hash = GetFuncHash(ea)
+                if not no_hash:
+                    _old_hash = GetFuncHash(ea)
                 patchResults = []
                 spdList = []
                 setglobal('spdList', spdList)
@@ -729,7 +730,7 @@ def retrace(address=None, color="#280c01", retails=False, redux=False, unpatchFi
                 except AdvanceReverse as e:
                     rv = slowtrace2(e.args[0], color=color, returnPatches=patchResults, returnOutput=traceOutput, spdList=spdList, **kwargs)
                 _new_hash = GetFuncHash(ea)
-                if _old_hash == _new_hash:
+                if not no_hash and _old_hash == _new_hash:
                     printi("hash stayed at {:x}".format(_new_hash))
                 if once:
                     if rv != 0 and unpatch:
@@ -747,18 +748,19 @@ def retrace(address=None, color="#280c01", retails=False, redux=False, unpatchFi
                         patches += 1
                 printi("slowtrace returned {}".format(rv))
                 ft_patches = 0
-                ft = func_tails(funcea, returnErrorObjects=1, quiet=1, externalTargets=externalTargets, extra_args=extra_args)
-                printi("func_tails returned {}".format(len(ft)))
-                if ft:
-                    # ft = func_tails(ft)
-                    printi("fix_func_tails({}, {})".format(pph(_.pluck(ft, '__str__')), extra_args))
-                    fft_ret = fix_func_tails(ft, extra_args)
-                    if isinstance(fft_ret, int):
-                        ft_patches += fft_ret
-                    printi("fix_func_tails returned: {}".format(fft_ret))
-                    if fft_ret == "int":
-                        return rv
-                if _old_hash == _new_hash and rv != 0:
+                if not no_func_tails:
+                    ft = func_tails(funcea, returnErrorObjects=1, quiet=1, externalTargets=externalTargets, extra_args=extra_args)
+                    printi("func_tails returned {}".format(len(ft)))
+                    if ft:
+                        # ft = func_tails(ft)
+                        printi("fix_func_tails({}, {})".format(pph(_.pluck(ft, '__str__')), extra_args))
+                        fft_ret = fix_func_tails(ft, extra_args)
+                        if isinstance(fft_ret, int):
+                            ft_patches += fft_ret
+                        printi("fix_func_tails returned: {}".format(fft_ret))
+                        if fft_ret == "int":
+                            return rv
+                if (no_hash or _old_hash == _new_hash) and rv != 0:
                     if rv != 0 and unpatch:
                         UnpatchFunc(ea)
                     printi("Finishing as hash stayed at {:x}".format(_new_hash))

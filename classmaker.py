@@ -357,7 +357,6 @@ def rename_generic_methods(ea=None):
     """
     ea = eax(ea)
     _type = "__int64 __fastcall function();"
-    isOff
     _is_offset = GetDisasm(ea).startswith('offset', 3)    
     if _is_offset:
         deref = getptr(ea) # idc.get_qword(ea)
@@ -1123,6 +1122,7 @@ def ClassMakerFamily(family = None, ea = None, redo = False, redoParents = False
         # ; class CAutomobileSyncTree: CAutomobileSyncTreeBase, CVehicleSyncTree, CPhysicalSyncTreeBase, CDynamicEntitySyncTreeBase, CEntitySyncTreeBase, CProximityMigrateableSyncTreeBase, CProjectSyncTree, rage::netSyncTree;   (#classinformer)
         #  try:
         family = LineA(ea - ptrsize(), 1) or idc.get_extra_cmt(ea, E_PREV + (0))
+        print("family1: {}".format(family))
         if isinstance(family, str):
             family = family[2:]
             prev_vtbl = string_between(' ', ': ', family, rightmost=1)
@@ -1145,8 +1145,10 @@ def ClassMakerFamily(family = None, ea = None, redo = False, redoParents = False
             
             ClassMakerFamily(family=family, ea=ea, redo=redo, redoParents=redoParents, vtableOnly=vtableOnly)
             # else:
+        else:
+            print("family is not str, is {}".format(type(family)))
 
-        family = Demangle(Name(ea), DEMNAM_FIRST).replace("::`vftable'", '')
+        family = idc.demangle_name(idc.get_name(ea), DEMNAM_FIRST).replace("::`vftable'", '')
         # CScriptEntityExtension::`vftable'{for `CGameScriptHandlerObject'}
         # CScriptEntityExtension{for `CGameScriptHandlerObject'}
         if '{for ' in family:
@@ -1171,7 +1173,7 @@ def ClassMakerFamily(family = None, ea = None, redo = False, redoParents = False
         #  if "rage::netSyncDataNode" in __classes_completed:
             #  __classes_completed.remove("rage::netSyncDataNode")
         # family = "CAmphibiousAutomobile: CAutomobile, CVehicle, CPhysical, CDynamicEntity, CEntity"
-        #  print("family: {}".format(family))
+        print("family: {}".format(family))
         family = re.sub(r'(^((const|struct|class|union) )+)', '', family)
         #  print("family: {}".format(family))
         family = re.sub(r'(\s+\(#classinformer\))', '', family)

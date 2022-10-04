@@ -13,6 +13,11 @@ try:
     from exectools import _import, _from, execfile
 except ModuleNotFoundError:
     from exectools import _import, _from, execfile
+
+try:
+    from anytree import Node, RenderTree
+except ModuleNotFoundError:
+    print("pip install anytree (if you want to draw any graphs)")
 #  _import('from circularlist import CircularList')
 #  _import('from ranger import *')
 # causes loop in 2.7
@@ -1173,7 +1178,16 @@ def IsSameChunk(ea1, ea2):
     return True
 
 def IsSameFunc(ea1, ea2):
-    return ida_funcs.is_same_func(ea1, ea2) or GetFuncName(ea1) and GetFuncName(ea1) == GetFuncName(ea2)
+    ea1 = eax(ea1)
+    ea2 = eax(ea2)
+    try:
+        result = ida_funcs.is_same_func(ea1, ea2) or GetFuncName(ea1) and GetFuncName(ea1) == GetFuncName(ea2)
+    except TypeError as e:
+        printi("{}: {}: ({}, {})".format(e.__class__.__name__, str(e), ahex(ea1), ahex(ea2)))
+        result = None
+    return result
+
+
     ea1 = clone_items(ida_funcs.get_func(ea1))
     ea2 = clone_items(ida_funcs.get_func(ea2))
     if ea1 is None or ea2 is None:
@@ -2960,7 +2974,7 @@ chart2 = list()
 colors = list()
 
 
-def RecurseCallers(ea=None, width=512, data=0, makeChart=0, exe='dot', depth=5, includeSubs=0, fixVtables=False, new=False, strata=False):
+def RecurseCallers(ea=None, width=512, data=0, makeChart=0, exe='dot', depth=5, subsOnly=0, includeSubs=0, fixVtables=False, new=False, strata=False):
     global chart2
     global colors
 
@@ -3094,7 +3108,8 @@ def RecurseCallers(ea=None, width=512, data=0, makeChart=0, exe='dot', depth=5, 
         printi(("0x%x: processed: %d pending: %d (depth: %d, width: %d)" % (ea, len(depthlist[_depth]), len(pending[_depth]), _depth, width)))
         _depth += 1
 
-    for (left, right) in _.uniq(chart):
+    chart.sort()
+    for (left, right) in _.uniq(chart, 1):
         if debug: printi(("left: {}, right: {}".format(left, right)))
         chart2.append([left, right])
         continue
@@ -3132,15 +3147,21 @@ def RecurseCallers(ea=None, width=512, data=0, makeChart=0, exe='dot', depth=5, 
 
 
     if len(chart2):
-        chart2 = _.uniq(chart2)
+        #  chart2 = _(chart2).chain().sort().uniq(1).value()
         chart2 = list([x for x in chart2 if x[0] != x[1]])
+        if subsOnly:
+            chart2 = list([x for x in chart2 if IsFunc_(x[0]) and IsFunc_(x[1]) and not IsSameFunc(x[0], x[1])])
         #  pp(chart2)
 
     subs = []
     call_list = []
+
+    nodes = dict()
+
     for x in chart2:
-        f = x[0]
-        ea = eax(f)
+        left = x[0]
+        right = x[1]
+        ea = eax(left)
         if not IsFunc_(ea):
             if idc.get_segm_name(ea) == '.rdata':
                 if IsOff0(ea):
@@ -3152,13 +3173,26 @@ def RecurseCallers(ea=None, width=512, data=0, makeChart=0, exe='dot', depth=5, 
 
         subs.append(x[0])
         subs.append(x[1])
+        """
+        left: sub_1418319BC, right: sub_141830FC0
+        left: sub_141831B2C, right: sub_141830FC0
+        left: sub_141831CF0, right: sub_141830FC0
+        """
+        if right not in nodes:
+            nodes[right] = Node(right)
+        if left not in nodes:
+            nodes[left] = Node(left, parent=nodes[right])
+        elif not nodes[left].parent:
+            nodes[left].parent = nodes[right]
+
         if len(x) > 2:
             call_list.append('"{}" -> "{}" {};'.format(x[0], x[1], " ".join(x[2:])))
         else:
             call_list.append('"{}" -> "{}";'.format(x[0], x[1]))
-    call_list = _.uniq(call_list)
+    call_list = _(call_list).chain().sort().uniq(1).value()
     colors = colorSubs(subs, colors, [fnName])
     if makeChart:
+        return nodes
         dot = __DOT.replace('%%MEAT%%', '\n'.join(colors + call_list))
         chartName = idc.get_name(ea, ida_name.GN_VISIBLE) or 'default'
         r = dot_draw(dot, name=chartName, exe=exe)
@@ -3177,7 +3211,7 @@ def RecurseCallers(ea=None, width=512, data=0, makeChart=0, exe='dot', depth=5, 
     named = [x for x in l if HasUserName(eax(x))]
     named.sort()
     if named:
-        named = _.uniq(named)
+        named = _.uniq(named, 1)
         #  printi(("Named Refs: %s" % named))
 
     l = []
@@ -3186,22 +3220,24 @@ def RecurseCallers(ea=None, width=512, data=0, makeChart=0, exe='dot', depth=5, 
         l.extend([GetFunctionName(e) for e in s])
         natives = [x for x in l if ~x.find("::")]
         natives = [re.sub(r'(_0)+$', '', x) for x in natives]
-    natives = list(natives).sort()
+    natives = list(natives)
+    natives.sort()
     if natives:
-        natives = _.uniq(natives)
+        natives = _.uniq(natives, 1)
         #  printi(("Natives: %s" % natives))
 
     l = []
     vtable = []
     for ref, s in list(namedRefs.items()):
         vtable.extend(list(s))
-    vtable.sort()
     if vtable:
-        vtable = _.uniq(vtable)
+        vtable.sort()
+        vtable = _.uniq(vtable, 1)
         #  printi(("Vtable Refs: %s" % vtable))
 
     if vtableRefs:
-        vtableRefs = _.uniq(vtableRefs)
+        vtableRefs.sort()
+        vtableRefs = _.uniq(vtableRefs, 1)
         #  printi("Vtables: %s" % vtableRefs)
 
     #  if len(pending):
@@ -3254,7 +3290,7 @@ def _unlikely_mnems(): return [
         'fcmovnbe', 'retnw', 'cdq', 'clc', 'cld', 'cli', 'cmc', 'cmpsb',
         'cmpsd', 'cwde', 'hlt', 'in', 'ins', 'in al', 'in eax', 'ins byte',
         'ins dword', 'int3', 'int', 'int 3', 'int1', 'iret', 'lahf', 'leave',
-        'lodsb', 'lodsd', 'movsd', 'out', 'outs', 'sahf',
+        'lodsb', 'lodsd', 'out', 'outs', 'sahf',
         'scasb', 'scasd', 'stc', 'std', 'sti', 'stosd', 'wait',
         'xlat', 'fisttp', 'fbstp', 'fxch4', 'fld', 'fisubr', 'fsubr', 'bnd', 'db', # 'xlat byte [rbx+al]'
         'punpckhdq', 'psrad', 'fidiv',
@@ -4250,7 +4286,7 @@ def dot_draw(string, name="default", exe="dot"):
     dot_executable_filepath = os.path.join(path, dot_filename)
 
     if not os.path.exists(dot_executable_filepath):
-        raise Exception("Please install graphviz from https://graphviz.org/download/")
+        raise Exception("Please install graphviz from https://graphviz.org/download/ to c:/Program Files/Graphviz")
 
     args = list()
     args.append("-Tsvg")

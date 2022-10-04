@@ -852,7 +852,7 @@ def make_decompiler_dat():
                     print("{}:{}:{}".format(new_hash_str, namespace, name))
                     del alloc8[old_hash]
                 else:
-                    print("{}:{}".format(new_hash_str, oname.replace('::', ':')))
+                    print("old_hash_not_in_alloc8 {}:{}".format(new_hash_str, oname.replace('::', ':')))
     return results
 
 def apply_native_renames():

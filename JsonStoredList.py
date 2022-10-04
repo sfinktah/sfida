@@ -114,7 +114,7 @@ class JsonStoredSet(JsonStoredList):
             self.hash_value = new_hash
 
     def load(self):
-        self.d = set(json.load(self.fn, set()))
+        self.d = set(json_load(self.fn, set()))
         self.hash_value = self._hash()
     
 class JsonStoredDict(object):

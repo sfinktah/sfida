@@ -2585,13 +2585,12 @@ def rage_map(name, T):
     return idc.parse_decls(s)
 
 def rage_vector(name, T):
-    s = f"""
-        struct {name}
-        {{
+    s = f"""struct {name} {{
             {T}* elements;
             uint16_t size;
             uint16_t reserved;
         }};""" # .format(name, T)
+    print(s)
     return idc.parse_decls(s)
 
 

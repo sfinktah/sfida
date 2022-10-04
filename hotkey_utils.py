@@ -905,6 +905,9 @@ def sig_protectscan(pattern, add=0, rip=-1, type_="void*", name=None, rtg=True, 
     result = result.replace('.add(0)', '')
     result = result.replace('.rip(-1)', '')
     result = result.replace('.as<None>("None")', '')
+    # dprint("[sig_protectscan] result")
+    print("[sig_protectscan] result:{}".format(result))
+    
     return result
 
 

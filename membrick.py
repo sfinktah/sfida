@@ -1319,6 +1319,9 @@ def mb(pattern, limit=1, index=0, spare=0):
             return "{:02x}".format(ord(b)) if w != '?' else '??'
         tmp = [cvt(x[0], x[1]) for x in zip(pattern, limit)]
         # transpose index => limit, and spare => index
+        # dprint("[mb] ' '.join(tmp), index, spare")
+        print("[mb] ' '.join(tmp):{}, index:{}, spare:{}".format(' '.join(tmp), index, spare))
+        
         return mb(' '.join(tmp), index, spare)
         
     
