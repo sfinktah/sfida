@@ -2630,7 +2630,65 @@ def struct_udt(name):
             # member = Member(u.offset // 8, u.type, None)
             # member.name = u.name
             # self.add_row(member)
-            #
+
+def import_struct_folder(folder):
+    import glob
+    files = glob.glob(folder + '/**/*.hpp')
+    processed = 1
+    while processed and files:
+        processed = 0
+        for fn in files[:]:
+            contents = []
+            inline = False
+            for line in clangformat(file_get_contents(fn)).split("\n"):
+                line = line.replace('class', 'struct').replace('enum struct', 'enum').replace('std::', '').replace('rage::', '').replace('public ', '')
+                include = string_between('#include "', '"', line)
+                linclude = string_between('#include <', '>', line)
+                namespace = string_between('namespace ', '', line)
+                if include or linclude:
+                    continue
+                if namespace:
+                    continue
+
+                if inline and '}' in line:
+                    inline = False
+                    continue
+                if inline:
+                    continue
+                if 'virtual ' in line:
+                    continue
+                if 'inline' in line or 'template' in line:
+                    inline = True
+                    continue
+                if 'static_assert' in line:
+                    continue
+                if 'public:' in line:
+                    continue
+                if 'private:' in line:
+                    continue
+                if 'protected:' in line:
+                    continue
+                if '#pragma' in line:
+                    continue
+                if 'virtual' in line:
+                    continue
+                if re.match(r'struct .*;', line):
+                    continue
+
+                contents.append(line)
+                text = "\n".join(contents)
+
+            print(text)
+            r = idc.parse_decls(text)
+            if r:
+                print("processed: {}".format(fn))
+                processed += 1
+                files.remove(fn)
+            else:
+                print("failed: {}".format(fn))
+
+
+
 #  old way
 #  execfile('StructMaker.py')
 #  t = get_tinfo('CPed')

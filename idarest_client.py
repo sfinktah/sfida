@@ -1,9 +1,10 @@
 import urllib.request, urllib.error, urllib.parse
 import requests
 import json
+import idaapi
 from superglobals import *
 from underscoretest import _
-execfile('underscoretest')
+# execfile('underscoretest')
 
 try:
     from .idarest_mixins import IdaRestConfiguration
