@@ -157,6 +157,7 @@ filenames = [
             "progress.py",
             "DebugMode.py",
             "idarest.py",
+            "idarest_client.py",
             "MegaHash.py",
             "emu_helpers.py",
             #  "tmp.py",
@@ -236,7 +237,6 @@ def do_start():
     if str(type(execfile)) == "<class 'module'>":
         unload('execfile')
     for fn in filenames:
-
         home = scriptDir
         fnfull = os.path.abspath(os.path.join(home, fn))
         if os.path.exists(fnfull) and os.path.isfile(fnfull):
@@ -252,7 +252,7 @@ def do_start():
             except TypeError as e:
                 raise TypeError("{} while executing {}".format(str(e), fnfull))
         else:
-            raise print("No such file: %s" % fnfull)
+            print("No such file: %s" % fnfull)
 
     try:
         ir = get_ir()
