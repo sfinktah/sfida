@@ -255,7 +255,7 @@ class idarest_plugin_t(IdaRestConfiguration, IdaRestLog, ida_idaapi.plugin_t):
                 return
             if idarest_plugin_t.config['api_info']: idc.msg("[idarest_plugin_t::register] master returned status_code: {}\n".format(r.status_code))
         except Exception as e:
-            if idarest_plugin_t.config['api_info']: idc.msg("[idarest_plugin_t::register] failed to connect to master: {}\n".format(e.__class__.__name__))
+            if idarest_plugin_t.config['api_info']: idc.msg("[idarest_plugin_t::register] failed to connect to master at {}: {}\n".format(url, e.__class__.__name__))
             if not unregister:
                 if e.__class__.__name__ in ('ConnectTimeout', 'ConnectionError'):
                     if idarest_plugin_t.config['api_info']: idc.msg("[idarest_plugin_t::register] launching new master\n")

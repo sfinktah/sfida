@@ -539,7 +539,7 @@ def get_pseudocode_vu(ea, vu):
     if func:
         return idaapi.open_pseudocode(func.start_ea, 0)
 
-def rename_lvar(old, new, ea, uniq=0, vu=None):
+def _rename_lvar(old, new, ea, uniq=0, vu=None):
     if old is None or new is None:
         print("return_if: old is None or new is None")
         return 
@@ -575,7 +575,7 @@ def rename_lvar(old, new, ea, uniq=0, vu=None):
             print("lvar {} is not a stack variable, skipping stack rename".format(lvar.name))
         return vu.rename_lvar(lvar, new, 1)
     else:
-        print("[rename_lvar] couldn't find var '{}'".format(old))
+        print("[_rename_lvar] couldn't find var '{}'".format(old))
 
 def label_stkvar(offset, name, ea=None, vu=None):
     ea = get_ea_by_any(ea or vu)
@@ -937,7 +937,7 @@ def decompile_arxan_getnextrange(ea):
     for n, x, y in chunk_tuple(mapping, 3):
         if map_lvar(x, y, ea) and              \
            set_lvar_type(y, 'int32_t', ea) and \
-           rename_lvar(y, n, ea):
+           _rename_lvar(y, n, ea):
                 print("set {}".format(n))
 
 def stripped_lines(source_code):
@@ -1300,31 +1300,31 @@ def decompile_function_for_common_renames(funcea=None, recurse=0, parents=[]):
             # **named** pHandle (not necessary of the right type).
             if struc == 'pHandle':
                 if member == 'Offset':
-                    rename_lvar(var, 'offset', ea)
+                    _rename_lvar(var, 'offset', ea)
                 if member == 'Flags':
-                    rename_lvar(var, 'flags', ea)
+                    _rename_lvar(var, 'flags', ea)
                 if member in ('MaxSize', 'MaxReadSize', 'MaxWriteSize'):
-                    rename_lvar(var, 'maxSize', ea)
+                    _rename_lvar(var, 'maxSize', ea)
 
         for (struc, indir, member, operator, var) in reby(5, re.findall(pattern_sub2, line)):
             # this is essential the same as above, but matches when a->b = c
             # instead of c = a->b
             if struc == 'pHandle':
                 if member == 'Offset':
-                    rename_lvar(var, 'offset', ea)
+                    _rename_lvar(var, 'offset', ea)
                 if member == 'Flags':
-                    rename_lvar(var, 'flags', ea)
+                    _rename_lvar(var, 'flags', ea)
 
         for (var, operator, func) in reby(3, re.findall(pattern_call, line)):
             # matching v1 = function(...), and:
             # just changing the name
             if func.endswith('joaat'):
-                rename_lvar(var, 'hash', ea)
+                _rename_lvar(var, 'hash', ea)
             if func == 'GetGameScriptHandler_fivem':
-                rename_lvar(var, 'pScrThread', ea)
+                _rename_lvar(var, 'pScrThread', ea)
             # braving some general rules
             if re.match('get.*count', func, re.I):
-                rename_lvar(var, 'count', ea)
+                _rename_lvar(var, 'count', ea)
 
             # or changing the name and type to match the function return
             m = (re.match(r'getEntityAddressIf([A-Z][a-z]+)', func))
@@ -1333,16 +1333,16 @@ def decompile_function_for_common_renames(funcea=None, recurse=0, parents=[]):
                 rettype = get_tinfo_by_parse('C' + _type + ' *')
                 #  rettype = get_func_rettype(get_ea_by_any(func))
                 set_lvar_type(var, rettype, ea)
-                rename_lvar(var, 'p{}'.format(_type), ea)
+                _rename_lvar(var, 'p{}'.format(_type), ea)
             if func == 'getOnlinePlayerInfo':
                 rettype = get_func_rettype(get_ea_by_any(func))
                 set_lvar_type(var, rettype, ea)
-                rename_lvar(var, 'pOnlineInfo', ea)
+                _rename_lvar(var, 'pOnlineInfo', ea)
 
         for (dst, operator, src) in reby(3, re.findall(pattern_opeq, line)):
             # this renames lvars assigned to pPointerOfSomething
             if src.startswith('p') and src[1].upper() == src[1]:
-                rename_lvar(dst, src, ea)
+                _rename_lvar(dst, src, ea)
 
         for (addr,) in reby(1, re.findall(pattern_floating_dword, line)):
             # dprint("[float] line")
@@ -1462,7 +1462,7 @@ def rename_lvar_factory(*args, **kwargs):
                 
                 LabelAddressPlus(fnLoc, new_name, force=1)
             else:
-                rename_lvar(args[index], replace_subpatterns(name, args), ea, uniq=uniq, vu=vu)
+                _rename_lvar(args[index], replace_subpatterns(name, args), ea, uniq=uniq, vu=vu)
 
     return fn_rename_lvar
 
@@ -1567,8 +1567,8 @@ def decompile_arxan(ea = None):
             #  print("[fn_vortex] args:{}".format(a))
             #  return
             
-            rename_lvar(lhs, 'hash', ea, vu)
-            rename_lvar(rhs, 'vortex', ea, vu)
+            _rename_lvar(lhs, 'hash', ea, vu)
+            _rename_lvar(rhs, 'vortex', ea, vu)
 
         def fn_offset_1(all, dst, *a):
             offLoc = get_ea_by_any(dst)
@@ -1666,7 +1666,7 @@ def decompile_arxan(ea = None):
                         
                         LabelAddressPlus(fnLoc, new_name, force=1)
                     else:
-                        rename_lvar(args[index], name, ea, uniq=uniq, vu=vu)
+                        _rename_lvar(args[index], name, ea, uniq=uniq, vu=vu)
 
             return fn_rename_lvar
 
@@ -1675,11 +1675,11 @@ def decompile_arxan(ea = None):
             print("[test_multimatch] args:{}".format(args))
 
         def test_multimatch(cipher_text, p_B4, B4, p_B0, B4a, B4b, remain):
-            rename_lvar(cipher_text, 'cipher_text', ea, vu)
-            rename_lvar(p_B4, 'p_B4', ea, vu)
-            rename_lvar(B4a, 'B4', ea, vu)
-            rename_lvar(p_B0, 'p_B0', ea, vu)
-            rename_lvar(remain, 'remain', ea, vu)
+            _rename_lvar(cipher_text, 'cipher_text', ea, vu)
+            _rename_lvar(p_B4, 'p_B4', ea, vu)
+            _rename_lvar(B4a, 'B4', ea, vu)
+            _rename_lvar(p_B0, 'p_B0', ea, vu)
+            _rename_lvar(remain, 'remain', ea, vu)
 
 
         suffix = re.sub(r'^[a-zA-Z]+', '', idc.get_name(ea))
@@ -1795,7 +1795,7 @@ def decompile_function_for_library_prologue_copies(ea):
         LabelAddressPlus(get_ea_by_any(dst), "p%s" % source_ptr)
 
     def fn_module_handle(lv, module_name):
-        rename_lvar(lv, "ptr_%s" % module_name, ea)
+        _rename_lvar(lv, "ptr_%s" % module_name, ea)
 
 
     pattern_subs = [
@@ -1873,11 +1873,11 @@ def decompile_shv_nativeInit(ea):
         if True: # This is very slow
             if counter == 0:
                 if m['ptr'].startswith("v"):
-                    rename_lvar(m['ptr'], "ptr", ea, vu=vu)
+                    _rename_lvar(m['ptr'], "ptr", ea, vu=vu)
                 if m['counter'].startswith("v"):
-                    rename_lvar(m['counter'], "counter", ea, vu=vu)
+                    _rename_lvar(m['counter'], "counter", ea, vu=vu)
                 if m['index'].startswith("v"):
-                    rename_lvar(m['counter'], "index", ea, vu=vu)
+                    _rename_lvar(m['counter'], "index", ea, vu=vu)
             else:
                 if m['ptr'].startswith("v"):
                     map_lvar(m['ptr'], "ptr", ea, vu=vu)

@@ -2431,7 +2431,8 @@ def SkipJumps(ea, apply=False, returnJumps=False, returnTarget=False, until=None
     match_NN_rest = [idaapi.NN_jmp]
     match_NN_initial = [idaapi.NN_jmp]
     mnem_start = MyGetMnem(ea)
-    if conditional:
+    # XXX: disable this until we fix issue where we skip past `jz` when trying to find first non-jmp address
+    if False and conditional:
         if isConditionalJmp(ea):
             match_NN_initial.extend(range(idaapi.NN_ja, idaapi.NN_jz + 1))
         else:
