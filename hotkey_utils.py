@@ -1311,7 +1311,7 @@ def hotkey_find_pattern(pattern, limit=2, start=0, end=BADADDR):
 
     #  count = 0
     if start == 0:
-        start = idaapi.cvar.inf.minEA
+        start = idaapi.cvar.inf.min_ea
         if high > start:
             start = high + 1
     pos = start

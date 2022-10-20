@@ -34,6 +34,9 @@ from collections import defaultdict
 def groupBy(seq, func):
     return reduce(lambda grp, val: grp[func(val)].append(val) or grp, seq, defaultdict(list))
 
+def _double_questions(pattern):
+    return pattern.lower().strip().replace('??', '?').replace('?', '??').rstrip(' ?')
+
 
 def check_patterns(s=None):
     if s is None:
@@ -1146,8 +1149,7 @@ def FindInSegments(searchstr, segments=None, start=None, stop=None, limit=None, 
     if not binary:
         searchstr = ' '.join(["%02x" % x for x in asByteArray(searchstr)])
 
-    
-    searchstr = searchstr.lower().strip().replace('??', '?').replace('?', '??').rstrip(' ?')
+    searchstr = _double_questions(searchstr)
     if not re.match(r'([0-9a-f][0-9a-f] |\?\? )+([0-9a-f][0-9a-f])$', searchstr):
         print("Invalid binary searchstring: '{}'".format(searchstr))
         return [];
@@ -1326,8 +1328,9 @@ def mb(pattern, limit=1, index=0, spare=0):
         
     
     if isinstance(pattern, str):
-        #  base = idaapi.cvar.inf.minEA
+        #  base = idaapi.cvar.inf.min_ea
         #  ptr = idc.FindBinary(base, idc.SEARCH_DOWN | idc.SEARCH_CASE, pattern)
+        pattern = _double_questions(pattern)
         if not limit:
             limit = 0
         results = FindInSegments(pattern, limit=limit + 1)
@@ -1338,6 +1341,7 @@ def mb(pattern, limit=1, index=0, spare=0):
             return error
 
         return membrick_memo(results[index], pattern).chain()
+
     if isinstance(pattern, list):
         for ea in pattern:
             # dprint("[find] ea")
@@ -1372,11 +1376,21 @@ def hook__get_call(*args, **kwargs):
     return get_call(*args, **kwargs)
 
 def hook__jump(ptr, label=None):
-    return ptr.label('fivem_' + label.replace('fivem_', ''))
+    return ptr.label('fivem_' + label.replace('fivem_', ''), force=False)
+
+def hook__return_function(ptr):
+    return ptr
+
+def hook__put(ptr, *args):
+    return ptr
+
+def hook__nop(ptr, *args):
+    return ptr
+
 
 def hook__get_address(address, offsetTo4ByteAddr=None, numBytesInLine=None):
     if offsetTo4ByteAddr or numBytesInLine:
-        raise RuntimeError('unsupported: 3 parameter hook::get_address')
+        return address.add(offsetTo4ByteAddr).rip(numBytesInLine - offsetTo4ByteAddr)
     return address.rip(4)
 
 hook__call = hook__jump
@@ -1625,7 +1639,7 @@ class membrick_memo(object):
             found += 1
 
 
-    def autorip(self, index):
+    def autorip(self, index=0):
         if self.in_error(): return self.error_return_chained()
         pos = 0
         found = -1
@@ -1758,10 +1772,12 @@ class membrick_memo(object):
                                                                                   GetTrueName(self.val())))
         return self
 
-    def label(self, name=None):
+    def label(self, name=None, force=1):
+        if self.in_error(): return self.error_return_chained()
         if name is None:
             return get_name_by_any(self.val())
-        if self.in_error(): return self.error_return_chained()
+        if not force and HasUserName(self.val()):
+            return self
         MemLabelAddressPlus(self.val(), name)
         return self
     

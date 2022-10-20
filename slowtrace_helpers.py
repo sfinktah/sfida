@@ -2418,7 +2418,7 @@ def SkipJumps(ea, apply=False, returnJumps=False, returnTarget=False, until=None
     # apply = 0
     if (isOffset(ea)):
         target = SkipJumps(GetTarget(ea), apply=apply)
-        if apply and target != GetTarget(ea) and idaapi.cvar.inf.minEA <= target < idaapi.cvar.inf.maxEA:
+        if apply and target != GetTarget(ea) and idaapi.cvar.inf.min_ea <= target < idaapi.cvar.inf.maxEA:
             setptr(ea, target)
         return target
 
@@ -3071,21 +3071,32 @@ def RecurseCallers(ea=None, width=512, data=0, makeChart=0, exe='dot', depth=5, 
                     refName = GetFunctionName(ref)
                 if SegName(ref) == '.rdata':
                     addr = ref
-                    while not Name(addr).startswith('??_7') and SegName(addr) == '.rdata' and GetDisasm(addr).startswith(
-                            'dq offset'):
+                    flags = idc.get_full_flags(addr)
+
+                    _name_demang     = idc.get_name(addr, GN_DEMANGLED)
+                    _disasm          = idc.GetDisasm(addr)
+                    _ptr_name_raw    = idc.get_name(getptr(addr), 0)
+                    _ptr_name_demang = idc.get_name(getptr(addr), GN_DEMANGLED)
+                    _ptr_name_color  = idc.get_name(getptr(addr), GN_COLORED)
+
+
+                    while IsOff0(addr):
+                        if HasAnyName(addr) and idc.get_name(addr, GN_DEMANGLED).endswith("`vftable'"):
+                            refName = idc.demangle_name(idc.get_name(addr, 0), DEMNAM_FIRST)
+                            if not refName:
+                                refName = "unknown_vftable_0x%x" % addr
+                            vtableRefs.append("%s_0x%x" % (refName, addr))
+                            functionRefs[target].add(addr)
+                            refName = refName.replace("::`vftable'", "")
+                            refName = "{}::m_{:x}".format(refName, ref - addr)
+                            chart.append([refName, targetName])
+                            namedRefs[target].add(refName)
+                            if fixVtables:
+                                ClassMakerFamily(ea=addr, redo=1)
+                            
+                            break
+
                         addr = idc.prev_head(addr)
-                    if Name(addr).startswith('??_7'):
-                        refName = Demangle(Name(addr), DEMNAM_FIRST)
-                        if not refName:
-                            refName = "unknown_vftable_0x%x" % addr
-                        vtableRefs.append("%s_0x%x" % (refName, addr))
-                        functionRefs[target].add(addr)
-                        refName = refName.replace("::`vftable'", "")
-                        refName = "{}::m_{:x}".format(refName, ref - addr)
-                        chart.append([refName, targetName])
-                        namedRefs[target].add(refName)
-                        if fixVtables:
-                            ClassMakerFamily(ea=addr, redo=1)
 
                 #  refName = "{};;{}".format(refName, _depth)
                 rev[targetName].append(refName)
@@ -3294,7 +3305,7 @@ def _unlikely_mnems(): return [
         'lodsb', 'lodsd', 'out', 'outs', 'sahf',
         'scasb', 'scasd', 'stc', 'std', 'sti', 'stosd', 'wait',
         'xlat', 'fisttp', 'fbstp', 'fxch4', 'fld', 'fisubr', 'fsubr', 'bnd', 'db', # 'xlat byte [rbx+al]'
-        'punpckhdq', 'psrad', 'fidiv',
+        'punpckhdq', 'psrad', 'fidiv', 'fild', 'fcom',
         ]
 def _isUnlikely_mnem(mnem): return mnem in _unlikely_mnems()
 
@@ -4444,7 +4455,7 @@ def remove_func_or_chunk(func):
 #  def forceCode(start, end=None, trim=False, delay=None):
     #  addr = start
     #  end = end or IdaGetInsnLen(start)
-    #  if end < idaapi.cvar.inf.minEA and end < start:
+    #  if end < idaapi.cvar.inf.min_ea and end < start:
         #  end = start + end
     #  last_jmp_or_ret = 0
     #  last_addr = 0
@@ -6525,7 +6536,7 @@ def testchunks(ea):
         chunk = func_iter.chunk()
 
         # Store its start and ending address as a tuple
-        function_chunks.append((chunk.start_ea, chunk.endEA))
+        function_chunks.append((chunk.start_ea, chunk.end_ea))
 
         # Get the last status
         status = func_iter.next()
@@ -7474,7 +7485,7 @@ if 'CircularList' in globals():
         if ea == idc.BADADDR or not ea:
             return (0, 0, 0, 0)
         end = end or IdaGetInsnLen(start) or 15
-        if end < idaapi.cvar.inf.minEA and end < start:
+        if end < idaapi.cvar.inf.min_ea and end < start:
             end = start + end
         log.append("end: {:x}".format(end))
 
@@ -7643,7 +7654,7 @@ def forceAllAsCode(ea, length, hard = 0, comment = ""):
         else:
             printi("0x%x: Couldn't convert block into code at 0x%x (remaining length: %i)" % (ea, head, end - pos))
             raise "trace that broken code back"
-            if pos < idaapi.cvar.inf.minEA or pos > idaapi.cvar.inf.maxEA:
+            if pos < idaapi.cvar.inf.min_ea or pos > idaapi.cvar.inf.maxEA:
                 raise "trace that broken code back"
             break
     return pos - ea
@@ -7670,7 +7681,7 @@ def forceAsCode(ea, length = 1, hard = 0, comment = ""):
         return codeLen
     else:
         printi("0x%x: Couldn't convert block into code at (head: 0x%x)" % (ea, head))
-        if ea < idaapi.cvar.inf.minEA or ea > idaapi.cvar.inf.maxEA:
+        if ea < idaapi.cvar.inf.min_ea or ea > idaapi.cvar.inf.maxEA:
             raise "trace that broken code back"
         return 0
     # return length
@@ -8194,7 +8205,7 @@ def findAndTrace():
     # pattern = "48 89 E0 48 05 F8 FF FF FF 48 89 C4 48 89 2C 24" # <-- pattern for add rsp, 0xffffff8
     patterns = ["48 8B 45 58 8B 00 89 45 6C 48 89 4C 24 F8", "48 8B 45 58 0F B6 00 0F B6 C0 33 45 68"]
     for pattern in patterns:
-        # base = idaapi.cvar.inf.minEA
+        # base = idaapi.cvar.inf.min_ea
         for ptr in FindInSegments(pattern, '.text'):
             retrace(ptr)
 
@@ -9795,5 +9806,52 @@ hex = _makeSequenceMapper(hex_callback)
 def asHexList(o):
     return [hex(x) for x in asList(o)]
 
+def addrAsVtable(ea=None, m=True):
+    """
+    addrAsVtable
 
-# vim: set ts=8 sts=4 sw=4 et:
+    @param ea: linear address
+    """
+    if isinstance(ea, list):
+        return [addrAsVtable(x) for x in ea]
+
+    ea = eax(ea)
+    
+    if SegName(ea) == '.rdata':
+        addr = ea
+
+        _name_demang     = idc.get_name(addr, GN_DEMANGLED)
+        _disasm          = idc.GetDisasm(addr)
+        _ptr_name_raw    = idc.get_name(getptr(addr), 0)
+        _ptr_name_demang = idc.get_name(getptr(addr), GN_DEMANGLED)
+        _ptr_name_color  = idc.get_name(getptr(addr), GN_COLORED)
+
+
+        while IsOff0(addr):
+            if HasAnyName(addr) and idc.get_name(addr, GN_DEMANGLED).endswith("`vftable'"):
+                refName = idc.demangle_name(idc.get_name(addr, 0), DEMNAM_FIRST)
+                if not refName:
+                    refName = "unknown_vftable_0x%x" % addr
+                refName = refName.replace("::`vftable'", "")
+                if m:
+                    refName = "{}::m_{:x}".format(refName, ea - addr)
+                return refName
+
+            addr = idc.prev_head(addr)
+    return ""
+
+def rename_nullsub_offsets():
+    for ea in [x for x in _.flatten(xrefs_to(NamesMatching('nullsub_'))) if IsOff0(x)]: LabelAddressPlus(ea, "off" + ean(getptr( ea ) ))
+    # [IsFuncHead(x) for x in m]
+    m = FindInSegments('55 48 81 EC D0 00 00 00 48 8D 6C 24 20 48 89 9D A0 00 00 00 89', ['.text', '.rdata'], limit=100)
+    for ea in m: LabelAddressPlus(ea, 'CheckLoadedModules')
+    m = FindInSegments('55 48 83 ec 40 48 8d 6c 24 20 89 4d 30 48 89 55 38 48 8b', ['.text', '.rdata'], limit=100)
+    for ea in m: LabelAddressPlus(ea, 'CheckLoadedModules_ToLowerChar')
+    m = FindInSegments('55 48 83 ec 40 48 8d 6c 24 20 89 4d 30 48 8b 42 08 48 89 45 00 8b 45 30 48 63', ['.text', '.rdata'], limit=100)
+    for ea in m: LabelAddressPlus(ea, 'CheckLoadedModules_ToLowerWideChar')
+    for ea in m: SetType(ea, 'int __fastcall CheckLoadedModules_ToLowerWideChar_2(int offset, UNICODE_STRING *str)')
+    m = FindInSegments('55 48 83 ec 40 48 8d 6c 24 20 89 4d 30 48 89 55 38 48 8b', ['.text', '.rdata'], limit=100)
+    for ea in m: SetType(ea, 'int __fastcall CheckLoadedModules_ToLowerChar_14(int offset, char *str)')
+    m = FindInSegments('55 48 81 ec 80 00 00 00 48 8d 6c 24 20 48 89 5d 50 48 89 4d 70 33 c0 48 89 45 30 48 89 45 38 48 89 45 28', ['.text', '.rdata'], limit=100)
+    for ea in m: LabelAddressPlus(ea, 'OtherCheckLoadedModules')
+    for ea in m: SetType(ea, 'void __fastcall CheckLoadedModules_ToLowerChar_14(__int64)')

@@ -78,7 +78,7 @@ def GetFuncEnd(ea):
     func = idaapi.get_func(ea)
     if not func:
         return BADADDR
-    return func.endEA
+    return func.end_ea
 
 
 def VtableRefsTo(ea):

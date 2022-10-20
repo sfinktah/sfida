@@ -337,7 +337,7 @@ def rename_all_generic_methods():
         if not HasUserName(fn):
             for ea in seg_refs_to(fn, '.rdata'):
             #  if not _hasUserName(fn):
-                print('rename_all_generic_methods: {}'.format(idc.get_name(ea.to)))
+                #  print('rename_all_generic_methods: {}'.format(idc.get_name(ea.to)))
                 rename_generic_methods(ea.frm)
                 break
 
@@ -661,10 +661,10 @@ def fix_offset(ea=None):
     """
     ea = eax(ea)
     if idc.get_full_flags(ea) & 0x30500500 == 0x30500500 and idc.GetDisasm(ea).startswith("dq offset"):
-        target = idc.get_qword(ea)
+        target = getptr(ea) 
         if SegName(target) != '.text':
             return False
-        if target != idc.get_item_head(idc.get_qword(ea)) or not IsFuncHead(target):
+        if target != idc.get_item_head(getptr(ea)) or not IsFuncHead(target):
             if not ForceFunction(target) and retrace(target) != 0:
                 raise Exception("{:x} Couldn't make function from offset {:x}".format(ea, target))
             idc.add_func(target)
@@ -700,8 +700,8 @@ def alternate_fn_offset_name(fnName):
 
 def class_get_member(ea):
     if idc.get_full_flags(ea) & 0x30500500 == 0x30500500 and (idc.GetDisasm(ea).startswith("dq offset") or idc.GetDisasm(ea).startswith("dd offset")  ):
-        if not IsFuncHead(ea):
-            print("fixing offset")
+        if not IsFuncHead(getptr(ea)):
+            print("fixing offset: 0x{:x}".format(ea))
             fix_offset(ea)
         disasm = idc.GetDisasm(ea)
         if disasm is not None and disasm.startswith("dq offset"):
@@ -714,12 +714,13 @@ def class_get_member(ea):
                     fnName = alternate_fn_offset_name(disasm)
                     if fnName:
                         fnName = fnName[10:]
-                rawFnLoc = idc.get_qword(ea)
+                rawFnLoc = getptr(ea)
                 # print("member_function: {0} / {2}  comments: {1}".format(fnName, offsetComment, rawFnName))
-                print('rename_generic_methods {:x}'.format(rawFnLoc))
+                #  print('rename_generic_methods {:x}'.format(rawFnLoc))
                 rename_generic_methods(rawFnLoc)
                 idc.auto_wait()
                 if not fix_offset(rawFnLoc):
+                    print("failed to fix_offset at 0x{:x}".format(rawFnLoc))
                     return False
                 idc.auto_wait()
                 rawFnName = idc.get_name(rawFnLoc) # can't be trusted for much
@@ -852,18 +853,40 @@ def make_member_type(decl, memberType = None, fnNameAlt = None, offset=0):
     return make_vfunc_struct_sig("void", "__fastcall", "error_%02x" % offset, "void*", offset=offset)
 
 
+def get_func_def(func_def):
+    print("[get_func_def] {}".format(func_def))
+    
+    decl = ""
+    for x in func_def.split("\n"):
+        if not x:
+            break;
+        if x[0] == '/':
+            continue
+        if x[0] == '{':
+            break
+        decl += " " + x.lstrip()
+    #  decl = "".join([x for x in func_def if len(x) and not x[0] == '/'])
+    return decl.lstrip()
+
 def decompile_member(ea, memberType, fnNameAlt = None, offset=0):
     global __class_maker_member_names
+    # dprint("[decompile_member] ea, memberType, fnNameAlt, offset")
+    print("[decompile_member] ea:{}, memberType:{}, fnNameAlt:{}, offset:{}".format(ahex(ea), memberType, fnNameAlt, offset))
     try:
         cfunc = idaapi.decompile(ea)
         if not cfunc:
             ForceFunction(ea)
             cfunc = idaapi.decompile(ea)
 
-        func_def = str(cfunc).split("\n")
-        decl = [x for x in func_def if len(x) and not x[0] == '/'][0]
+        if not cfunc:
+            print("idaapi.decompile(0x{:x}) failed".format(ea))
+
+        # func_def = str(cfunc).split("\n")
+        decl = get_func_def(str(cfunc))
+        # dprint("[decompile_member] func_def")
+        
         if decl is not None:
-            # print("decl: %s" % decl)
+            print("decl: %s" % decl)
             decl = re.sub("__noreturn", "", decl)
 
             # fix up any __usercall methods
@@ -1005,6 +1028,7 @@ def ClassMaker(ea, memberType = None, className = None, famList = [], parentType
                 except TypeError as e:
                     print("TypeError: {}".format(e))
                     pp(__class_maker_struct);
+                    return
                     raise e
 
                 defn += ("\n};")
@@ -1021,7 +1045,7 @@ def ClassMaker(ea, memberType = None, className = None, famList = [], parentType
             break
 
 
-        print("calling class_get_member")
+        #  print("calling class_get_member")
         fnName = class_get_member(offsetLoc)
         print("fnName: {}".format(fnName))
         if not fnName:
@@ -1085,24 +1109,24 @@ def ClassMaker(ea, memberType = None, className = None, famList = [], parentType
             elif vtableOnly:
                 funcSig = make_member_type(member_type, memberType, fnName, offset=offset)
             else:
-                print("checking commenter")
+                #  print("checking commenter")
                 if Commenter(fnLoc, 'func').matches(r'\[CLASS-MAKER-'):
-                    print("was comment {:x}".format(fnLoc))
+                    #  print("was comment {:x}".format(fnLoc))
                     funcSig = make_member_type(member_type, memberType, fnName, offset=offset)
                     # dprint("[make_member_type] funcSig")
                     #  print("[make_member_type] funcSig:{}".format(funcSig))
                     
                 else:
-                    print("funcSig decompile_member")
+                    #  print("funcSig decompile_member")
                     funcSig = decompile_member(fnLoc, memberType, fnName, offset=offset)
                     # dprint("[decompile_member] funcSig")
                     print("[decompile_member] funcSig:{}".format(funcSig))
                     if funcSig:
-                        print("commenting allrefsfrom")
+                        #  print("commenting allrefsfrom")
                         refs = AllRefsFrom(fnLoc)
                         for ref in refs["fnRefs"]:
                             Commenter(LocByAnyName(ref), 'func').add("[CLASS-MAKER] called from {}".format(fnName))
-                        print("finished commenting allrefsfrom")
+                        #  print("finished commenting allrefsfrom")
 
             __class_maker_struct[offset // ptrsize()] = funcSig
             # print("funcSig", funcSig)
@@ -1229,7 +1253,7 @@ def ClassMakerFamily(family = None, ea = None, redo = False, redoParents = False
                             # className = re.sub(r"^.*::", "", className)
                             if vtableLoc != BADADDR:
                                 print('calling classmaker')
-                                ClassMaker(vtableLoc, "{}*__hidden this".format(className), className=className, famList=famList, redo=redo, vtableOnly=vtableOnly)
+                                ClassMaker(vtableLoc, "{} *__hidden this".format(className), className=className, famList=famList, redo=redo, vtableOnly=vtableOnly)
                                 print('classmaker returned')
                                 c.add("[CLASS-MAKER]")
                                 __classes_completed.add(className)

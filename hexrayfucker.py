@@ -2367,3 +2367,38 @@ def close_windows():
         if widget:
             print("closing %s tab to increase performance" % w)
             ida_kernwin.close_widget(widget, 0)
+
+def hx_set_user_cmt(ea=None, cmt=None, itp=idaapi.ITP_BLOCK1):
+    """
+    hx_set_user_cmt
+
+    see: https://reverseengineering.stackexchange.com/a/12891/16770
+
+    @param ea: linear address
+    @param cmt: comment (string)
+    @param itp: ITP_EMPTY ITP_ARG1 ITP_ARG64 ITP_BRACE1 ITP_INNER_LAST ITP_ASM
+        ITP_ELSE ITP_DO ITP_SEMI ITP_CURLY1 ITP_CURLY2 ITP_BRACE2 ITP_COLON
+        ITP_BLOCK1 ITP_BLOCK2 ITP_CASE ITP_SIGN
+    """
+    if ea is None and cmt is not None:
+        if not eax(ea):
+            ea, cmt = cmt, ea
+
+    if isinstance(ea, list):
+        return [hx_set_user_cmt(x) for x in ea]
+
+    ea = eax(ea)
+    cfunc = idaapi.decompile(ea)
+    tl = idaapi.treeloc_t()
+    tl.ea = ea
+    tl.itp = itp
+    if cmt:
+        cfunc.set_user_cmt(tl, cmt)
+        cfunc.save_user_cmts() 
+    elif cmt is None:
+        return cfunc.get_user_cmt(tl, True)
+    elif cmt == "":
+        cfunc.set_user_cmt(tl, cmt)
+        cfunc.save_user_cmts() 
+
+

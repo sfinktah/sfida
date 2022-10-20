@@ -474,7 +474,7 @@ class IDARequestHandler(HTTPRequestHandler):
             'name' : idaapi.get_true_segm_name(s),
             'ida_name' : idaapi.get_segm_name(s),
             'start' : self._hex(s.startEA),
-            'end' : self._hex(s.endEA),
+            'end' : self._hex(s.end_ea),
             'size' : self._hex(s.size())
         }
 

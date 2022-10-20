@@ -1,4 +1,4 @@
-import socket, atexit
+import socket, atexit, sys
 from underscore3 import _
 try:
     from .idarest_mixins import IdaRestConfiguration, IdaRestLog
@@ -11,6 +11,8 @@ except:
 #  idarest_master_plugin_t.config['master_host'] = "127.0.0.1"
 #  idarest_master_plugin_t.config['master_port'] = 28612 # hash('idarest75') & 0xffff
 MENU_PATH = 'Edit/Other'
+
+interactive = False
 
 try:
     import idc
@@ -119,7 +121,7 @@ def idarest_master():
             host, port = args['host'], args['port']
             key = host + ':' + port
             if key in self.hosts:
-                if idarest_master_plugin_t.config['master_debug']: print("[idarest_master::Handler::register] replacing existing host {}".format(key))
+                if interactive or idarest_master_plugin_t.config['master_debug']: print("[idarest_master::Handler::register] replacing existing host {}".format(key))
             self.hosts[key] = value = dict({
                     'host': args['host'],
                     'port': args['port'],
@@ -133,7 +135,7 @@ def idarest_master():
             host, port = args['host'], args['port']
             key = host + ':' + port
             if key in self.hosts:
-                if idarest_master_plugin_t.config['master_debug']: print("[idarest_master::Handler::unregister] removing existing host {}".format(key))
+                if interactive or idarest_master_plugin_t.config['master_debug']: print("[idarest_master::Handler::unregister] removing existing host {}".format(key))
                 value = self.hosts.pop(key)
             else:
                 value = dict({
@@ -325,7 +327,7 @@ def idarest_master():
             self.test_worker.stop()
 
     def main():
-        if idarest_master_plugin_t.config['master_info']: print("[idarest_master::main] starting master")
+        if interactive or idarest_master_plugin_t.config['master_info']: print("[idarest_master::main] starting master")
         master = Master()
         #  main.master = master
         return master
@@ -335,6 +337,12 @@ def idarest_master():
 def PLUGIN_ENTRY():
     globals()['instance'] = idarest_master_plugin_t()
     return globals()['instance']
+
+
+if sys.stdin and sys.stdin.isatty():
+    # running interactively
+    print("running interactively")
+    interactive = True
 
 if __name__ == "__main__":
     master = idarest_master()

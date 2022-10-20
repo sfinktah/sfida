@@ -90,7 +90,7 @@ def DeleteFunctionNames():
         if idaapi.has_user_name(idc.get_full_flags((fnName))):
             idaapi.del_global_name(fnName)
 
-def DeleteCodeAndData(start = idaapi.cvar.inf.minEA, end = BADADDR):
+def DeleteCodeAndData(start = idaapi.cvar.inf.min_ea, end = BADADDR):
     """
     Delete all segments, instructions, comments, i.e. everything
     except values of bytes.
@@ -158,17 +158,17 @@ def DeleteData(start, end):
         ea = idc.next_head(ea)
         # ea = idaapi.next_head(ea, idaapi.cvar.inf.maxEA)
 
-def DeleteAllHiddenAreas(ea = idaapi.cvar.inf.minEA):
+def DeleteAllHiddenAreas(ea = idaapi.cvar.inf.min_ea):
     """
     Delete all segments, instructions, comments, i.e. everything
     except values of bytes.
     """
-    # ea = idaapi.cvar.inf.minEA
+    # ea = idaapi.cvar.inf.min_ea
 
     hidden_area = idaapi.get_next_hidden_area(ea);
     while hidden_area:
         idaapi.del_hidden_area(hidden_area.start_ea)
-        hidden_area = idaapi.get_next_hidden_area(hidden_area.endEA);
+        hidden_area = idaapi.get_next_hidden_area(hidden_area.end_ea);
 
     # Brute-force nuke all info from all the heads
     # while ea != BADADDR and ea <= idaapi.cvar.inf.maxEA:

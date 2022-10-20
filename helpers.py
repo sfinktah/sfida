@@ -362,7 +362,7 @@ def autoStringBlocks(ea = idc.get_screen_ea()):
     print("Count: %i" % counter)
 
 def autoMakeQwords(ea = idc.get_screen_ea, count = -1):
-    plausibleStart = idaapi.cvar.inf.minEA
+    plausibleStart = idaapi.cvar.inf.min_ea
     plausibleEnd = idaapi.cvar.inf.maxEA
     if count > 0:
         end = ea + 8 * count
@@ -494,12 +494,12 @@ def MakeCodeRepeatedly(ea = idc.get_screen_ea()):
 
 def findbase():
     header = LocByName('__ImageBase')
-    if (idaapi.cvar.inf.minEA & 0xffff == 0x1000):
-        header = idaapi.cvar.inf.minEA &~ 0xffff
+    if (idaapi.cvar.inf.min_ea & 0xffff == 0x1000):
+        header = idaapi.cvar.inf.min_ea &~ 0xffff
         print("Assuming that header == 0x1000 bytes before start of file, at: 0x%x" % header)
         return header
-    if (idaapi.cvar.inf.minEA & 0xffff == 0x0000):
-        header = idaapi.cvar.inf.minEA &~ 0xffff
+    if (idaapi.cvar.inf.min_ea & 0xffff == 0x0000):
+        header = idaapi.cvar.inf.min_ea &~ 0xffff
         print("Assuming that header is at the start of file, at: 0x%x" % header)
         return header
     if header < BADADDR:
@@ -517,7 +517,7 @@ def findbase():
             return header
             break
     print("unable to find header, defaulting to start of file")
-    header = idaapi.cvar.inf.minEA
+    header = idaapi.cvar.inf.min_ea
     print("Assuming that header is at the start of file, at: 0x%x" % header)
     return header
 
@@ -552,12 +552,12 @@ def autobase(ea, base = 0):
         return ea - base + imageBase
     
     # This probably won't work so well if you happen to have other segments loaded
-    imageLen = idaapi.cvar.inf.maxEA - idaapi.cvar.inf.minEA
+    imageLen = idaapi.cvar.inf.maxEA - idaapi.cvar.inf.min_ea
 
     # for xxxx.exe+0x12345 offsets
     if ea < imageLen:
         return ea + imageBase
-    #  if ea >= idaapi.cvar.inf.minEA && ea < idaapi.cvar.inf.maxEA: 
+    #  if ea >= idaapi.cvar.inf.min_ea && ea < idaapi.cvar.inf.maxEA: 
         #  return ea + baseDifference
 
     # Address is inside our image, so translate it outside

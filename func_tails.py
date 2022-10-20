@@ -884,7 +884,7 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
      |  __weakref__
      |      list of weak references to the object (if defined)
      |  
-     |  endEA
+     |  end_ea
      |  
      |  startEA
     """

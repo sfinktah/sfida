@@ -248,7 +248,7 @@ In any case we strongly recommend you to restart IDA as soon as possible.
 
 [idapy] ida_funcs.get_fchunk(0x1458475ca):
 {   'color': 0xffffffff,
-    'endEA': 0x1458475d4,
+    'end_ea': 0x1458475d4,
     'end_ea': 0x1458475d4,
     'flags': 0x8000,
     'frame': 0x1413a67f0,
@@ -266,7 +266,7 @@ In any case we strongly recommend you to restart IDA as soon as possible.
 
 [idapy] owner = ida_funcs.get_func(0x1458475ca):
 {   'color': 0xffffffff,
-    'endEA': 0x1413a6805,
+    'end_ea': 0x1413a6805,
     'end_ea': 0x1413a6805,
     'flags': 0x200,
     'frame': 0xffffffffffffffff,

@@ -1330,11 +1330,17 @@ def slowtrace2(ea=None,
                     sh = set((Heads(cstart, cend)))
                     snt = set((NotHeads(cstart, cend, lambda x: not IsTail(x), lambda x, *a: idc.next_not_tail(x))))
                     if snt.difference(sh) or not isFlowEnd(idc.prev_head(cend)):
-                        end = EaseCode(cstart)
-                        if end > cend:
-                            printi("[SmartAddChunk] Setting chunk end from EaseCode: {:x} -> {:x}".format(cend, end))
-                            SetChunkEnd(cstart, end)
-                            ida_auto.plan_and_wait(cstart, end)
+                        try:
+                            end = EaseCode(cstart)
+                            if end > cend:
+                                printi("[SmartAddChunk] Setting chunk end from EaseCode: {:x} -> {:x}".format(cend, end))
+                                SetChunkEnd(cstart, end)
+                                ida_auto.plan_and_wait(cstart, end)
+                        except AdvanceFailure as e:
+                            printi("Connecting chunk {} to chunk {}".format(ahex(old), ahex(new)))
+                            printi("History: {}".format(hex([x.source for x in slvars2.previousHeads])))
+                            printi("slowtrace threw {}: {}".format(e.__class__.__name__, str(e)))
+                            raise
         else:
             # end = EndOfContig(new)
             try:
