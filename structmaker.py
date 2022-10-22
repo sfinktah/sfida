@@ -554,24 +554,6 @@ def get_tinfo_by_parse(name):
     tinfo.deserialize(idaapi.cvar.idati, tp, fld, None)
     return tinfo
 
-def get_structnames_by_ordinal():
-    idati = ida_typeinf.get_idati()
-    ti = ida_typeinf.tinfo_t()
-
-    for ordinal in range(1, ida_typeinf.get_ordinal_qty(idati)+1):
-        if ti.get_numbered_type(idati, ordinal):
-            yield ti.dstr()
-
-def StructsMatching(regex=None, exclude=None, filter=lambda x: x, flags=0):
-    if regex and not isinstance(regex, re.Pattern):
-        regex = re.compile(regex, flags)
-    if exclude and not isinstance(exclude, re.Pattern):
-        exclude = re.compile(exclude, flags)
-    result = [a for a in get_structnames_by_ordinal() if filter(a) and (not regex or re.match(regex, a))]
-    if exclude:
-        result = [a for a in result if not re.search(regex, idc.get_name(a))]
-    return result
-
 def get_tinfo_brute(name):
     idati = ida_typeinf.get_idati()
     ti = ida_typeinf.tinfo_t()
@@ -588,20 +570,22 @@ def get_tinfo_lame(name):
         if tinfo.get_numbered_type(idaapi.cvar.idati, ordinal):
             return tinfo
 
-def get_field_at_offset(tinfo, offset):
-    result = []
-    udt_data = idaapi.udt_type_data_t()
-    tinfo.get_udt_details(udt_data)
-    udt_member = idaapi.udt_member_t()
-    udt_member.offset = offset * 8
-    idx = tinfo.find_udt_member(udt_member, idaapi.STRMEM_OFFSET)
-    if idx != -1:
-        while idx < tinfo.get_udt_nmembers() and udt_data[idx].offset == offset * 8:
-            udt_member = udt_data[idx]
-            if udt_member.offset == offset * 8:
-                result.append(udt_member.type)
-            idx += 1
-    return result
+def get_tinfo_elegant(name):
+    ti = ida_typeinf.tinfo_t()
+    til = ti.get_til()
+    # get_named_type(self, til, name, decl_type=BTF_TYPEDEF, resolve=True, try_ordinal=True)
+    if ti.get_named_type(til, name, ida_typeinf.BTF_STRUCT, True, True):
+        return ti
+    return None
+
+#  def get_type_tinfo(t):
+    #  type_tuple = idaapi.get_named_type(None, t, 1)
+    #  tif = idaapi.tinfo_t()
+    #  try:
+        #  tif.deserialize(None, type_tuple[1], type_tuple[2])
+        #  return tif
+    #  except TypeError:
+        #  return None
 
 def get_tinfo_mega(name):
     r = idc.parse_decl("""
@@ -626,6 +610,40 @@ def get_tinfo_mega(name):
     if typename == name:
         return tif
     return False
+
+
+def get_structnames_by_ordinal():
+    idati = ida_typeinf.get_idati()
+    ti = ida_typeinf.tinfo_t()
+
+    for ordinal in range(1, ida_typeinf.get_ordinal_qty(idati)+1):
+        if ti.get_numbered_type(idati, ordinal):
+            yield ti.dstr()
+
+def StructsMatching(regex=None, exclude=None, filter=lambda x: x, flags=0):
+    if regex and not isinstance(regex, re.Pattern):
+        regex = re.compile(regex, flags)
+    if exclude and not isinstance(exclude, re.Pattern):
+        exclude = re.compile(exclude, flags)
+    result = [a for a in get_structnames_by_ordinal() if filter(a) and (not regex or re.match(regex, a))]
+    if exclude:
+        result = [a for a in result if not re.search(regex, idc.get_name(a))]
+    return result
+
+def get_field_at_offset(tinfo, offset):
+    result = []
+    udt_data = idaapi.udt_type_data_t()
+    tinfo.get_udt_details(udt_data)
+    udt_member = idaapi.udt_member_t()
+    udt_member.offset = offset * 8
+    idx = tinfo.find_udt_member(udt_member, idaapi.STRMEM_OFFSET)
+    if idx != -1:
+        while idx < tinfo.get_udt_nmembers() and udt_data[idx].offset == offset * 8:
+            udt_member = udt_data[idx]
+            if udt_member.offset == offset * 8:
+                result.append(udt_member.type)
+            idx += 1
+    return result
 
 def has_decl(name, size=None, raw=False):
     r = idc.parse_decl("""
@@ -1045,32 +1063,72 @@ def struct_guess_elem_size(size, fudge=0):
         results.append([x//8 for x in _.sort(factors(size+r)) if not x % 8])
     return [(i,x[1:-1]) for i,x in enumerate(results) if len(x) > 2]
 
-def getVarType(size, unsigned = None, count = 1, is_ptr = False, is_float = False):
+reclass_types = [
+    "nt_base",   "nt_instance", "nt_struct",      "nt_hidden",   "nt_hex32",  "nt_hex64",
+    "nt_hex16",  "nt_hex8",     "nt_pointer",     "nt_int64",    "nt_int32",  "nt_int16",
+    "nt_int8",   "nt_float",    "nt_double",      "nt_uint32",   "nt_uint16", "nt_uint8",
+    "nt_text",   "nt_unicode",  "nt_functionptr", "nt_custom",   "nt_vec2",   "nt_vec3",
+    "nt_quat",   "nt_matrix",   "nt_vtable",      "nt_array",    "nt_class",  "nt_pchar",
+    "nt_pwchar", "nt_bits",     "nt_uint64",      "nt_function",
+    "nt_ptrarray" ]
+
+def getVarType(size, unsigned = None, count = 1, is_ptr = False, is_float = False, reclass = False):
+    # reclass types
     # @static: unsigned_types
+    if 'nt_unsigned_types' not in getVarType.__dict__:
+        getVarType.nt_unsigned_types = list(braceexpand("nt_uint{8,16,32,64,128}"))
+    # @static: signed_types
+    if 'nt_signed_types' not in getVarType.__dict__:
+        getVarType.nt_signed_types = list(braceexpand("nt_int{8,16,32,64,128}"))
+    # @static: maybe_signed_types
+    if 'nt_maybe_signed_types' not in getVarType.__dict__:
+        getVarType.nt_maybe_signed_types = getVarType.nt_signed_types
+    # @static: float_types
+    if 'nt_float_types' not in getVarType.__dict__:
+        getVarType.nt_float_types = ["float", "nt_vec2", "nt_vec3", "nt_quat", "nt_matrix" ]
+
+
+    # stdint types
     if 'unsigned_types' not in getVarType.__dict__:
-        getVarType.unsigned_types = list(braceexpand("uint{8,16,32,64}_t"))
+        getVarType.unsigned_types = list(braceexpand("uint{8,16,32,64,128}_t"))
     # @static: signed_types
     if 'signed_types' not in getVarType.__dict__:
-        getVarType.signed_types = list(braceexpand("int{8,16,32,64}_t"))
+        getVarType.signed_types = list(braceexpand("int{8,16,32,64,128}_t"))
     # @static: maybe_signed_types
     if 'maybe_signed_types' not in getVarType.__dict__:
-        getVarType.maybe_signed_types = ["_BYTE", "_WORD", "_DWORD", "_QWORD"]
+        getVarType.maybe_signed_types = ["_BYTE", "_WORD", "_DWORD", "_QWORD", "_OWORD"]
     # @static: float_types
     if 'float_types' not in getVarType.__dict__:
-        getVarType.float_types = ["float", "double", "Vector4"]
+        getVarType.float_types = ["float", "Vector2", "Vector3", "Vector4", "Vector8", "Vector16"]
+
 
     if not size:            return ''
-    if is_float:            packType = getVarType.float_types
-    elif unsigned is None:  packType = getVarType.maybe_signed_types
-    elif unsigned:          packType = getVarType.unsigned_types
-    else:                   packType = getVarType.signed_types
 
-    if size & (size - 1):
-        raise ValueError("Size was not log2")
+    if is_float:            stype = 'float_types'
+    elif unsigned is None:  stype = 'maybe_signed_types'
+    elif unsigned:          stype = 'unsigned_types'
+    else:                   stype = 'signed_types'
 
-    idx = log2(size)
+    if reclass:
+        stype = 'nt_' + stype
+
+    packType = getattr(getVarType, stype)
+
+    if size & (size - 1) and not is_float:
+        raise ValueError("Size {} was not log2".format(size))
+
+
+    if is_float:
+        if size < 16:
+            idx = (size // 4) - 1
+            if idx < 0:
+                raise ValueError("Size {} could not be converted to float-type".format(size))
+        else:
+            idx = log2(size) - 1
+    else:
+        idx = log2(size)
     if idx >= len(packType):
-        raise IndexError("Size was too large")
+        raise IndexError("Size {} was too large".format(size))
 
     name = packType[idx]
 
@@ -1332,7 +1390,7 @@ def StackInfo(ea, pack = False, parent_offset = 0, rename = False, renameRel = T
     print(r)
     return names, packString
 # for debug purposes
-def StrucInfo(name, pack = False, parent_offset = 0, rename = False, renameRel = True, parent_tif = None, parents = [], verbose = False, header=False, export=None):
+def StrucInfo(name, pack = False, parent_offset = 0, rename = False, renameRel = True, parent_tif = None, parents = [], verbose = False, header=False, export=None, reclass=False):
 
     output = []
     def oprint(s):
@@ -1406,7 +1464,20 @@ def StrucInfo(name, pack = False, parent_offset = 0, rename = False, renameRel =
         tif    =_get_member_tinfo(sid,  offset)
         tiftype=get_member_typename(sid,  offset)
         unsign= get_member_is_unsigned(sid, offset)
+        if tif:
+            trivial = not tif.has_details()
+        else:
+            trivial = True
         array = get_member_is_array(sid, offset)
+        if array:
+            array_size = tif.get_size()
+            array_element_size = tif.get_array_element().get_size()
+            array_element_count = array_size // array_element_size
+
+            elem_size = tif.get_array_element().get_size()
+            elem_type = tif.get_array_element().__str__()
+            elem_unsign = tif.get_array_element().is_unsigned()
+            elem_count = tif.get_array_nelems()
         if tif:
             ptr   = tif.is_ptr()
             if ptr:
@@ -1461,10 +1532,6 @@ def StrucInfo(name, pack = False, parent_offset = 0, rename = False, renameRel =
                 idc.set_member_name(sid, offset, new_name)
         if array:
             globals()['tif'] = tif
-            elem_size = tif.get_array_element().get_size()
-            elem_type = tif.get_array_element().__str__()
-            elem_unsign = tif.get_array_element().is_unsigned()
-            elem_count = tif.get_array_nelems()
             if strid_name:
                 if debug:
                     print("// struct: {} (0x{:x})".format(strid_type, idc.get_struc_size(strid)))
@@ -1550,6 +1617,7 @@ def StrucInfo(name, pack = False, parent_offset = 0, rename = False, renameRel =
         cmt = '\n'.join(cmts)
 
         alignment = 0
+        type = "unKnown"
         if size is not None:
             if name in alignments:
                 alignment = alignments[name]
@@ -1557,8 +1625,12 @@ def StrucInfo(name, pack = False, parent_offset = 0, rename = False, renameRel =
                 type = member_types[name]
             else:
                 if idc.is_struct(flags):
-                    print("type = name?", name)
-                    type = name
+                    if strid_name != strid_type:
+                        print("strid_type != strid_name?", name)
+                        print("[getName] strid_name:{}, strid_type:{}".format(strid_name, strid_type))
+                        type = "conFusion"
+                    else:
+                        type = strid_name
                 else:
                     # print(("Unknown definition for type: {}".format(name)))
                     if tif:
@@ -1586,8 +1658,39 @@ def StrucInfo(name, pack = False, parent_offset = 0, rename = False, renameRel =
                 offset = offset + size
 
             if header:
+                # if tif.is_array() ...
                 _opt_array, _type = string_between_splice('[', ']', type, inclusive=1, greedy=1, repl='')
-                oprint("/* 0x{:04x} */ {:<32} {}{};".format(getOffset(ori_offset), _type, getName(name), _opt_array))
+                # dprint("[getName] _opt_array, _type, tif.is_float()")
+                
+                if _opt_array and tif and tif.get_array_element().is_float():
+                    try:
+                        _type = getVarType(array_size, is_float=True, reclass=reclass)
+                        _opt_array = ''
+                    except ValueError as e:
+                        print("[getName] _opt_array:{}, _type:{}, tif.is_float:{}".format(_opt_array, _type, tif.get_array_element().is_float()))
+                        print("ValueError: {}".format(str(e)))
+                        pass
+                elif _opt_array and tif and reclass:
+                    try:
+                        _type = getVarType(tif.get_array_element().get_size(), unsigned=tif.get_array_element().is_unsigned(), is_float=tif.get_array_element().is_float(), reclass=reclass)
+                    except ValueError as e:
+                        print("[getName] _opt_array:{}, _type:{}, tif.is_float:{}".format(_opt_array, _type, tif.get_array_element().is_float()))
+                        print("ValueError: {}".format(str(e)))
+                        pass
+                else:
+                    if trivial:
+                        try:
+                            _type = getVarType(tif.get_size(), unsigned=tif.is_unsigned(), is_float=tif.is_float(), reclass=reclass)
+                        except ValueError as e:
+                            print("[getName] _opt_array:{}, _type:{}, tif.is_float:{}".format(_opt_array, _type, tif.get_array_element().is_float()))
+                            print("ValueError: {}".format(str(e)))
+                            pass
+                    else:
+                        # dprint("[nontrivial] _type")
+                        print("[nontrivial] _type:{}".format(_type))
+                        
+
+                oprint("/* 13 0x{:04x} */ {:<32} {}{};".format(getOffset(ori_offset), _type, getName(name), _opt_array))
             elif not header:
                 oprint(("0x{:04x} {} {:32} size:{:<4} fflags:{:08x} type:{}/{} strid:{:x} cmt:{}" \
                         .format(getOffset(ori_offset), thisPackString, getName(name), size, flags, type, tiftype, (strid ^ 0xff00000000000000) if strid != -1 else 0, cmt.strip())))
@@ -1597,7 +1700,8 @@ def StrucInfo(name, pack = False, parent_offset = 0, rename = False, renameRel =
                 name = 'padding_{:03x}'.format(getOffset(offset))
             # padding
             if header:
-                oprint("/* 0x{:04x} */ {:<32} {};".format(getOffset(offset), 'char', getName(name)))
+                _type = getVarType(1, reclass=reclass)
+                oprint("/* 14 0x{:04x} */ {:<32} {};".format(getOffset(offset), _type, getName(name)))
             elif not header:
                 oprint("0x{:04x} {} {:32} size:{:<4} fflags:{:08x};".format(getOffset(offset), "x", getName(name), size, flags))
             offset = offset + 1
@@ -1877,7 +1981,7 @@ def StrucClassCommenter(name, pack = False, parent_offset = 0, rename = False, r
 
             if header:
                 _opt_array, _type = string_between_splice('[', ']', type, inclusive=1, greedy=1, repl='')
-                print("/* 0x{:04x} */ {:<32} {}{};".format(getOffset(ori_offset), _type, getName(name), _opt_array))
+                print("/* 11 0x{:04x} */ {:<32} {}{};".format(getOffset(ori_offset), _type, getName(name), _opt_array))
             elif not header:
                 print(("0x{:04x} {} {:32} size:{:<4} fflags:{:08x} type:{}/{} strid:{:x} cmt:{}" \
                         .format(getOffset(ori_offset), thisPackString, getName(name), size, flags, type, tiftype, (strid ^ 0xff00000000000000) if strid != -1 else 0, cmt.strip())))
@@ -1887,7 +1991,7 @@ def StrucClassCommenter(name, pack = False, parent_offset = 0, rename = False, r
                 name = 'padding_{:03x}'.format(getOffset(offset))
             # padding
             if header:
-                print("/* 0x{:04x} */ {:<32} {};".format(getOffset(offset), 'char', getName(name)))
+                print("/* 12 0x{:04x} */ {:<32} {};".format(getOffset(offset), 'char', getName(name)))
             elif not header:
                 print("0x{:04x} {} {:32} size:{:<4} fflags:{:08x};".format(getOffset(offset), "x", getName(name), size, flags))
             offset = offset + 1

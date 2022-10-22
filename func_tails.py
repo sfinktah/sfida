@@ -7,6 +7,7 @@
 #  from exectools import make_refresh
 import os
 import re
+import sys
 import ida_funcs, idc, ida_bytes, idautils
 from collections import defaultdict
 from collections import deque
@@ -28,6 +29,15 @@ if not idc:
 
 refresh_func_tails = make_refresh(os.path.abspath(__file__))
 refresh = make_refresh(os.path.abspath(__file__))
+
+class recursion_depth:
+    def __init__(self, limit):
+        self.limit = limit
+        self.default_limit = sys.getrecursionlimit()
+    def __enter__(self):
+        sys.setrecursionlimit(self.limit)
+    def __exit__(self, type, value, traceback):
+        sys.setrecursionlimit(self.default_limit)
 
 def _node_format(ea):
     if isinstance(ea, int):
@@ -1330,7 +1340,9 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
 
     chunkheads = chunkheads_perm.copy()
     chunkheads_visited = dict()
-    bb = print_basic_blocks_dfs_bfs()
+    bb = None
+    with recursion_depth(4000):
+        bb = print_basic_blocks_dfs_bfs()
     #  d = []
     addrs = []
     for x in bb:

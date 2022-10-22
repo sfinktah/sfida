@@ -2422,6 +2422,14 @@ def SkipJumps(ea, apply=False, returnJumps=False, returnTarget=False, until=None
             setptr(ea, target)
         return target
 
+    if IsCode_(ea) and idc.get_operand_type(ea, 1) == idc.o_mem:
+        target = idc.get_operand_value(ea, 1)
+        if IsValidEA(target) and IsCode_(target):
+            new_target = SkipJumps(target)
+            if new_target != target:
+                nassemble(ea, string_between('[rel ', ']', diida(ea), repl=hex(new_target)), apply=1)
+        return
+
     
     target = ea
     count = 0
@@ -9855,3 +9863,8 @@ def rename_nullsub_offsets():
     m = FindInSegments('55 48 81 ec 80 00 00 00 48 8d 6c 24 20 48 89 5d 50 48 89 4d 70 33 c0 48 89 45 30 48 89 45 38 48 89 45 28', ['.text', '.rdata'], limit=100)
     for ea in m: LabelAddressPlus(ea, 'OtherCheckLoadedModules')
     for ea in m: SetType(ea, 'void __fastcall CheckLoadedModules_ToLowerChar_14(__int64)')
+
+def label_time_vars():
+    for ea in _.uniq(GetFuncStart(xrefs_to(eax('timeGetTime')))):
+        for line in decompile_function_search(ea, 'dword_[0-9A-F]+ .= timeGetTime'):
+            LabelAddressPlus(eax(string_between('', ' ', line)), 'g_timeAffectedDword')

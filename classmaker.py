@@ -188,6 +188,9 @@ def does_struc_exist(name):
         return False
     return True
 
+def is_struc_synced(name):
+    return does_struc_exist(name) and idc.get_struc_id(name) == BADADDR
+
 def does_struc_exist_re(pattern, flags):
     l = [x for x in get_struc_ordinal_re(pattern, flags)]
     l.extend([x for x in get_struc_idx_re(pattern, flags)])

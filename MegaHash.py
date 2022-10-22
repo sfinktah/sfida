@@ -24,7 +24,11 @@ def file_iter_line_pos(filename):
         while line:
             yield (line, position)
             position += len(line)
-            line = fr.readline(256)
+            try:
+                line = fr.readline(256)
+            except UnicodeDecodeError as e:
+                print("{}: {} processing byte {}".format(e.__class__.__name__, str(e), position))
+
 
 def replace_extension(filename, new_extension):
     r = os.path.splitext(filename)
@@ -78,7 +82,7 @@ class MegaHash:
         self.m_lastIndexCheck = 0
         self.m_filename_txt = replace_extension(filename, "txt")
         self.m_filename_dat = replace_extension(filename, "dat")
-        if is_file_newer(self.m_filename_txt, self.m_filename_dat) or file_size(self.m_filename_txt) > file_size(self.m_filename_dat):
+        if is_file_newer(self.m_filename_txt, self.m_filename_dat): # or file_size(self.m_filename_txt) > file_size(self.m_filename_dat):
             self.MakeIndex()
         self.ReadIndex()
 
