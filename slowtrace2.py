@@ -3433,26 +3433,33 @@ def slowtrace2(ea=None,
                                             printi("[Arxan] balanceCalls > return adjustments ({} > {})".format(hex(balanceCalls), len(_stackMut)))
                                         for r in _stackMut:
                                             call_num, call_return, stkvar1, stkvar2 = r.offset, r.location, r.arg, r.align
-                                            if ida_ida.cvar.inf.min_ea < call_return < ida_ida.cvar.inf.max_ea and 2 < call_num < 64:
-                                                #  consec_calls, targ, unused = CountConsecutiveCalls(call_return, isUnconditionalJmpOrCall)
-                                                #  call_num = len(consec_calls)
-                                                #  if not start_num:
-                                                    #  start_num = call_num
-                                                #  num = call_num - start_num
-                                                # dprint("[returnAddresses] len(returnAddresses), num")
-                                                
-                                                num = len(returnAddresses)
-                                                returnAddresses.append(call_return)
+                                            try:
+                                                if ida_ida.cvar.inf.min_ea < call_return < ida_ida.cvar.inf.max_ea and 2 < call_num < 64:
+                                                    #  consec_calls, targ, unused = CountConsecutiveCalls(call_return, isUnconditionalJmpOrCall)
+                                                    #  call_num = len(consec_calls)
+                                                    #  if not start_num:
+                                                        #  start_num = call_num
+                                                    #  num = call_num - start_num
+                                                    # dprint("[returnAddresses] len(returnAddresses), num")
+                                                    
+                                                    num = len(returnAddresses)
+                                                    returnAddresses.append(call_return)
 
-                                                if not IsCode_(call_return):
-                                                    forceCode(call_return)
+                                                    if not IsCode_(call_return):
+                                                        forceCode(call_return)
 
-                                                if idc.print_insn_mnem(call_return).startswith("ret"):
-                                                    sprint("ArxanContinuation: " + str(call_num) + " (" + str(call_num - balanceSpd) + ") " + str(hex(call_return)) + ": ret")
-                                                    null_count += 1
-                                                else:
-                                                    sprint("ArxanContinuation: " + str(call_num) + " (" + str(call_num - balanceSpd) + ") " + str(hex(call_return)) + ": " + str(idc.print_insn_mnem(call_return)))
-                                                    cont_count += 1
+                                                    if idc.print_insn_mnem(call_return).startswith("ret"):
+                                                        sprint("ArxanContinuation: " + str(call_num) + " (" + str(call_num - balanceSpd) + ") " + str(hex(call_return)) + ": ret")
+                                                        null_count += 1
+                                                    else:
+                                                        sprint("ArxanContinuation: " + str(call_num) + " (" + str(call_num - balanceSpd) + ") " + str(hex(call_return)) + ": " + str(idc.print_insn_mnem(call_return)))
+                                                        cont_count += 1
+                                            except TypeError as e:
+                                                printi("Exception: {}: {}".format(e.__class__.__name__, str(e)))
+                                                # dprint("[setIsRealFunc] call_num, ida_ida.cvar.inf.min_ea, ida_ida.cvar.inf.max_ea")
+                                                print("[setIsRealFunc] r:{} call_return:{}, ida_ida.cvar.inf.min_ea:{}, ida_ida.cvar.inf.max_ea:{}".format(r, call_return, ida_ida.cvar.inf.min_ea, ida_ida.cvar.inf.max_ea))
+                                                raise
+
 
                                             
                                         if _.indexOf(returnAddresses, None) == -1:

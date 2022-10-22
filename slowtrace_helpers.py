@@ -2428,7 +2428,7 @@ def SkipJumps(ea, apply=False, returnJumps=False, returnTarget=False, until=None
             new_target = SkipJumps(target)
             if new_target != target:
                 nassemble(ea, string_between('[rel ', ']', diida(ea), repl=hex(new_target)), apply=1)
-        return
+        return ea
 
     
     target = ea
