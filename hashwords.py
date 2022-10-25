@@ -167,7 +167,7 @@ def snake_case(word):
 #  print("[dict] _dictWords:{}".format(_dictWords))
 
 def hashwords_test():
-    l = [0x140000000, -1, 0, 1]
+    l = [ida_ida.cvar.inf.min_ea, -1, 0, 1]
     # l.extend(list(range(-0xffffffff, 0xffffffff + 0xfffff, 0xffffffff)))
     for r in l:
         num = r

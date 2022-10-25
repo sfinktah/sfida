@@ -445,7 +445,7 @@ class IDARequestHandler(HTTPRequestHandler):
         # multiple modes
         # with address return everything about that address
         # with name, return everything about that name
-        idc.jumpto(0x140000000)
+        idc.jumpto(ida_ida.cvar.inf.min_ea)
         return idc.here()
 
 

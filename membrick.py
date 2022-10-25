@@ -220,7 +220,7 @@ def find_checksummers():
         abso = idc.get_qword(mem(ea).add(o_abs).rip(4).val())
         #  base = idc.get_qword(mem(ea).add(o_base).rip(4).val())
         if rel == abso: #  and base == idc.get_name_ea_simple("__ImageBase"):
-            mem(abso).label('ArxanChecksumActual1')
+            mem(abso).label("ArxanCheck_{}".format(long_to_words(abso - ida_ida.cvar.inf.min_ea)))
             if idc.get_wide_byte(ea + 81) == 0xe8:
                 mem(ea).add(82).rip(4).label('ArxanGetNextRange').type("void __fastcall f(uint8_t **guide, arxan_range *range);")
             mem(ea).add(o_abs).rip(4).label('pArxanChecksum_AbsAddressSelf')
@@ -253,7 +253,7 @@ def find_checksummers2():
             #  mem(ea).add(o_abs).rip(4).label("p{}_AbsAddressSelf".format(fnName))
             #  mem(ea).add(o_rel).rip(4).label(fnName)
             #  mem(abso).label(fnName)
-            mem(abso).label('ArxanChecksumActual2')
+            mem(abso).label("ArxanCheck_{}".format(long_to_words(abso - ida_ida.cvar.inf.min_ea)))
             return abso
         else:
             print("rel: {:x}, abso: {:x}".format(rel, abso))
@@ -274,7 +274,7 @@ def find_checksummers3():
             #  mem(ea).add(o_abs).rip(4).label("p{}_AbsAddressSelf".format(fnName))
             #  mem(ea).add(o_rel).rip(4).label(fnName)
             #  mem(abso).label(fnName)
-            mem(abso).label('ArxanChecksumActual3')
+            mem(abso).label("ArxanCheck_{}".format(long_to_words(abso - ida_ida.cvar.inf.min_ea)))
             return abso
         else:
             print("{:x}: rel: {:x}, abso: {:x}".format(ea, rel, abso))
@@ -332,11 +332,11 @@ def find_checksummers6():
             #  mem(ea).add(o_abs).rip(4).label("p{}_AbsAddressSelf".format(fnName))
             #  mem(ea).add(o_rel).rip(4).label(fnName)
             #  mem(abso).label(fnName)
-            mem(abso).label('ArxanChecksumActual6')
+            mem(abso).label("ArxanCheck_{}".format(long_to_words(abso - ida_ida.cvar.inf.min_ea)))
             return abso
         else:
             print("{:x}: rel: {:x}, abso: {:x}".format(ea, rel, abso))
-            mem(rel).label('ArxanChecksumActual7')
+            mem(rel).label("ArxanCheck_{}".format(long_to_words(abso - ida_ida.cvar.inf.min_ea)))
             return rel
         return False
 
@@ -367,7 +367,7 @@ def find_checksummers4():
     patterns = ['D3 E0 33 45 ?? 89 45 ?? 8B 45 ?? E9']
 
 def find_checksummers5():
-    __ImageBase = 0x140000000
+    __ImageBase = ida_ida.cvar.inf.min_ea
     strucText = """
         typedef unsigned char uint8_t;
         typedef int int32_t;
@@ -388,7 +388,7 @@ def find_checksummers5():
         abso = idc.get_qword(mem(ea).add(o_abs).rip(4).val())
         base = idc.get_qword(mem(ea).add(o_base).rip(4).val())
         if rel == abso and base == __ImageBase:
-            mem(abso).label('ArxanChecksumActual5')
+            mem(abso).label("ArxanCheck_{}".format(long_to_words(abso - ida_ida.cvar.inf.min_ea)))
             if idc.get_wide_byte(ea + 81) == 0xe8:
                 mem(ea).add(82).rip(4).label('ArxanGetNextRange').type("void __fastcall f(uint8_t **guide, arxan_range *range);")
             mem(ea).add(o_abs).rip(4).label('pArxanChecksum_AbsAddressSelf')
@@ -530,7 +530,7 @@ def find_arxan_mutators():
         for ea in [e for e in FindInSegments(pattern, '.text')]:
             results.append(ea)
             print(hex(ea))
-            LabelAddressPlus(ea, 'ArxanChecksumOrHealerA')
+            LabelAddressPlus(ea, "ArxanCheck_{}".format(long_to_words(ex - ida_ida.cvar.inf.min_ea)))
     return results
 
 def find_vortex():
@@ -690,7 +690,7 @@ def find_checksummers_from_balances():
                         continue
                     results.append(eax(target))
                     if not HasUserName(eax(target)):
-                        LabelAddressPlus(eax(target), 'ArxanChecksumActual0')
+                        LabelAddressPlus(eax(target), "ArxanCheck_{}".format(long_to_words(eax(target) - ida_ida.cvar.inf.min_ea)))
             except AdvanceFailure:
                 pass
     return results
@@ -826,7 +826,8 @@ def find_shifty_stuff():
     #  print("{}".format("decrypted_loadlibs"))
     #  find_decrypted_loadlibs()
     print("{}".format("stack_align_adjust"))
-    results['balance'] = find_stack_align_adjust()
+    results['balance'] = []
+    # results['balance'] = find_stack_align_adjust()
     print("{}".format("imagebase_offsets"))
     find_imagebase_offsets()
     if False:
@@ -838,7 +839,10 @@ def find_shifty_stuff():
     #  LabelManyAddresses(results['cs'][1], "ArxanCheckFunction__2", force=1)
     #  LabelManyAddresses(results['cs'][2], "ArxanCheckFunction__3", force=1)
     LabelManyAddresses(results['csworkers'], "ArxanGetNextRange", force=1)
-    LabelManyAddresses(results['balance'], "ArxanBalance", force=1)
+    for ea in results['balance']:
+        if not ean(ea).startswith('ArxanBalance'):
+            LabelAddressPlus(ea, 'ArxanBalance')
+    #  LabelManyAddresses(results['balance'], "ArxanBalance", force=1)
     for ea in results['balance']:
         Commenter(ea, 'line').remove('[DENY JMP]')
     LabelManyAddresses(results['memcpy'], "ArxanMemcpy", force=1)
@@ -1054,6 +1058,18 @@ def NamesMatching(regex=None, exclude=None, filter=lambda x: x, flags=0):
     if exclude:
         result = [a for a in result if not re.search(regex, idc.get_name(a))]
     return result
+
+def RenameFunctionsMatching(regex=None, iteratee=None, exclude=None, filter=lambda x: x, flags=0):
+    if callable(iteratee):
+        for addr in FunctionsMatching(regex, exclude, filter, flags):
+            fnOldName = idc.get_name(addr, 0)
+            fnNewName = iteratee(fnOldName)
+            if fnNewName and fnNewName != fnOldName:
+                LabelAddressPlus(addr, fnNewName)
+                print("0x{:x}: {} -> {}".format(addr, fnOldName, ean(addr)))
+
+    else:
+        raise ValueError('no iteratee specified')
 
 
 def FunctionNamesMatching(regex=None, exclude=None, filter=lambda x: x, flags=0):

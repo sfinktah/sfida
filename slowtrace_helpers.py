@@ -5,6 +5,7 @@ import traceback
 import re
 import subprocess
 import math
+from fnvhash import fnv1a_64 as fnv
 from superglobals import *
 from attrdict1 import SimpleAttrDict
 from collections import defaultdict
@@ -947,7 +948,7 @@ def FixChunk(ea=None, leave=None, owner=None, chunk_end=None):
             idc.auto_wait()
 
     if len(valid_owners) > 1:
-        printi("[FixChunk] Multiple valid owners, removing them all from {:x} (except: {})".format(ea, hex(leave)))
+        printi("[FixChunk] Multiple valid owners ({}), removing them all from {:x} (except: {})".format(", ".join(GetFuncName(valid_owners)), ea, hex(leave)))
         RemoveAllChunkOwners(ea, leave=leave)
 
     if len(GetChunkOwners(ea)) > 1:
@@ -2803,7 +2804,7 @@ def RemoveNativeRegistration():
     rx = GenericRanger([GenericRange(x[0], last=x[1]) for x in r], sort=1, outsort=1)
     pp(rx[-100:])
     printi("saving... {} ranges".format(len(rx)))
-    json_save_safe('e:/git/ida/2245-native-remove-2.json', [(x.start-0x140000000, x.trend-x.start-0x140000000) for x in rx])
+    json_save_safe('e:/git/ida/2245-native-remove-2.json', [(x.start-ida_ida.cvar.inf.min_ea, x.trend-x.start-ida_ida.cvar.inf.min_ea) for x in rx])
     ## j = json_load('e:/git/ida/2245-native-remove.json')
 
     # rx = [(0x140ca4486, 0xc), (0x140caeeb2, 0xc), (0x140cb1d41, 0x16), (0x140cb6b2e, 0xc), (0x140cd0085, 0xc), (0x140cf4ff1, 0xc), (0x140cfab1a, 0xc), (0x140d0e1b4, 0x5), (0x140d0e1bf, 0xb), (0x140d0e1d5, 0x17), (0x140d0e1f7, 0x17), (0x140d0e219, 0x17), (0x140d0e23b, 0x17), (0x140d0e25d, 0x17), (0x140d0e27f, 0x17), (0x140d0e2a1, 0x17), (0x140d0e2c3, 0x17), (0x140d0e2e5, 0x17), (0x140d0e307, 0x17), (0x140d0e329, 0x17), (0x140d0e34b, 0x17), (0x140d0e36d, 0x17), (0x140d0e38f, 0x17), (0x140d0e3b1, 0x17), (0x140d0e3d3, 0x17), (0x140d0e3f5, 0x17), (0x140d0e417, 0x17), (0x140d0e439, 0x17), (0x140d0e45b, 0x17), (0x140d0e47d, 0x17), (0x140d0e49f, 0x17), (0x140d0e4c1, 0x17), (0x140d0e4e3, 0x17), (0x140d0e505, 0x17), (0x140d0e527, 0x17), (0x140d0e549, 0x17), (0x140d0e56b, 0x17), (0x140d0e58d, 0x17), (0x140d0e5af, 0x17), (0x140d0e5d1, 0x17), (0x140d0e5f3, 0x17), (0x140d0e615, 0x17), (0x140d0e637, 0x17), (0x140d0e659, 0x17), (0x140d0e67b, 0x17), (0x140d0e69d, 0x17), (0x140d0e6bf, 0x17), (0x140d0e6e1, 0x17), (0x140d0e703, 0x17), (0x140d0e725, 0x17), (0x140d0e747, 0x17), (0x140d0e769, 0x17), (0x140d0e78b, 0x17), (0x140d0e7ad, 0x17), (0x140d0e7cf, 0x17), (0x140d0e7f1, 0x17), (0x140d0e813, 0x17), (0x140d0e835, 0x17), (0x140d0e857, 0x17), (0x140d0e879, 0x17), (0x140d0e89b, 0x17), (0x140d0e8bd, 0x17), (0x140d0e8df, 0x17), (0x140d0e901, 0x17), (0x140d0e923, 0x17), (0x140d0e945, 0x17), (0x140d0e967, 0x17), (0x140d0e989, 0x17), (0x140d0e9ab, 0x17), (0x140d0e9cd, 0x17), (0x140d0e9ef, 0x17), (0x140d0ea11, 0x17), (0x140d0ea33, 0x17), (0x140d0ea55, 0x17), (0x140d0ea77, 0x17), (0x140d0ea99, 0x17), (0x140d0eabb, 0x17), (0x140d0eadd, 0x17), (0x140d0eaff, 0x17), (0x140d0eb21, 0x17), (0x140d0eb43, 0x17), (0x140d0eb65, 0x17), (0x140d0eb87, 0x17), (0x140d0eba9, 0x17), (0x140d0ebcb, 0x17), (0x140d0ebed, 0x17), (0x140d0ec0f, 0x17), (0x140d0ec31, 0x17), (0x140d0ec53, 0x17), (0x140d0ec75, 0x17), (0x140d0ec97, 0x17), (0x140d0ecb9, 0x17), (0x140d0ecdb, 0x17), (0x140d0ecfd, 0x17), (0x140d0ed1f, 0x17), (0x140d0ed41, 0x17), (0x140d0ed63, 0x17), (0x140d0ed85, 0x17), (0x140d0eda7, 0x17), (0x140d0edc9, 0x17), (0x140d0edeb, 0x17), (0x140d0ee0d, 0x17), (0x140d0ee2f, 0x17), (0x140d388e1, 0xc), (0x140d3b989, 0x16), (0x140d3beb1, 0xc), (0x14105a02e, 0xc), (0x14106fdf5, 0xc), (0x1413dd9b3, 0x16), (0x1417f9be4, 0xc), (0x141805414, 0xc), (0x141807dd4, 0xc), (0x141814e2e, 0xc), (0x14184707b, 0xc), (0x141847cf1, 0xc), (0x14184ceaa, 0xc), (0x14184d9ec, 0x16), (0x141858afb, 0xc), (0x14185918b, 0x16), (0x141859d81, 0xc), (0x141859feb, 0xc), (0x14185b8ea, 0x16), (0x14185c951, 0xc), (0x14185d994, 0x16), (0x14185ea03, 0xc), (0x141862f55, 0x16), (0x14186500e, 0x16), (0x14186654f, 0xc), (0x141868fbc, 0x16), (0x141868fdd, 0xc), (0x141869a0a, 0x16), (0x14186d61c, 0x16), (0x14186d6a8, 0x16), (0x14187002e, 0x16), (0x141870a78, 0x16), (0x141873386, 0x16), (0x1418743eb, 0x16), (0x141876aa4, 0xc), (0x141876ec7, 0xc), (0x141879add, 0xc), (0x14187c147, 0xc), (0x1418807b2, 0x16), (0x141888708, 0x16), (0x1430f0b11, 0x16), (0x1430f225f, 0x16), (0x1430fc19c, 0x16), (0x1432b633a, 0x16), (0x1432b8253, 0x16), (0x1432b95e1, 0x16), (0x1432c4224, 0x16), (0x1432c9831, 0x16), (0x1432cbbb2, 0x16), (0x1432ce58a, 0x16), (0x1432cecd4, 0x16), (0x1432d25db, 0x16), (0x1432d2dc7, 0x16), (0x1432e1584, 0x16), (0x1432e1dee, 0x16), (0x1432e2a5c, 0x16), (0x1432e470c, 0x16), (0x1432e4b20, 0xc), (0x1432e517f, 0x16), (0x1434a61a4, 0x16), (0x1434c6811, 0xc), (0x1434caced, 0xc), (0x1434da779, 0x16), (0x1434df64b, 0x16), (0x1434f5eac, 0xc), (0x1434f63f5, 0xc), (0x1434f7a28, 0x16), (0x1434fcab4, 0xc), (0x143500c96, 0xc), (0x14351b52b, 0x16), (0x14351d5b4, 0xc), (0x143586ac1, 0x16), (0x14358ebae, 0x16), (0x143594191, 0xc), (0x143594f5b, 0x10), (0x1435a70b7, 0x16), (0x143612c2d, 0xc), (0x14361d5e4, 0xc), (0x143625ce5, 0xc), (0x14362b27a, 0x16), (0x14363eb5d, 0xc), (0x14363fde5, 0x16), (0x143855cc5, 0xc), (0x14385c40b, 0x16), (0x14385ce05, 0x16), (0x1438ccb7c, 0x16), (0x1438e9eda, 0xc), (0x1438ed62a, 0xc), (0x1438fbf0c, 0x16), (0x1438fda30, 0x16), (0x1438fefb0, 0xc), (0x14390c3c6, 0xc), (0x14397585f, 0xc), (0x14398cda4, 0x16), (0x143991691, 0xc), (0x1439ba6ad, 0xc), (0x1439c0317, 0x16), (0x1439c162b, 0xc), (0x143e66857, 0xc), (0x143e6a800, 0x16), (0x143e6aaba, 0xc), (0x143e6f1c9, 0xc), (0x143e89f04, 0x16), (0x143e8b285, 0xc), (0x143e8ffba, 0x16), (0x143e91637, 0x16), (0x143e91e82, 0xc), (0x143e97978, 0x16), (0x143e99fdf, 0xc), (0x143e9e693, 0xc), (0x143ea5100, 0xc), (0x143ea8509, 0xc), (0x143eb4fe3, 0x16), (0x143edc5ac, 0xc), (0x143edefdf, 0x16), (0x143ee0251, 0x16), (0x143ee2eb9, 0xc), (0x143ee35eb, 0xc), (0x143ee37e0, 0xc), (0x143ee3885, 0xc), (0x143ee6930, 0x16), (0x143eee28a, 0x16), (0x143eee859, 0xc), (0x143ef0aa7, 0x16), (0x143efce87, 0x16), (0x143efd56f, 0x16), (0x143f5ad21, 0xc), (0x143f5ec13, 0xc), (0x143f60dad, 0x16), (0x143f6160f, 0xc), (0x143f7420e, 0x16), (0x143f7d1db, 0x16), (0x143fa0acc, 0x16), (0x143fa6e47, 0xc), (0x143fabdfa, 0xc), (0x143fee656, 0x16), (0x143fefd23, 0xc), (0x143ffa264, 0x16), (0x143fff6b0, 0x16), (0x14400332a, 0x16), (0x144007c1d, 0xc), (0x144009070, 0xc), (0x14401606d, 0x16), (0x14402b442, 0x16), (0x144037e3d, 0xc), (0x1440394f8, 0xc), (0x14403c479, 0x18), (0x14404a0f7, 0xc), (0x14405c80e, 0xc), (0x14408adec, 0xc), (0x144097fd4, 0x16), (0x14409aba5, 0x16), (0x14409fdd7, 0xc), (0x1440a6d6d, 0x16), (0x1440b0f96, 0xc), (0x1440b6463, 0xc), (0x1440c108b, 0xc), (0x1440c14e7, 0xc), (0x1440cc8a9, 0xc), (0x1440edbf1, 0xc), (0x1440eeca5, 0x16), (0x1445a1983, 0x16), (0x1445df4cd, 0x16), (0x1445e01f2, 0x16), (0x1445e646c, 0xc), (0x1447dd8a2, 0x16), (0x1449d5fec, 0x16), (0x1449dc8c1, 0x16), (0x1449dfcb4, 0xc), (0x1449e0054, 0x16), (0x144a67d2e, 0xc), (0x144a69345, 0x16), (0x144a7fad4, 0xc), (0x144afd832, 0x16), (0x144b059f6, 0x16), (0x144b09191, 0x16), (0x144b0d550, 0xc), (0x144b108cb, 0x16), (0x144b27534, 0x16), (0x144b39628, 0xc), (0x144b3bc25, 0x16), (0x144b5e759, 0xc)]
@@ -2813,10 +2814,10 @@ def RemoveNativeRegistration():
     pp(r[-100:])
     #  for r in j:
         #  start, _len = r
-        #  _len = 0x140000000 - ~_len
+        #  _len = ida_ida.cvar.inf.min_ea - ~_len
         #  _len -= 1
         #  count += _len
-        #  start += 0x140000000
+        #  start += ida_ida.cvar.inf.min_ea
     for r in rx:
         start = r.start
         end = r.trend
@@ -3212,7 +3213,7 @@ def RecurseCallers(ea=None, width=512, data=0, makeChart=0, exe='dot', depth=5, 
     call_list = _(call_list).chain().sort().uniq(1).value()
     colors = colorSubs(subs, colors, [fnName])
     if makeChart:
-        return nodes
+        # return nodes
         dot = __DOT.replace('%%MEAT%%', '\n'.join(colors + call_list))
         chartName = idc.get_name(ea, ida_name.GN_VISIBLE) or 'default'
         r = dot_draw(dot, name=chartName, exe=exe)
@@ -6317,8 +6318,8 @@ def GetChunkAddressesZeroOffset(ea = 0):
         ea:
     """
     chunks = GetChunks(ea, silent = 1)
-    return [(x["start"] - 0x140000000, x["end"] - x["start"]) for x in chunks]
-    # return [(x[0] - 0x140000000, x[1] - x[0]) for x in chunks]
+    return [(x["start"] - ida_ida.cvar.inf.min_ea, x["end"] - x["start"]) for x in chunks]
+    # return [(x[0] - ida_ida.cvar.inf.min_ea, x[1] - x[0]) for x in chunks]
 
 
 def CheckAllChunkForMultipleOwners():
@@ -6608,9 +6609,9 @@ def _fix_spd(l):
 
     _chunks = list(split_chunks(idautils.Chunks(l[0][0])))
 
-    for x in l:
+    for i, x in enumerate(l):
         ea = x[0]
-        if debug: printi("[_fix_spd] {:x} {:x}".format(ea, x[1]))
+        # if debug: printi("[_fix_spd] {:x} {:x}".format(ea, x[1]))
         #  fnStart = GetFuncStart(ea)
         #  chunkStart = OurGetChunkStart(ea, _chunks)
         #  if chunkStart == fnStart:
@@ -6629,9 +6630,9 @@ def _fix_spd(l):
 
         adjust = correct_sp - actual_sp # -0x88 - -0x8 == -0x80
         new_delta = adjust + actual_delta
-        if debug: printi("{:x} current spd: {:x}  desired spd: {:x}  current spdiff: {:x}  new spdiff: {:x}".format(ea, actual_sp, correct_sp, actual_delta, new_delta))
+        if debug: printi("{} -- {:x} current spd: {:x}  desired spd: {:x}  current spdiff: {:x}  new spdiff: {:x}".format(i, ea, actual_sp, correct_sp, actual_delta, new_delta))
         if actual_sp != correct_sp:
-            if debug: printi("{:x} adjusting delta by {:x} to {:x}".format(ea, adjust, actual_delta + adjust))
+            printi("{} -- {:x} adjusting delta by {:x} to {:x}".format(i, ea, adjust, actual_delta + adjust))
             idc.add_user_stkpnt(ea, new_delta) # -0x8 + -0x80
             idc.auto_wait()
             return True
@@ -6666,7 +6667,7 @@ def _fix_spd_auto(funcea=None):
             return
     else:
         spdList = funcea
-    for r in range(100):
+    for r in range(10000):
         if not _fix_spd(spdList):
             break
 
@@ -6846,12 +6847,22 @@ def populate_functions_from_pdata(iteratee=None, *args, **kwargs):
         if iteratee:
             iteratee(start, *args, **kwargs)
 
-def get_pdata_fnStart(ea):
+def get_pdata_fnStart(ea=None):
+    """
+    get_pdata_fnStart
+
+    @param ea: linear address
+    """
+    if isinstance(ea, list):
+        return [get_pdata_fnStart(x) for x in ea]
+
+    ea = eax(ea)
+
     found = 0
     for ref in idautils.XrefsTo(ea):
-        ea = ref.frm
-        if idc.get_segm_name(ea) == '.pdata':
-            unwind_info = ([x + 0x140000000 for x in struct.unpack('lll', get_bytes(ea, 12))])
+        addr = ref.frm
+        if idc.get_segm_name(addr) == '.pdata':
+            unwind_info = ([x + ida_ida.cvar.inf.min_ea for x in struct.unpack('lll', get_bytes(addr, 12))])
             if ea == unwind_info[0]:
                 return ea
 
@@ -9864,7 +9875,26 @@ def rename_nullsub_offsets():
     for ea in m: LabelAddressPlus(ea, 'OtherCheckLoadedModules')
     for ea in m: SetType(ea, 'void __fastcall CheckLoadedModules_ToLowerChar_14(__int64)')
 
+def __ummm():
+    addr = ida_ida.cvar.inf.min_ea + 0x0a59e0c
+    for ea in xrefs_to(getptr(addr), filter=lambda x: IsOff0(x.frm)): LabelAddressPlus(ea, 'o_MakeTamperActionBonusReport')
+    GetType(getptr(addr))
+    SetType(getptr(addr), 'void __fastcall(eAntiCheatBonusEventHttpTaskItemId acHash)')
+    for ea in xrefs_to(getptr(addr), filter=lambda x: IsOff0(x.frm)): SetType(ea, 'void (__fastcall *o_MakeTamperActionBonusReportAndSmth_8)(eAntiCheatBonusEventHttpTaskItemId);')
+
+def __ummm2():
+    addr = ida_ida.cvar.inf.min_ea + 0x0D4AB7B
+    for ea in xrefs_to(getptr(addr), filter=lambda x: IsOff0(x.frm)): LabelAddressPlus(ea, 'o_MakeTamperActionBonusReportAndSmth')
+    GetType(getptr(addr))
+    SetType(getptr(addr), 'void __fastcall(eAntiCheatBonusEventHttpTaskItemId acHash)')
+    for ea in xrefs_to(getptr(addr), filter=lambda x: IsOff0(x.frm)): SetType(ea, 'void (__fastcall *o_MakeTamperActionBonusReportAndSmth_8)(eAntiCheatBonusEventHttpTaskItemId);')
+
+
 def label_time_vars():
     for ea in _.uniq(GetFuncStart(xrefs_to(eax('timeGetTime')))):
         for line in decompile_function_search(ea, 'dword_[0-9A-F]+ .= timeGetTime'):
             LabelAddressPlus(eax(string_between('', ' ', line)), 'g_timeAffectedDword')
+
+def label_sign_extend_helpers():
+    for ea in FindInSegments("55 48 83 ec 20 48 8d 6c 24 20 88 4d 10 0f b6 45 10 48 0f be c0 48 63 c0 48 8d 65 00 5d c3"): LabelAddressPlus(ea, 'sign_extend_char')
+    for ea in FindInSegments("55 48 83 ec 20 48 8d 6c 24 20 89 4d 10 8b 45 10 48 63 c0 48 8d 65 00 5d c3"): LabelAddressPlus(ea, 'sign_extend_int')

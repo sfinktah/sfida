@@ -150,7 +150,7 @@ def ArxanGetNextRangeGen(guide, range=None):
         ArxanGetNextRange(guide, range)
         if range.start == 0xffffffff:
             break
-        yield 0x140000000 + range.start, range.len
+        yield ida_ida.cvar.inf.min_ea + range.start, range.len
 
 def ArxanGetNextRangeGenChunked(guide, _range=None, step=4):
     _range = arxan_range()
@@ -159,7 +159,7 @@ def ArxanGetNextRangeGenChunked(guide, _range=None, step=4):
         if _range.start == 0xffffffff:
             break
         for rs in range(_range.start, _range.end, step):
-            yield 0x140000000 + rs, min(step, _range.end - rs)
+            yield ida_ida.cvar.inf.min_ea + rs, min(step, _range.end - rs)
 
 
 def ArxanDwordSub(guide, src, dword):
@@ -264,7 +264,7 @@ class arxan_range:
         if self._start == _uint32(-1):
             print("[arxan_range] **** start == -1 ****")
         elif self._start > 0x5000000:
-            print("[arxan_range] start {:08x}".format(0x140000000 + self._start))
+            print("[arxan_range] start {:08x}".format(ida_ida.cvar.inf.min_ea + self._start))
         return self._start
 
     @property
@@ -459,8 +459,8 @@ def ArxanSecond():
     #  ptr1 = (uint64_t *)&_ImageBase[range1.start];
     #  ptr2 = (uint64_t *)&_ImageBase[range2.start];
 
-    ptr1 = 0x140000000 + range1.start
-    ptr2 = 0x140000000 + range2.start
+    ptr1 = ida_ida.cvar.inf.min_ea + range1.start
+    ptr2 = ida_ida.cvar.inf.min_ea + range2.start
 
     #  len1 = range1.len;
     #  len2 = range2.len;
@@ -507,8 +507,8 @@ def ArxanSecond():
         if not len1 or not len2:
             ArxanGetNextRange(guide1, range1)
             ArxanGetNextRange(guide2, range2)
-            ptr1 = 0x140000000 + range1.start
-            ptr2 = 0x140000000 + range2.start
+            ptr1 = ida_ida.cvar.inf.min_ea + range1.start
+            ptr2 = ida_ida.cvar.inf.min_ea + range2.start
             len1 = range1.len
             len2 = range2.len
 
@@ -570,7 +570,7 @@ if False:
     guide = arxan_guide(0x142ce88c8)
     range = arxan_range()
     ArxanGetNextRange(guide, range)
-    base = arxan_boxed_qword(0x140000000)
+    base = arxan_boxed_qword(ida_ida.cvar.inf.min_ea)
     skip = arxan_boxed_dword(0)
     rewritable_dword = arxan_boxed_dword(0)
     ArxanReadMemcpyRanges(base, guide, range, rewritable_dword, 4, skip)

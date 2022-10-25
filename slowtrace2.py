@@ -283,6 +283,9 @@ def stopped():
     return os.path.exists('e:/git/ida/stop')
 
 def retrace_list(address, pre=None, post=None, recolor=0, func=0, color="#280c01", spd=0, tails=0, dual=0, jump=0, zero=0, unpatch=0, chunk=False, *args, **kwargs):
+    global later
+    if address == later:
+        for ea in [x for x in later if isJmp(x)]: later.remove(ea)
     if address is None:
         return
     if os.path.exists('e:/git/ida/stop'):
@@ -793,8 +796,8 @@ def retrace(address=None, color="#280c01", no_hash=False, no_func_tails=False,  
                         return -1
                     elif spdList:
                         #  spd = _fix_spd_auto(SkipJumps(ea)) != 0
-                        for r in range(100):
-                            if r > 10:
+                        for r in range(10000):
+                            if r > 9 and r % 10 == 0:
                                 printi("_fix_spd(spdList) attempt {}".format(r))
                             if not _fix_spd(spdList):
                                 break
@@ -2419,7 +2422,7 @@ def slowtrace2(ea=None,
 
                     """
 
-                    # ArxanBalance
+                    # Balance
                     if 0:
                         m = sti.multimatch([
                             r'(push \w+)**',
@@ -3349,9 +3352,9 @@ def slowtrace2(ea=None,
                         #  Commenter(ea).add(sprint("ArxanStackBalance: push_count: " + str(push_count)))
                         if push_count > 6 or diida(new_ea) == 'test rsp, 0xf':
                             if not HasUserName(balanceLoc):
-                                LabelAddressPlus(balanceLoc, "ArxanBalance")
+                                LabelAddressPlus(balanceLoc, "Balance")
                             #  with DebugMode(0):
-                            printi("Tracing ArxanBalance: {:x}".format(balanceLoc))
+                            printi("Tracing Balance: {:x}".format(balanceLoc))
                             retrace(balanceLoc, depth=depth+1, max_depth=max_depth, once=1)
 
                             _extra = process_balance(balanceLoc)
@@ -3364,12 +3367,12 @@ def slowtrace2(ea=None,
                                     printi("removing trailing ret from _extra")
                                     _extra.insns.pop()
                                 if _extra.insns:
-                                    Commenter(ea).add("ArxanBalance EXTRA: {}".format("; ".join(
+                                    Commenter(ea).add("Balance EXTRA: {}".format("; ".join(
                                         _extra.values()
                                     #  _.pluck(_extra.insns, 'insn')
                                 )))
                             else:
-                                Commenter(ea).add("ArxanBalance NO-EXTRA")
+                                Commenter(ea).add("Balance NO-EXTRA")
                                 _extra = None
 
                             addrs = []
@@ -3389,7 +3392,7 @@ def slowtrace2(ea=None,
                                 mainName = 'BADADDR'
                                 if mainLoc != idc.BADADDR:
                                     if not idc.get_name(mainLoc).startswith("Arxan"):
-                                        LabelAddressPlus(mainLoc, "ArxanCheck")
+                                        LabelAddressPlus(mainLoc, "ArxanCheck_{}".format(long_to_words(mainLoc - ida_ida.cvar.inf.min_ea)))
                                     mainName = StripTags(idc.get_name(mainLoc))
                                     suffix = re.sub(r'^[a-zA-Z]+', '', mainName) # string_between('_', '', mainName)
                                     if suffix:
@@ -3398,6 +3401,7 @@ def slowtrace2(ea=None,
 
                                     sprint("ArxanCheck, " + str(hex(mainLoc)) + ", " + str(get_name_by_any(mainLoc)))
                                     Commenter(ea).add("{:16} {:x}".format("TheChecker", mainLoc))
+                                    Commenter(GetFuncStart(ea), "func").add("Checker: {}".format(long_to_words(mainLoc - ida_ida.cvar.inf.min_ea)))
                                     Commenter(ea).add(sprint("ArxanFunction " + str(idc.get_name(mainLoc)) + " at " + hex(mainLoc)[2:] + ", " + str(skipped_insn_count + 1) + " calls away"))
                                     _stackMut = None
                                     if HasUserName(mainLoc) and idc.get_func_name(mainLoc).startswith('Arxan') \
@@ -3537,7 +3541,7 @@ def slowtrace2(ea=None,
                                                     #  _locations = _.pluck(_locations, 'location')
                                                     #  # _.filter(_stackMut, lambda x, *a: not x['mnem'].startswith('ret')), 
                                                     
-                                                    printi("*#*# retracing {}".format(hex(_locations)))
+                                                    printi("*#*# retracing {}".format(hex(_locations[0:-1])))
                                                     # may need to retrace final location is _extra is in play
                                                     _retrace = [retrace(addr, once=1, depth=depth+1, max_depth=depth+1) for addr in _locations[0:-1]]
                                                     #  printi("[Target Retracings] {}".format(pfh(_retrace)))
@@ -3545,7 +3549,8 @@ def slowtrace2(ea=None,
 
                                                     sections = []
                                                     if _extra:
-                                                        retrace(_locations[-1], once=1, depth=depth+1, max_depth=depth+1)
+                                                        # this was causing infinite loops
+                                                        # retrace(_locations[-1], once=1, depth=depth+1, max_depth=depth+1)
                                                         sections = [_extra]
                                                         printi("[Section-Extra] {}".format("; ".join(_extra.values())))
 
@@ -3647,7 +3652,7 @@ def slowtrace2(ea=None,
                                                         #  cave_pos += len(nassemble(cave_pos, "jmp 0x{:x}".format(r2[-1][0]), apply=1))
 
                                                     else:
-                                                        raise ArxanFailure("Couldn't fit all this arxan shit in ({} bytes, need {} at {:x})", 5 + sum_sizes_first, remaining, balanceLoc)
+                                                        raise ArxanFailure("Couldn't fit all this Arxan shit in ({} bytes, need {} at {:x})", 5 + sum_sizes_first, remaining, balanceLoc)
 
                                                     # this was a rubbish idea
                                                     #   if len(sizes) > 2 and sizes[-1] == 0:
@@ -3664,8 +3669,8 @@ def slowtrace2(ea=None,
                                                     # forceCode(balanceLoc, cave_pos)
                                                     # idc.add_func(balanceLoc, cave_start)
                                                     # idc.add_func(cave_start, cave_pos)
-                                                    LabelAddressPlus(balanceLoc, "ArxanBalanceFillerBunnyOri")
-                                                    LabelAddressPlus(cave_start, "ArxanBalanceFillerBunnyCave")
+                                                    LabelAddressPlus(balanceLoc, "BalanceFillerBunnyOri_{}".format(long_to_words(mainLoc - ida_ida.cvar.inf.min_ea)))
+                                                    LabelAddressPlus(cave_start, "BalanceFillerBunnyCave_{}".format(long_to_words(mainLoc - ida_ida.cvar.inf.min_ea)))
                                                     #  ForceFunction(balanceLoc)
                                                     # ForceFunction(cave_start)
                                                     Commenter(cave_start).add("Arxan Code Cave for 0x{:x}".format(ea))
@@ -3819,9 +3824,9 @@ def slowtrace2(ea=None,
                                                 #  cave_start = balanceLoc + asm_len
                                                 #  ida_funcs.del_func(balanceLoc)
                                                 #  MyMakeUnknown(balanceLoc, cave_end - balanceLoc)
-                                                #  PatchBytes(balanceLoc, asm, "ArxanBalanceFillerBunny")
+                                                #  PatchBytes(balanceLoc, asm, "BalanceFillerBunny")
                                                 #  MyMakeFunction(balanceLoc, balanceLoc + asm_len)
-                                                #  LabelAddressPlus(balanceLoc, "ArxanBalanceFillerBunny")
+                                                #  LabelAddressPlus(balanceLoc, "BalanceFillerBunny")
     #  
                                                 #  asm = ''
                                                 #  skip_next = 0
@@ -3890,7 +3895,6 @@ def slowtrace2(ea=None,
 
 
 
-            if debug: printi("line 133")
             # if isCall(mnem) and opType0 in (o_mem, o_near, o_reg) and GetJumpTarget(ea):
             if isCall(mnem) and opType0 in (o_near,) and GetJumpTarget(ea): # o_mem
                 if False and ida_funcs.get_func(target) and not ida_funcs.func_does_return(target):
@@ -3911,7 +3915,6 @@ def slowtrace2(ea=None,
                     line = output("\nCouldn't advance past 0x%x (%s)" % (ea, str(e)))
                     break
 
-            if debug: printi("line 134")
             # first check for "jmp"
             if labelNextCall:
                 if isUnconditionalJmpOrCall(mnem):
@@ -4778,7 +4781,7 @@ def retrace_native_registration():
     for ea in AllRefsTo(idc.get_name_ea_simple('register_impl'))['allRefs']:
         # retraced sections will have function names starting with _
         # skip them
-        if ea > 0x140000000 and not GetTrueName(ea).startswith('_'):
+        if ea > ida_ida.cvar.inf.min_ea and not GetTrueName(ea).startswith('_'):
             ForceFunction(ea+5)
             try:
                 retrace(ea+5, silent=1, noObfu=1)
@@ -4833,7 +4836,7 @@ def retrace_native_registration_2(l = None):
     for ea in l:
         # retraced sections will have function names starting with _
         # skip them
-        if ea > 0x140000000 and ea < BADADDR and not GetTrueName(ea).startswith('_'):
+        if ea > ida_ida.cvar.inf.min_ea and ea < BADADDR and not GetTrueName(ea).startswith('_'):
             ZeroFunction(ea)
             ea = ida_funcs.calc_thunk_func_target(ida_funcs.get_func(ea))[0]
             fnLoc = idc.get_operand_value(ea + 4, 1)

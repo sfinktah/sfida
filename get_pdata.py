@@ -186,19 +186,19 @@ def get_unwind_info(offset):
     record = [0, 0, '']
     if not offset:
         return record
-    if offset > 0x140000000:
-        offset -= 0x140000000
-    for ref in XrefsTo(0x140000000 + offset):
+    if offset > ida_ida.cvar.inf.min_ea:
+        offset -= ida_ida.cvar.inf.min_ea
+    for ref in XrefsTo(ida_ida.cvar.inf.min_ea + offset):
         ea = ref.frm
         if idc.get_segm_name(ea) == '.pdata':
-            unwind_info = ([x + 0x140000000 for x in struct.unpack('lll', get_bytes(ea, 12))])
-            if offset + 0x140000000 == unwind_info[0]:
+            unwind_info = ([x + ida_ida.cvar.inf.min_ea for x in struct.unpack('lll', get_bytes(ea, 12))])
+            if offset + ida_ida.cvar.inf.min_ea == unwind_info[0]:
                 unwind_info_addr = unwind_info[2]
                 unwind_info_count = struct.unpack('BBBB', get_bytes(unwind_info_addr, 4))[2]
                 unwind_bytes = get_bytes(unwind_info_addr, 4 + unwind_info_count * 2)
                 unwind_hex = hex_string(unwind_bytes) or ''
-                # record = [hex(ea - 0x140000000)[2:], hex(unwind_info_addr - 0x140000000)[2:], unwind_hex]
-                record = [hex(ea - 0x140000000)[2:], 0, unwind_hex]
+                # record = [hex(ea - ida_ida.cvar.inf.min_ea)[2:], hex(unwind_info_addr - ida_ida.cvar.inf.min_ea)[2:], unwind_hex]
+                record = [hex(ea - ida_ida.cvar.inf.min_ea)[2:], 0, unwind_hex]
                 break
 
     return record
@@ -359,13 +359,13 @@ def check_pdata(label=None, func=None, color=None, tails=None, tailsTerm=None, o
             handler_actual = 0
             handler_address = 0
             if impl_offset and impl_offset != 0xffffffff and impl_offset != handler_offset:
-                impl_address = impl_offset + 0x140000000
+                impl_address = impl_offset + ida_ida.cvar.inf.min_ea
                 impl_actual = SkipJumps(impl_address)
             else:
                 impl_address = impl_actual = impl_offset = 0
 
             if handler_offset and handler_offset != 0xffffffff:
-                handler_address = handler_offset + 0x140000000
+                handler_address = handler_offset + ida_ida.cvar.inf.min_ea
                 handler_actual = SkipJumps(handler_address)
             else:
                 handler_address = handler_actual = handler_offset = 0

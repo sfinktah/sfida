@@ -1472,7 +1472,7 @@ def hotkey_patch():
     obfu.combed.clear()
     chunkStart, chunkEnd = get_selection_or_ea()
     if chunkStart + IdaGetInsnLen(chunkStart) >= chunkEnd:
-        print("single patch at {:x}", chunkStart)
+        print("single patch at {:x}".format(chunkStart))
         obfu._patch(chunkStart)
     elif chunkEnd > chunkStart and chunkEnd < BADADDR and chunkEnd - chunkStart < 8192:
         print("range patch")

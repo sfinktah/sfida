@@ -294,7 +294,7 @@ def GenericRangerHealer(genericRange, sort, outsort = True, iteratee = None, app
         b = bytearray()
         #  print("r.start, r.end, diff: {}", hex(r.start), hex(r.end), r.end - r.start)
         
-        if r.start > 0x140000000:
+        if r.start > ida_ida.cvar.inf.min_ea:
             for i in range(r.start, r.trend):
                 b.append(expanded[i])
                 # dprint("[debug] b")

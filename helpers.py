@@ -529,7 +529,7 @@ def autobase(ea, base = 0):
             
         @param ea: linear address in rebased, offset, or original form.
 
-        @eg: autobase(0x140000000), autobase(0x7FF69E6C9D70), autobase(0x20fed3)
+        @eg: autobase(ida_ida.cvar.inf.min_ea), autobase(0x7FF69E6C9D70), autobase(0x20fed3)
 
         @notes:requires __ImageBase to be a defined label pointing to the header
                of the dump, eg: HEADER:0000000140000000 __ImageBase     dw 5A4Dh 
@@ -982,7 +982,7 @@ def RecordPatches1(ranges):
     global patchedBytes
     del patchedBytes[:]
     #  patchedBytes=[]
-    #  for i in ranges: idaapi.visit_patched_bytes(i[0] + 0x140000000, i[1] + i[0] + 0x140000000, RecordPatchedByte)
+    #  for i in ranges: idaapi.visit_patched_bytes(i[0] + ida_ida.cvar.inf.min_ea, i[1] + i[0] + ida_ida.cvar.inf.min_ea, RecordPatchedByte)
     if ranges:
         for start, end in ranges:
             idaapi.visit_patched_bytes(start, end, RecordPatchedByte)
@@ -1814,23 +1814,23 @@ def pprev(ea=None, data=0, stop=None, depth=0, show=0):
 
     for path in deadpaths:
         # if not ida_funcs.is_same_func(path.ea, start_ea):
-        print("{}: {:3} {:32} {:x} {:20} {}".format(
+        print("{:<8}: {:3} {:24} {:x} {}".format(
             path.terminated,
             path.depth, 
             GetFuncName(path.ea), 
             path.ea, 
             diida(path.ea), 
-            diida(GetTarget(path.ea)),
+            #  diida(GetTarget(path.ea)),
             # diida(path.prev),
             # get_name_or_hex(path.history[1]) if len(path.history) > 1 else ''
         ))
         if path.terminated == 'branch':
-            print("depth: {:3} {:32} {:x} {:20} {}".format(
+            print("depth   : {:3} {:24} {:x} {}".format(
                 path.depth, 
                 GetFuncName(path.start_ea), 
                 path.start_ea, 
                 diida(path.start_ea), 
-                diida(GetTarget(path.start_ea)),
+                #  diida(GetTarget(path.start_ea)),
                 # diida(path.prev),
                 # get_name_or_hex(path.history[1]) if len(path.history) > 1 else ''
             ))

@@ -499,7 +499,8 @@ class Obfu(object):
                         for r in targetRanges:
                             if r.start == sortedRanges[0].start:
                                 if obfu_debug: printi("r.last: {:x}".format(r.last))
-                                if isJmp(r.last + 1):
+                                # disabled because it was causing overruns into the next chunk (when there were two jmps)
+                                if True and isJmp(r.last + 1) and not isJmp(idc.get_item_head(r.last)):
                                     r.last += GetInsnLen(r.last + 1)
                                     if obfu_debug: printi("r.last (new): {:x}".format(r.last))
 

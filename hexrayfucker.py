@@ -152,21 +152,105 @@ class FuncArgs:
 
 first_use = dict()
 used_colors = set()
-def vt100_color(match):
+pal_colors = [197, 162, 127, 92, 55, 22, 202, 167, 132, 97, 62, 27, 207, 172, 137, 102, 67, 32, 212, 177, 142, 107, 72, 37, 217, 182, 147, 112, 77, 42, 222, 187, 152, 117, 82, 47, 227, 192, 157, 122, 87]
+#  pal_colors[24] = 197
+#  pal_colors[8] = 197
+
+def vt100_color(match, i):
     """
-          8: 'o_imagebase_259',
-          9: '{',
-         12: '// \x01\x0cside_comment',
-         13: 'v1',
-         18: 'JUMPOUT'}
-         23: '__int64 v1',
-         24: '[rsp+24h] [rbp+4h]',
-         32: '0i64',
-         33: 'void __fastcall ArxanChecksumPre_279___healer_\x01\t(\x02\tuintptr_t a1\x01\t)\x02\t',
-         34: 'LoadLibraryA',
+
+1: ['SCOLOR_DEFAULT',    'Default.'],                                
+2: ['SCOLOR_REGCMT',     'Regular comment.'],                        
+3: ['SCOLOR_RPTCMT',     'Repeatable comment (defined not here)'],   
+4: ['SCOLOR_AUTOCMT',    'Automatic comment.'],                      
+5: ['SCOLOR_INSN',       'Instruction.'],                            
+6: ['SCOLOR_DATNAME',    'Dummy Data Name.'],                        
+7: ['SCOLOR_DNAME',      'Regular Data Name.'],                      
+8: ['SCOLOR_DEMNAME',    'Demangled Name.'],                                   8: 'qword_142F133F0'
+9: ['SCOLOR_SYMBOL',     'Punctuation.'],                                      9: '{',
+10: ['SCOLOR_CHAR',      'Char constant in instruction.'],           
+11: ['SCOLOR_STRING',    'String constant in instruction.'],         
+12: ['SCOLOR_NUMBER',    'Numeric constant in instruction.'],                 12: '// \x01\x0cside_comment',
+13: ['SCOLOR_VOIDOP',    'Void operand.'],                                    13: 'v1',
+14: ['SCOLOR_CREF',      'Code reference.'],                         
+15: ['SCOLOR_DREF',      'Data reference.'],                         
+16: ['SCOLOR_CREFTAIL',  'Code reference to tail byte.'],            
+17: ['SCOLOR_DREFTAIL',  'Data reference to tail byte.'],            
+18: ['SCOLOR_ERROR',     'Error or problem.'],                                18: 'JUMPOUT'}
+19: ['SCOLOR_PREFIX',    'Line prefix.'],                            
+20: ['SCOLOR_BINPREF',   'Binary line prefix bytes.'],               
+21: ['SCOLOR_EXTRA',     'Extra line.'],                             
+22: ['SCOLOR_ALTOP',     'Alternative operand.'],                    
+23: ['SCOLOR_HIDNAME',   'Hidden name.'],                                     23: '_QWORD *' | '__int64 v1',
+24: ['SCOLOR_LIBNAME',   'Library function name.'],                           24: '[rsp+24h] [rbp+4h]' | 24: 'rbx'
+25: ['SCOLOR_LOCNAME',   'Local variable name.'],                             25: '"kernel32.dll"'
+26: ['SCOLOR_CODNAME',   'Dummy code name.'],                        
+27: ['SCOLOR_ASMDIR',    'Assembler directive.'],                    
+28: ['SCOLOR_MACRO',     'Macro.'],                                  
+29: ['SCOLOR_DSTR',      'String constant in data directive.'],      
+30: ['SCOLOR_DCHAR',     'Char constant in data directive.'],        
+31: ['SCOLOR_DNUM',      'Numeric constant in data directive.'],     
+32: ['SCOLOR_KEYWORD',   'Keywords.'],                                        32: '0i64' | 'if'
+33: ['SCOLOR_REG',       'Register name.'],                                   33: 'void f\x01\t(\x02\tint a\x01\t)\x02\t'
+34: ['SCOLOR_IMPNAME',   'Imported name.'],                                   34: 'LoadLibraryA'
+35: ['SCOLOR_SEGNAME',   'Segment name.'],                           
+36: ['SCOLOR_UNKNAME',   'Dummy unknown name.'],                     
+37: ['SCOLOR_CNAME',     'Regular code name.'],                      
+38: ['SCOLOR_UNAME',     'Regular unknown name.'],                   
+39: ['SCOLOR_COLLAPSED', 'Collapsed line.'],                         
+40: ['SCOLOR_ADDR',      'Hidden address mark.'],                    
+
+
     """
+    scolors = {
+        1: ['SCOLOR_ON',         'Escape character (ON)'],
+        2: ['SCOLOR_OFF',        'Escape character (OFF)'],
+        3: ['SCOLOR_ESC',        'Escape character (Quote next character)'],
+        4: ['SCOLOR_INV',        'Escape character (Inverse colors)'],
+        1: ['SCOLOR_DEFAULT',    'Default.'],
+        2: ['SCOLOR_REGCMT',     'Regular comment.'],
+        3: ['SCOLOR_RPTCMT',     'Repeatable comment (defined not here)'],
+        4: ['SCOLOR_AUTOCMT',    'Automatic comment.'],
+        5: ['SCOLOR_INSN',       'Instruction.'],
+        6: ['SCOLOR_DATNAME',    'Dummy Data Name.'],
+        7: ['SCOLOR_DNAME',      'Regular Data Name.'],
+        8: ['SCOLOR_DEMNAME',    'Demangled Name.'],
+        9: ['SCOLOR_SYMBOL',     'Punctuation.'],
+        10: ['SCOLOR_CHAR',      'Char constant in instruction.'],
+        11: ['SCOLOR_STRING',    'String constant in instruction.'],
+        12: ['SCOLOR_NUMBER',    'Numeric constant in instruction.'],
+        13: ['SCOLOR_VOIDOP',    'Void operand.'],
+        14: ['SCOLOR_CREF',      'Code reference.'],
+        15: ['SCOLOR_DREF',      'Data reference.'],
+        16: ['SCOLOR_CREFTAIL',  'Code reference to tail byte.'],
+        17: ['SCOLOR_DREFTAIL',  'Data reference to tail byte.'],
+        18: ['SCOLOR_ERROR',     'Error or problem.'],
+        19: ['SCOLOR_PREFIX',    'Line prefix.'],
+        20: ['SCOLOR_BINPREF',   'Binary line prefix bytes.'],
+        21: ['SCOLOR_EXTRA',     'Extra line.'],
+        22: ['SCOLOR_ALTOP',     'Alternative operand.'],
+        23: ['SCOLOR_HIDNAME',   'Hidden name.'],
+        24: ['SCOLOR_LIBNAME',   'Library function name.'],
+        25: ['SCOLOR_LOCNAME',   'Local variable name.'],
+        26: ['SCOLOR_CODNAME',   'Dummy code name.'],
+        27: ['SCOLOR_ASMDIR',    'Assembler directive.'],
+        28: ['SCOLOR_MACRO',     'Macro.'],
+        29: ['SCOLOR_DSTR',      'String constant in data directive.'],
+        30: ['SCOLOR_DCHAR',     'Char constant in data directive.'],
+        31: ['SCOLOR_DNUM',      'Numeric constant in data directive.'],
+        32: ['SCOLOR_KEYWORD',   'Keywords.'],
+        33: ['SCOLOR_REG',       'Register name.'],
+        34: ['SCOLOR_IMPNAME',   'Imported name.'],
+        35: ['SCOLOR_SEGNAME',   'Segment name.'],
+        36: ['SCOLOR_UNKNAME',   'Dummy unknown name.'],
+        37: ['SCOLOR_CNAME',     'Regular code name.'],
+        38: ['SCOLOR_UNAME',     'Regular unknown name.'],
+        39: ['SCOLOR_COLLAPSED', 'Collapsed line.'],
+        40: ['SCOLOR_ADDR',      'Hidden address mark.'],
+    }
     global used_colors
     global first_use
+    global pal_colors
     group = match.groups()
     o = ord(group[0][0])
     #  if o != 9: 
@@ -176,27 +260,32 @@ def vt100_color(match):
     t = t + 31
     if t > 37:
         t += 3
-    # if t > 47:        t += 3
     text = group[1]
     rest = group[2]
     ignore = ''
-    if o not in first_use:
-        first_use[o] = text
-    if o == 12:
-        if text.startswith('//'):
-            text = text.replace('//', '#')
-    if o == 9 and text.startswith((';','{', '}')):
-        if text.startswith(';'):
-            pass
-        else:
-            ignore += text
-        text = ''
+    #  if o not in first_use:
+        #  first_use[o] = text
+    #  if o == 12:
+        #  if text.startswith('//'):
+            #  text = text.replace('//', '#')
+    #  if o == 9 and text.startswith((';','{', '}')):
+        #  if text.startswith(';'):
+            #  pass
+        #  else:
+            #  ignore += text
+        #  text = ''
 
     result = ''
     if text:
-        result += "\x1b[{}m{}\x1b[0m".format(t, text)
+        if i == 0 or o in (12, ):
+            result += "\x1b[38;5;{}m{}\x1b[39m".format(pal_colors[o], text)
+        elif i == 1:
+            result += "\x1b[48;5;{};4m{}\x1b[49;24m".format(pal_colors[o], text)
+        # result += "\x1b[{}m{}\x1b[0m".format(t, text)
     if rest:
-        result += "\x1b[{};2m{}\x1b[0m".format(w, rest)
+        result += rest
+        # result += "\x1b[48;5;{}m{}\x1b[0m".format(o, rest)
+        # result += "\x1b[{};2m{}\x1b[0m".format(w, rest)
     if ignore:
         result += ignore
 
@@ -205,8 +294,23 @@ def vt100_color(match):
 #  def colorize_sub(s):
     #  return re.sub(r"\x01(.)(.*?)\x02\1", vt100_color, re.sub(r"\x04\x04|\x01\([0-9a-fA-F]{16}", '', s))
 
-def colorize_sub(s):
-    return re.sub(r"\x01(.)(.*?)\x02\1([^\x01-\x1b]*)", vt100_color, re.sub(r"\x04\x04|\x01\([0-9a-fA-F]{16}", '', s))
+def _process_citems():
+    cf = vu.cfunc; 
+    # '\x01(0000000000000051\x01\x08EnumProcessModules_0\x02\x08'
+    # '\x01(0000000000000005\x01\x18kernel32\x02\x18'
+    # '\x01(0000000000000075\x01\x08sub_1414E78F8\x02\x08'
+    # '\x01(000000000000003E\x01"GetProcAddress\x02"'
+    ida_lines.tag_remove( cf.treeitems[81].print1(cf) )
+
+def colorize_sub(s, i=0):
+    # vu = get_pseudocode_vu(EA(), vu); pc2 = genAsList(vu.cfunc.get_pseudocode()); clear(); print("\n".join([colorize_sub(colorize_sub(x.line), 1) for x in pc2]))
+    return re.sub(r"\x01(.)(.*?)\x02\1()", 
+            lambda x: vt100_color(x, i), 
+            re.sub(r"\x04\x04", '', 
+                re.sub(r"\x01\([0-9A-F]{16}", 
+                    lambda x: "<<{}>>".format(parseHex(x.group(0)[2:])),
+                    s)))
+    # return re.sub(r"\x01(.)([^\x01-\x02]+)\x02\1([^\x01-\x04]*)", vt100_color, re.sub(r"\x04\x04|\x01\([0-9A-F]{16}", '', s))
 
 def count_indent(s):
     return re.sub(r"\u2015( *)", lambda m: "\u2015{}\u2015".format(len(m.group(1))), s)
@@ -1076,6 +1180,11 @@ def decompile_function_search(ea, regex, iteratee=None, flags = 0):
                     yield x
         except ida_hexrays.DecompilationFailure:
             pass
+    # decompile_function_search(
+    #   EA(), 
+    #   r'(qword_[0-9A-F]+) =.*\)(\w+)', 
+    #   lambda ea, m: LabelAddressPlus(eax(m[0]), m[1] + "_Prologue")
+    # )
 
 def decompile_SetRandHash():
     r = []
@@ -1580,7 +1689,7 @@ def decompile_arxan(ea = None):
             # dprint("[deref] deref")
             print("[deref] deref:{} = {:x} = {:x}".format(dst, offLoc, deref))
             
-            if deref == 0x140000000:
+            if deref == ida_ida.cvar.inf.min_ea:
                 MemLabelAddressPlus(offLoc, 'o_imagebase')
                 return
             ida_auto.plan_and_wait(deref, EndOfContig(deref))

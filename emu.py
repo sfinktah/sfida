@@ -473,7 +473,7 @@ def callHook(address, arguments, fnName, userData):
         #  #  print(helper.getEmuState())
         dst = a1
         src = a2
-        #  if a1 > 0x140000000 and a1 < 0x150000000:
+        #  if a1 > ida_ida.cvar.inf.min_ea and a1 < 0x150000000:
             #  out("ArxanMemcpy: rcx: {:x} rdx: {:x} a1: {:x} a2: {:x} {:x} Writing {} bytes from {:x} to {:x}".format(rcx, rdx, a1, a2, address, length, src, dst))
         #  else:
             #  return
@@ -525,11 +525,11 @@ def memHook(unicornObject, accessType, memAccessAddress, memAccessSize, memValue
         if accessType & 1:
             writtento.add(memAccessAddress)
             _type = "write"
-            if memAccessAddress >= 0x140000000 and memAccessAddress < 0x150000000 and memAccessAddress != 0x1402bae8a:
+            if memAccessAddress >= ida_ida.cvar.inf.min_ea and memAccessAddress < 0x150000000 and memAccessAddress != 0x1402bae8a:
                 out("                mem: {} [0x{:x}] {:x} {:x}b {}".format(_type, memAccessAddress, memValue, memAccessSize, idc.get_name(memAccessAddress)))
         else:
             _type = "read "
-            if memAccessAddress >= 0x140000000 and memAccessAddress < 0x150000000 and memAccessAddress != 0x1402bae8a:
+            if memAccessAddress >= ida_ida.cvar.inf.min_ea and memAccessAddress < 0x150000000 and memAccessAddress != 0x1402bae8a:
                 out("                mem: {} [0x{:x}] {:x} {:x}b {}".format(_type, memAccessAddress, memValue, memAccessSize, idc.get_name(memAccessAddress)))
             readfrom.add(memAccessAddress)
 

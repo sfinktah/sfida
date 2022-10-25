@@ -209,7 +209,7 @@ def safe_func_name(name):
 
     return re.sub(BAD_FNNAME_PATTERN, lambda x: "_x{:02x}_".format(ord(x.group(0))), name)
 
-BAD_C_NAME_PATTERN = re.compile('[^a-zA-Z_0-9:]')
+BAD_C_NAME_PATTERN = re.compile('[^a-zA-Z_0-9:<>,]')
 def demangled_name_to_c_str(name):
     """
     Removes or replaces characters from demangled symbol so that it was possible to create legal C structure from it
@@ -311,8 +311,8 @@ def demangled_name_to_c_str(name):
     name = name.replace("private:", "")
     name = name.replace("~", "DESTRUCTOR_")
     name = name.replace("*", "_PTR")
-    name = name.replace("<", "_t_")
-    name = name.replace(">", "_t_")
+    #  name = name.replace("<", "_t_")
+    #  name = name.replace(">", "_t_")
     name = "_".join(filter(len, BAD_C_NAME_PATTERN.split(name)))
     return name
 
@@ -828,9 +828,10 @@ def make_vfunc_function_sig(returnType, callType, fnName, args, offset=0):
 def fix_fnName(fnName, offset=0):
     # if re.match(r'.*_m_[0-9a-fA-F]+$', fnName)
     fnName = TagRemoveSubstring(fnName)
-    if fnName.endswith('m_{:x}'.format(offset)):
-        return fnName
-    fnName += "_m_%x" % offset
+    #  if fnName.endswith('m_{:x}'.format(offset)):
+        #  return fnName
+    #  fnName += "_m_%x" % offset
+    fnName = string_between('::', '', fnName, rightmost=1, retn_all_on_fail=1)
     return fnName
 
 
@@ -1471,5 +1472,8 @@ def ClassPaste(j=None):
         elif k == "userlabel":
             idc.set_name(ptrloc, v, idc.SN_NOWARN)
 
-
+def Rename_t_():
+    RenameFunctionsMatching('.*_t_.*_t_.*_t_.*_t_.*_t', lambda x: re.sub('.*::', '', x))
+    RenameFunctionsMatching('.*_t_.*_t_.*_t_.*_t_', lambda x: x.replace('_t_', '<', 2).replace('_t_', '>', 2))
+    RenameFunctionsMatching('.*_t_.*_t_', lambda x: x.replace('_t_', '<', 1).replace('_t_', '>', 1))
 

@@ -408,7 +408,7 @@ def callHook(address, arguments, fnName, userData):
         #  out("{} {:x}: {}, {}".format(fnName, userData["currAddr"], hex(helper.getArgv()[0:3]), hex(helper.getEmuPtr(helper.getRegVal("rdx")) & ((1 << ((args[2]  * 8))) - 1))))
         # helper.writeEmuMem(args[0], intAsBytes(helper.getEmuPtr(helper.getRegVal("rdx")), args[2]))
         #  print("{} {:x}, {:x}, {}".format(fnName, args[0], args[1], args[2]))
-        if args[0] > 0x140000000:
+        if args[0] > ida_ida.cvar.inf.min_ea:
             if arg[0] > 0x145000000:
                 print("invalid write to {:x}".format(arg[0]))
                 abort = 1
@@ -469,7 +469,7 @@ def memHook(unicornObject, accessType, memAccessAddress, memAccessSize, memValue
         spd = memAccessAddress - sp
         out("; [{:05x}] SP+{:04x}={:09x}".format(emu_helper.getRegVal("rsp"), spd, emu_helper.getEmuPtr(memAccessAddress)))
         sp_writes.append("0x{:x},0x{:x},0x{:x}".format(sp, memAccessAddress, emu_helper.getEmuPtr(memAccessAddress)))
-    elif memAccessAddress >= 0x140000000 and memAccessAddress < 0x150000000:
+    elif memAccessAddress >= ida_ida.cvar.inf.min_ea and memAccessAddress < 0x150000000:
         if accessType & 1 == 0:
             #  out("memAccessHook: RIP: {:9x} state {} {:9x} ({:x})".format(userData['currAddr'], state, memAccessAddress, memAccessSize))
             #  userData['readlocs'].extend(list(range(memAccessAddress, memAccessAddress + memAccessSize)))
@@ -666,7 +666,7 @@ def checksummers(*args, **kwargs):
                 # print("memcpy", pfh(memcpy))
                 for r in GenericRanger(memcpy, sort=1, input_filter=patchmap_filter):
                     #  out("memcpy: {} {}".format(r, GetFuncName(r.start, r.last)), silent=1)
-                    if r.start > 0x140000000:
+                    if r.start > ida_ida.cvar.inf.min_ea:
                         memcpy_count += len(r)
                         healed_by[r].add(fnName)
 
@@ -693,7 +693,7 @@ def checksummers(*args, **kwargs):
                     out("read_set: {} {}".format(r, GetFuncName(r.start, r.last)), silent=1)
                     read_count += len(r)
 
-                    if r.start > 0x140000000:
+                    if r.start > ida_ida.cvar.inf.min_ea:
                         filename = ddir + '/read/read_{:x}_{:x}_{}.bin'.format(r.start, r.length, fnName)
                         if not file_exists(filename):
                             if comment: Commenter(r.start, 'line').add("{} bytes read by {}".format(fnName, r.length)).commit()
@@ -717,7 +717,7 @@ def checksummers(*args, **kwargs):
                     out("written_set: {} {}".format(r, GetFuncName(r.start, r.last)), silent=1)
                     written_count += len(r)
 
-                    if r.start > 0x140000000:
+                    if r.start > ida_ida.cvar.inf.min_ea:
                         filename = ddir + '/written/written_{:x}_{:x}_{}.bin'.format(r.start, r.length, fnName)
                         if not file_exists(filename):
                             if comment: Commenter(r.start, 'line').add("{} bytes written by {}".format(fnName, r.length)).commit()

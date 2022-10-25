@@ -264,6 +264,7 @@ def zrequest(j):
                 p = json.loads(message)
             except json.decoder.JSONDecodeError as e:
                 print("JSONDecodeError: {} reading {} @{}".format(e.msg, e.doc, e.pos))
+                return {}
                 raise e
             #  print(p)
             #  if type(p['label']) is str:

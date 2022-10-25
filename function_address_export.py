@@ -26,7 +26,7 @@ def save():
         with open('e:\\git\\pokey\\bin\\QuickRelease\\functions.json', 'w') as f:
             json.dump(funclist, f)
         with open('e:\\git\\pokey\\bin\\QuickRelease\\names.json', 'w') as f:
-            json.dump(_.zipObject([(y, x-0x140000000) for x, y in Names()]), f)
+            json.dump(_.zipObject([(y, x-ida_ida.cvar.inf.min_ea) for x, y in Names()]), f)
     except IOError:
         print("file not writable or some such")
 
@@ -36,13 +36,13 @@ def save_uc():
         with open(os.path.join(os.path.dirname(GetIdbPath()), os.path.splitext(os.path.basename(GetIdbPath()))[0] + '.funcs.json'), 'w') as f:
             json.dump(funclist, f)
         with open(os.path.join(os.path.dirname(GetIdbPath()), os.path.splitext(os.path.basename(GetIdbPath()))[0] + '.names.json'), 'w') as f:
-            json.dump(_.zipObject([(y, x-0x140000000) for x, y in Names() if HasUserName(x)]), f)
+            json.dump(_.zipObject([(y, x-ida_ida.cvar.inf.min_ea) for x, y in Names() if HasUserName(x)]), f)
     except IOError:
         print("file not writable or some such")
 
 
 def under14pair(p):
-    return [x - 0x140000000 for x in p]
+    return [x - ida_ida.cvar.inf.min_ea for x in p]
 
 
 def my_add_func(ea, chunks):
@@ -365,7 +365,7 @@ def json_save_names(fn):
                 continue
             chunks = list(idautils.Chunks(ea))
 
-            funclist[fnName] = ea - 0x140000000;
+            funclist[fnName] = ea - ida_ida.cvar.inf.min_ea;
             
             percent = (100 * count) // numLocs
             # if percent > lastPercent:
