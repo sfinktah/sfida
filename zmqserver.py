@@ -99,7 +99,7 @@ def ZmqLabelPattern(j, name, pattern, address, decl = ''):
 
         add = 1
         if IsFuncHead(p) and HasUserName(p):
-            #  add = 0
+            add = 0
             j['label'] = idc.get_name(p)
         else:
             ForceFunction(p)

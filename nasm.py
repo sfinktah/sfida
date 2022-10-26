@@ -160,7 +160,11 @@ def nasm64(ea, string, quiet=False):
                 startupinfo = subprocess.STARTUPINFO()
                 startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             with PerfTimer('nasm'):
-                ret = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True, startupinfo=startupinfo)
+                #  try:
+                    ret = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True, startupinfo=startupinfo)
+                #  except Exception as e:
+                    #  print("{}: {}: executing {}".format(e.__class__.__name__, str(e), args))
+                    #  return
             # ret = ret.decode('ascii')
             # dprint("[nasm len(ret)] ret")
             if nasm_debug: print("[nasm len(ret)] ret:{} type(ret):{}".format(ret, type(ret)))

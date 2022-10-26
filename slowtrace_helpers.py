@@ -5,7 +5,7 @@ import traceback
 import re
 import subprocess
 import math
-from fnvhash import fnv1a_64 as fnv
+# from fnvhash import fnv1a_64 as fnv
 from superglobals import *
 from attrdict1 import SimpleAttrDict
 from collections import defaultdict

@@ -264,7 +264,7 @@ def zrequest(j):
                 p = json.loads(message)
             except json.decoder.JSONDecodeError as e:
                 print("JSONDecodeError: {} reading {} @{}".format(e.msg, e.doc, e.pos))
-                return {}
+                return None
                 raise e
             #  print(p)
             #  if type(p['label']) is str:
@@ -553,7 +553,8 @@ def sig_maker_auto_zmq(ea, colorise=False, force=False, special=False):
             rv = zrequest(req)
             if not isinstance(rv, dict):
                 print(("typeof rv is %s" % type(rv)))
-                byteify(rv)
+                return
+                # byteify(rv)
                 raise Exception("error")
             matches = rv['matches']
             remote_version = rv['version']
@@ -591,7 +592,7 @@ def sig_maker_auto_zmq(ea, colorise=False, force=False, special=False):
 
 
 
-def sig_maker_all(pattern=None, colorise=False):
+def sig_maker_all(pattern=None, colorise=False, flags=0):
     global pending_functions
     skip = 0
     numLocs = len(list(idautils.Functions()))
@@ -608,7 +609,7 @@ def sig_maker_all(pattern=None, colorise=False):
         else:
             if pattern:
                 fnName = ''
-                while pattern and not re.match(pattern, fnName):
+                while pattern and not re.match(pattern, fnName, flags=flags):
                     ea = next(iter)
                     fnName = idc.get_func_name(ea)
                 print('matched pattern with {}'.format(fnName))
@@ -690,7 +691,7 @@ def ping(port = 5558):
     message = socket.recv()
     print(("%s" % message))
 
-def zmclient(pattern=None, _host=None, _port=None):
+def zmclient(pattern=None, _host=None, _port=None, flags=0):
     global host
     if _host:
         host = _host
@@ -701,4 +702,4 @@ def zmclient(pattern=None, _host=None, _port=None):
     ping()
     ping()
     ping()
-    sig_maker_all(pattern)
+    sig_maker_all(pattern, flags=flags)
