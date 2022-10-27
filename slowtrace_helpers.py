@@ -2421,12 +2421,14 @@ def SkipJumps(ea, apply=False, returnJumps=False, returnTarget=False, until=None
         target = SkipJumps(getptr(ea))
         if apply and target != getptr(ea) and idaapi.cvar.inf.min_ea <= target < idaapi.cvar.inf.maxEA:
             setptr(ea, target)
+        if callable(iteratee):
+            iteratee(target, -1, *args, **kwargs)
         return target
 
     if IsCode_(ea) and idc.get_operand_type(ea, 1) == idc.o_mem:
         target = idc.get_operand_value(ea, 1)
         if IsValidEA(target) and IsCode_(target):
-            new_target = SkipJumps(target)
+            new_target = SkipJumps(target, iteratee=iteratee)
             if new_target != target:
                 nassemble(ea, string_between('[rel ', ']', diida(ea), repl=hex(new_target)), apply=1)
         if returnTarget:
