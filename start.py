@@ -164,6 +164,7 @@ filenames = [
             #  "m.py",
             #  "emu.py"
             "initFishyElements.py",
+            "nttest.py",
     ]
 
 def append_if_file_exists(l, fn):
