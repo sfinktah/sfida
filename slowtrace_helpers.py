@@ -1376,6 +1376,8 @@ def GetTarget(ea, flow=0, calls=1, conditionals=1, operand=1, failnone=False):
     ea = eax(ea)
     if (isJmpOrObfuJmp(ea) and not isJmp(ea)):
         return MakeSigned(idc.get_wide_dword(ea + 4)) + ea + 7
+    elif idc.get_operand_type(ea, 1) == idc.o_mem and IsCode_(idc.get_operand_value(ea, 1)):
+        return idc.get_operand_value(ea, 1)
     if isOffset(ea):
         target = getptr(ea) 
         if idc.get_inf_attr(idc.INF_MIN_EA) <= target < idc.get_inf_attr(idc.INF_MAX_EA):
@@ -2568,6 +2570,48 @@ def SkipJumps(ea, apply=False, returnJumps=False, returnTarget=False, until=None
                 SetFuncEnd(ea, ea + 1)
 
     return jumps if returnJumps else target
+
+def FuncSkipJumps(funcea=None):
+    """
+    FuncSkipJumps
+
+    @param funcea: any address in the function
+    """
+    if isinstance(funcea, list):
+        return [FuncSkipJumps(x) for x in funcea]
+
+    funcea = eax(funcea)
+    func = ida_funcs.get_func(funcea)
+
+    if not func:
+        return 0
+    else:
+        funcea = func.start_ea
+    
+    loop = -1
+    while True:
+        loop += 1
+        changed = 0
+        
+        for ea in GetFuncHeads(funcea):
+            # dprint("[FuncSkipJumps] ea")
+            print("[FuncSkipJumps] ea:{}".format(hex(ea)))
+            
+            if not loop:
+                if SkipJumps(ea, apply=1) not in (ea, GetTarget(ea)):
+                    changed += 1
+            if idc.get_operand_type(ea, 1) == idc.o_mem and IsCode_(idc.get_operand_value(ea, 1)):
+                retrace(idc.get_operand_value(ea, 1))
+            elif isCall(ea):
+                retrace(ea)
+            if SkipJumps(ea, apply=1) not in (ea, GetTarget(ea)):
+                # dprint("[FuncSkipJumps] changed: ea, GetTarget(ea)")
+                print("[FuncSkipJumps] changed:{}, GetTarget(ea):{}".format(hex(ea), hex(GetTarget(ea))))
+                
+                changed += 1
+        if not changed:
+            break
+
 
 def CountConsecutiveMnem(ea, mnem, sameChunk=False):
     ori_ea = ea
@@ -3787,27 +3831,6 @@ def SegmentRefsTo(ea):
 
 def isSegmentInXrefsTo(ea, s):
     return s in SegmentRefsTo(ea)
-
-
-def FuncSkipJumps(funcea=None, **kwargs):
-    """
-    FuncSkipJumps
-
-    @param funcea: any address in the function
-    """
-    if isinstance(funcea, list):
-        return [FuncSkipJumps(x) for x in funcea]
-
-    funcea = eax(funcea)
-    func = ida_funcs.get_func(funcea)
-
-    if not func:
-        return 0
-    else:
-        funcea = func.start_ea
-
-    for ea in GetFuncHeads(funcea):
-        if isJmp(ea): SkipJumps(ea, **kwargs)
 
 def GetFuncHeads(funcea=None):
     """
