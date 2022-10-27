@@ -2605,9 +2605,6 @@ def FuncSkipJumps(funcea=None):
             elif isCall(ea):
                 retrace(ea)
             if SkipJumps(ea, apply=1) not in (ea, GetTarget(ea)):
-                # dprint("[FuncSkipJumps] changed: ea, GetTarget(ea)")
-                print("[FuncSkipJumps] changed:{}, GetTarget(ea):{}".format(hex(ea), hex(GetTarget(ea))))
-                
                 changed += 1
         if not changed:
             break
