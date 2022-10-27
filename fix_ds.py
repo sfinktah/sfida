@@ -33,7 +33,7 @@
 import idautils
 
 def fix_dataseg_offsets(base=None, ori_base=None, size=None, seg_name='.data', step=8):
-    _from('winpe import WinPE')
+    # _from('winpe import WinPE')
     pe = idautils.peutils_t()
     base = base or pe.imagebase
     pe = WinPE(64)
@@ -55,8 +55,8 @@ def fix_dataseg_offsets(base=None, ori_base=None, size=None, seg_name='.data', s
     for segment in idautils.Segments():
         print("[segment] idc.get_segm_name(segment):{}, ".format(idc.get_segm_name(segment)))
         if idc.get_segm_name(segment) == seg_name:
-            ea = SegStart(segment)
-            ea_end = SegEnd(segment)
+            ea = idc.get_segm_start(segment)
+            ea_end = idc.get_segm_end(segment)
             # dprint("[segment] idc.get_segm_name(ea), ea, ea_end")
             print("[segment matches] {}, ea:{:x}, ea_end:{:x}".format(idc.get_segm_name(ea), ea, ea_end))
             

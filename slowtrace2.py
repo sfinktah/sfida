@@ -796,7 +796,7 @@ def retrace(address=None, color="#280c01", no_hash=False, no_func_tails=False,  
                         return -1
                     elif spdList:
                         #  spd = _fix_spd_auto(SkipJumps(ea)) != 0
-                        for r in range(10000):
+                        for r in range(1000):
                             if r > 9 and r % 10 == 0:
                                 printi("_fix_spd(spdList) attempt {}".format(r))
                             if not _fix_spd(spdList):
@@ -2046,7 +2046,7 @@ def slowtrace2(ea=None,
                     if len(refHexStr) == 16:
                         refHex = int(refHexStr, 16)
                         if refHex and ourHex and refHex != ourHex or refNamespace != ourNamespace:
-                            isRealFunc = setIsRealFunc("jmpRef: different hexes: {} {}".format(ourHexStr, refHexStr))
+                            isRealFunc = setIsRealFunc("jmpRef: different hexes: '{}' '{}@{:x}'".format(ourHexStr, refHexStr, r))
                 if not ourHexStr or not refHexStr:
                     _jrefs = _.uniq(GetFuncName(jmpRefs, 1))
                     if len(_jrefs) > 1:

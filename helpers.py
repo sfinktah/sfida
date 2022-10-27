@@ -9,6 +9,7 @@ import idc
 import circularlist
 from static_vars import *
 from attrdict1 import SimpleAttrDict
+
 #  import pydot.src.pydot
 
 from exectools import make_refresh
@@ -1152,7 +1153,7 @@ def get_online_version():
       or get_version_mb().add(7).add(0x105).rip(4).str()
 
 def is_steam():
-    _from('winpe import WinPE')
+    # _from('winpe import WinPE')
     try:
         pe = WinPE(64)
         pdb = os.path.basename(pe.dirs[5].data.entries[0].data.entries[0].data.PdbFileName)
@@ -1165,7 +1166,7 @@ def is_steam():
 def get_build_date():
     try:
         from datetime import datetime
-        _from('winpe import WinPE')
+        # _from('winpe import WinPE')
         pe = WinPE(64)
         return datetime.utcfromtimestamp(pe.nt['TimeDateStamp']).strftime('%Y-%m-%d %H:%M:%S UTC')
         # 2017-03-31 15:40:12 UTC

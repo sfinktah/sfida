@@ -234,12 +234,12 @@ def find_checksummers():
 
     pattern = '48 31 C0 0F 1F 84 00 00 00 00 00 0F 1F 84 00 00 00 00 00 66 0F 1F 44 00 00'
     if can_call('UnPatch'):
-        for e in FindInSegments(pattern, '.text', None):
+        for e in FindInSegments(pattern, 'any', None):
             UnPatch(e, e+75//3)
 
     # pattern = '38 48 8d 05 ?? ?? ?? ?? 48 89 45 18 48 8b 05 ?? ?? ?? ?? 48 f7 d8 48 03'
     pattern = '48 8d 05 ?? ?? ?? ?? 48 89 45 18 48 8b 05 ?? ?? ?? ?? 48 f7 d8'
-    return [e for e in FindInSegments(pattern, '.text', None, predicate_checksummers)]
+    return [e for e in FindInSegments(pattern, 'any', None, predicate_checksummers)]
 
 def find_checksummers2():
 
@@ -260,7 +260,7 @@ def find_checksummers2():
         return False
 
     pattern = '48 8b 05 ?? ?? ?? ?? 48 f7 d8 48 8d 15 ?? ?? ?? ?? 48 8d 04 02'
-    return [e for e in FindInSegments(pattern, '.text', None, predicate_checksummers)]
+    return [e for e in FindInSegments(pattern, 'any', None, predicate_checksummers)]
 
 def find_checksummers3():
 
@@ -282,7 +282,7 @@ def find_checksummers3():
 
     pattern = '48 8D 05 ?? ?? ?? ?? 48 89 45 ?? 48 8B 05 ?? ?? ?? ?? 48 F7 D8'
 
-    return [e for e in FindInSegments(pattern, '.text', None, predicate_checksummers)]
+    return [e for e in FindInSegments(pattern, 'any', None, predicate_checksummers)]
 
 
 def find_checksummers6():
@@ -342,7 +342,7 @@ def find_checksummers6():
 
     pattern = '48 8b 05 ?? ?? ?? ?? 48 89 45 ?? 48 8d 05 ?? ?? ?? ?? 48 89 45'
 
-    return [e for e in FindInSegments(pattern, '.text', None, predicate_checksummers)]
+    return [e for e in FindInSegments(pattern, 'any', None, predicate_checksummers)]
 
 
 def find_trace_hooks():
@@ -368,7 +368,7 @@ def find_checksummers4():
 
 def find_checksummers5():
     __ImageBase = ida_ida.cvar.inf.min_ea
-    strucText = """
+    struany = """
         typedef unsigned char uint8_t;
         typedef int int32_t;
         typedef unsigned int uint32_t;
@@ -378,7 +378,7 @@ def find_checksummers5():
           uint32_t len;
         };
     """
-    ensure_decl('arxan_range', strucText)
+    ensure_decl('arxan_range', struany)
     def predicate_checksummers(ea):
         return False
         o_rel = 4
@@ -399,21 +399,21 @@ def find_checksummers5():
             print("rel: {:x}, abso: {:x}".format(rel, abso))
         return False
 
-    #  .text:143c81200   b8      sub_143ADEB2E    48 8d 05 ?? ?? ?? ??          	lea rax, [sub_143ADEB2E]
-    #  .text:143c81207   b8      sub_143ADEB2E    48 89 45 ??                   	mov [rbp+0x18], rax
-    #  .text:143c8120b   b8      sub_143ADEB2E    48 8b 05 ?? ?? ?? ??          	mov rax, [off_140D09274]
-    #  .text:143c81212   b8      sub_143ADEB2E    48 f7 d8                      	neg rax
+    #  any:143c81200   b8      sub_143ADEB2E    48 8d 05 ?? ?? ?? ??          	lea rax, [sub_143ADEB2E]
+    #  any:143c81207   b8      sub_143ADEB2E    48 89 45 ??                   	mov [rbp+0x18], rax
+    #  any:143c8120b   b8      sub_143ADEB2E    48 8b 05 ?? ?? ?? ??          	mov rax, [off_140D09274]
+    #  any:143c81212   b8      sub_143ADEB2E    48 f7 d8                      	neg rax
     #    = '38 48 8d 05 ?? ?? ?? ?? 48 89 45 18 48 8b 05 ?? ?? ?? ?? 48 f7 d8 48 03'
     pattern = "48 8d 05 ?? ?? ?? ?? 48 89 45 ?? 48 8b 05 ?? ?? ?? ?? 48 f7 d8"
     # which is the same as checksummer original, with a few bytes trimmed on either side.
 
-    return [e for e in FindInSegments(pattern, '.text', None, predicate_checksummers)]
+    return [e for e in FindInSegments(pattern, 'any', None, predicate_checksummers)]
 
 def find_set_return_addresses():
     patterns = ['55 48 83 ec 30 48 8d 6c 24 20 48 89 4d 20 48 89 55 28 8b 05']
     
     results = []
-    for ea in FindInSegments(patterns, '.text'):
+    for ea in FindInSegments(patterns, 'any'):
         ForceFunction(ea)
         SetType(ea, "int sub(uint8_t *imagebase, void *arg_0_ptr);")
         MemLabelAddressPlus(ea, 'SetReturnAddressTo_{:x}'.format(0x100000000 | idc.get_wide_dword(mem(ea + 0x14).rip(4).val())))
@@ -431,7 +431,7 @@ def find_lame_memcpys():
     ]
     patterns = [x[0:38] for x in patterns] 
     results = []
-    for ea in FindInSegments(patterns, '.text'):
+    for ea in FindInSegments(patterns, 'any'):
         #  if idc.get_wide_byte(ea) == 0x48:
             #  # short pattern
             #  fnStart = '; '.join([str(x).lower() for x in der(ea)][0:10])
@@ -480,7 +480,7 @@ def find_checksum_workers():
             '48 8b 45 30 48 8b 00 0f b6 00 83 e0 7f 8b 55 08 89 d1 d3 e0',
             '83 45 08 07 48 8b 45 30 48 8b 00 0f b6 00 0f b6 c0']]
     results = []
-    for ea in FindInSegments(patterns[0], '.text'):
+    for ea in FindInSegments(patterns[0], 'any'):
         results.append(ea)
 
         #  MemLabelAddressPlus(ea, "ArxanMemcpy")
@@ -505,7 +505,7 @@ def find_decrypted_loadlibs():
     # pattern = '55 48 83 ec 20 48 8d 6c 24 20 48 89 4d 10 48 89 55 18 44 89 45 20 8b 45 20 83 f8 04 0f 82 ?? ?? ?? ?? e9 ?? ?? ?? ??'
     # pattern = '48 89 85 ?? ?? 00 00 48 8b 85 ?? ?? 00 00 0f b6 00 48 0f be c0 85 c0 0f 84'
     pattern = "55 48 81 ec ?? ?? 00 00 48 8d 6c 24 ?? 48 89 9d ?? ?? 00 00"
-    for ea in [e for e in FindInSegments(pattern, '.text')]:
+    for ea in [e for e in FindInSegments(pattern, 'any')]:
         print(hex(ea))
         if can_call('retrace'):
             ForceFunction(ea)
@@ -527,7 +527,7 @@ def find_arxan_mutators():
     ]
     results = []
     for pattern in patterns:
-        for ea in [e for e in FindInSegments(pattern, '.text')]:
+        for ea in [e for e in FindInSegments(pattern, 'any')]:
             results.append(ea)
             print(hex(ea))
             LabelAddressPlus(ea, "ArxanCheck_{}".format(long_to_words(ex - ida_ida.cvar.inf.min_ea)))
@@ -537,7 +537,7 @@ def find_vortex():
     patterns = [ "C1 E2 04 8D 04 42 8B 55 ?? C1 E2 07 03 C2 8B 55 ?? C1 E2 08 03 C2 8B 55 ?? C1 E2 18 03 C2 03 45" ]
     results = []
     for pattern in patterns:
-        for ea in [e for e in FindInSegments(pattern, '.text')]:
+        for ea in [e for e in FindInSegments(pattern, 'any')]:
             results.append(ea)
             fnloc = GetFuncStart(ea)
             if HasUserName(fnloc):
@@ -582,7 +582,7 @@ def find_rolls():
     patterns = [ '51 8b 4d ?? d3 45 ?? 59', '51 8B 8D ?? ?? ?? ?? D3 85 ?? ?? ?? ?? 59']
     results = []
     for pattern in patterns:
-        for ea in [e for e in FindInSegments(pattern, '.text')]:
+        for ea in [e for e in FindInSegments(pattern, 'any')]:
             results.append(ea)
             fnloc = GetFuncStart(ea)
             if HasUserName(fnloc):
@@ -596,10 +596,10 @@ def find_rolls():
 
 def fix_obfu_scan():
     patched = []
-    for ea in [e for e in FindInSegments('48 8D 64 24 F8 48 89 2C 24', '.text')]:
+    for ea in [e for e in FindInSegments('48 8D 64 24 F8 48 89 2C 24', 'any')]:
         obfu._patch(ea)
         patched.append(ea)
-    for ea in [e for e in FindInSegments('48 89 6C 24 F8 48 8D 64 24 F8', '.text')]:
+    for ea in [e for e in FindInSegments('48 89 6C 24 F8 48 8D 64 24 F8', 'any')]:
         obfu._patch(ea)
         obfu._patch(ea)
         patched.append(ea)
@@ -618,7 +618,7 @@ def fix_old_balances():
     ]
 
     for pattern in patterns:
-        for ea in [e for e in FindInSegments(pattern, '.text')]:
+        for ea in [e for e in FindInSegments(pattern, 'any')]:
             print("test: {:x}".format(ea))
             MyMakeUnknown(ea, 99 // 3, DELIT_EXPAND)
             m = membrick_memo(ea, pattern=pattern)
@@ -648,7 +648,7 @@ def find_checksummers_from_balances():
     ]
     results = []
     for pattern in patterns:
-        for ea in [e for e in FindInSegments(pattern, '.text')]:
+        for ea in [e for e in FindInSegments(pattern, 'any')]:
             try: 
                 r = AdvanceToMnemEx(ea, term=('call', 'retn'), inclusive=1, ease=1)
                 sti = CircularList(r)
@@ -703,15 +703,15 @@ def find_rbp_frame():
                 ]
     
     #   b1180
-    #  .text:0000000143ADEB2E 000 48 89 6C 24 F8                                mov     [rsp+var_8], rbp ; [PatchBytes] mov/lea->push order swap: rbp
-    #  .text:0000000143ADEB2E                                                                           ; [PatchBytes] lea rsp, qword ptr [rsp-8]; mov [rsp], rbp
-    #  .text:0000000143ADEB33 000 48 8D 64 24 F8                                lea     rsp, [rsp-8]
-    #  .text:0000000143ADEB38 008 48 81 EC ?? ?? 00 00                          sub     rsp, 0B0h
-    #  .text:0000000143ADEB3F 0B8 48 8D 6C 24 20                                lea     rbp, [rsp+20h]
+    #  any:0000000143ADEB2E 000 48 89 6C 24 F8                                mov     [rsp+var_8], rbp ; [PatchBytes] mov/lea->push order swap: rbp
+    #  any:0000000143ADEB2E                                                                           ; [PatchBytes] lea rsp, qword ptr [rsp-8]; mov [rsp], rbp
+    #  any:0000000143ADEB33 000 48 8D 64 24 F8                                lea     rsp, [rsp-8]
+    #  any:0000000143ADEB38 008 48 81 EC ?? ?? 00 00                          sub     rsp, 0B0h
+    #  any:0000000143ADEB3F 0B8 48 8D 6C 24 20                                lea     rbp, [rsp+20h]
 
     results = []
     for pattern in patterns:
-        for ea in FindInSegments(pattern, '.text'):
+        for ea in FindInSegments(pattern, 'any'):
             ea = idc.get_item_head(ea)
             next_ea = ea + (len(pattern) + 1) // 3
             ida_disasm = idc.generate_disasm_line(next_ea, idc.GENDSM_FORCE_CODE)
@@ -723,12 +723,11 @@ def find_rbp_frame():
 
 def find_stack_align_adjust():
     patterns = ["6a 10 48 f7 c4 0f 00 00 00 0f 85 ?? ?? ?? ?? e9"]
-    results = FindInSegments(patterns, '.text')
+    results = FindInSegments(patterns, 'any')
     starts = []
     for ea in results:
         # print(hex(ea), idc.generate_disasm_line(ea, idc.GENDSM_FORCE_CODE))
-        if HasUserName(ea):
-            LabelAddressPlus(ea, '')
+        #  if HasUserName(ea): LabelAddressPlus(ea, '')
         print("find_stack_align_adjust: 0x{:x}".format(ea))
         fnStart = destart(ea, 0xa8)
         if fnStart is None:
@@ -1159,7 +1158,7 @@ def FindInSegments(searchstr, segments=None, start=None, stop=None, limit=None, 
         searchstr = ' '.join("{:02x}".format(x) for x in _bytes)
 
 
-    if not segments:
+    if segments is None:
         segments = ['.text', 'LOAD']
 
     if not binary:

@@ -27,6 +27,27 @@ class BitwiseMask(object):
     _clear = list()
     _eval = list()
 
+    def __init__(self, *args, **kwargs):
+        self._options = kwargs
+        self._store = []
+        self.resize(0)
+        if len(args):
+            for value in args:
+                if type(value) == type(self):
+                    # maybe replace with a call to self.extend
+                    self.extend([value])
+                    #  self._set      = value._set[:]
+                    #  self._clear    = value._clear[:]
+                    #  self._eval     = value._eval[:]
+                    #  self._size     = value._size
+                    #  self._reserved = value._reserved
+                    #  self._store    = value._store[:]
+                elif isinstance(value, list):
+                    [self.add_list(x) for x in value]
+                elif value:
+                    self.add_list(value)
+
+
     def _as_mask(self, _set, _clear):
         return 0xff & ~_clear ^ _set
 
@@ -126,6 +147,8 @@ class BitwiseMask(object):
         if isinstance(addr, list):
             b = [idc.get_wide_byte(x) for x in addr[0:len(self)]]
             return self.match(b)
+
+        # _.indexOf([bm1.match_addresses(ea) for ea in range(ms(), me())], True) + ms()
 
     def match(self, b):
         value = self.value
@@ -273,24 +296,6 @@ class BitwiseMask(object):
         return bm1
 
 
-
-    def __init__(self, *args, **kwargs):
-        self._options = kwargs
-        self._store = []
-        self.resize(0)
-        if len(args):
-            for value in args:
-                if type(value) == type(self):
-                    # maybe replace with a call to self.extend
-                    self.extend([value])
-                    #  self._set      = value._set[:]
-                    #  self._clear    = value._clear[:]
-                    #  self._eval     = value._eval[:]
-                    #  self._size     = value._size
-                    #  self._reserved = value._reserved
-                    #  self._store    = value._store[:]
-                elif value:
-                    self.add_list(value)
 
     def extend(self, l):
         for bm in l:
@@ -705,4 +710,23 @@ solution: [7, 13, 14, 15] = (5, 18, 19, 20)
     mov r15, [rsp] == pop r15   4c 8b 3c 24 48 8d 64 24 08 == 41 5f
 """
 
+if True and __name__ == "__main__":
+    # xmms = braceexpand('xmm{0..15}')
+    bm1 = BitwiseMask([nassemble(x) for x in braceexpand('movupd  xmmword [rsp], xmm{0..15}')])
+    
+    print("[tri] {}".format(bm1.tri))
+    tri1 = bm1.tri.replace(' ', '')
+    #  unk1 = list()
+    #  unk2 = list()
+    #  for i, c in enumerate(tri1):
+        #  if c == '.':
+            #  unk1.append(i)
+    #  for i, c in enumerate(tri2):
+        #  if c == '.':
+            #  unk2.append(i)
+
+    print("[tri1] {}".format(tri1))
+
+
+                
 # vim: set ts=4 sts=4 sw=4 et:

@@ -27,11 +27,27 @@ def fprintf(dst, fmt, *args):
 false = False
 true = True
 
-_possible_lame = ["notte", "noted"]
-_possible_replacements = ["xena", "titan", "io", "fuji", "xerox", "dwarf", "eros", "ida", "pluto", "venus"]
-
+_possible_lame = ["notte", "noted", "ally", "waist"] # not nor fees hans use used uses seas sieze bath bathe
+_possible_replacements = ["titan", "bull", "tub", "io", "on", "to", "at", "in", "penis", "fuji", "xerox", "dwarf", "pluto", "venus", "xena", "eros", "ida", ]
+_changes = {
+        'ally': 'alley',
+        'acres': 'acre',
+        'allen': 'alan',
+        'lense': 'lens', # common mispelling
+        'luis' : 'louis', # alternative spelling
+        'goes' : 'go',
+        'pee'  : 'pea', # alternative spelling
+        'hi'   : 'high', # alternative spelling
+        'waist': 'venus', # changed (but existing 'waste' conflicted)
+        'witch': 'which', # alternative spelling
+        'their': 'there', # alternative
+        'herd':  'heard', # alternative
+        'maid':  'no', # alternative (but existing 'made' conflicted)
+        'mail':  'trump', # alternative (but existing 'mail' conflicted)
+        'boar':  'bore', # alternative
+}
 _dictWords = [
-    "able", "about", "above", "ache", "acid", "acres", "act", "actor", "adapt", "add", "admit", "adopt", "after", "again", "age", "agent", "ago", "agree", "ahead", "aids", "aim", "air", "orgy", "alert", "alfa", "alike", "alive", "allen", "allow", "ally",
+    "able", "about", "above", "ache", "acid", "acre", "act", "actor", "adapt", "add", "admit", "adopt", "after", "again", "age", "agent", "ago", "agree", "ahead", "aids", "aim", "air", "orgy", "alert", "alfa", "alike", "alive", "alan", "allow", "alley",
     "alone", "along", "aloud", "alpha", "also", "alter", "among", "amuse", "and", "anger", "angle", "anglo", "angry", "annoy", "anode", "apart", "apple", "apply", "april", "arc", "arch", "are", "area", "argue", "arise", "arm", "armed", "army", "arrow",
     "art", "ash", "aside", "asked", "asset", "atom", "negro", "fag", "auto", "avoid", "awake", "award", "aware", "away", "axis", "baby", "back", "bad", "badly", "bag", "bake", "baker", "ball", "band", "bank", "bar", "bare", "barn", "base", "based",
     "basic", "basin", "bath", "bathe", "bay", "beach", "beak", "beam", "bean", "bear", "beard", "beast", "beat", "bed", "beef", "been", "beer", "beg", "began", "begin", "begun", "being", "bell", "belly", "below", "belt", "ben", "bench", "bend", "bent",
@@ -49,7 +65,7 @@ _dictWords = [
     "fancy", "far", "fare", "farm", "fast", "fat", "fate", "fault", "favor", "fear", "feast", "fed", "feed", "feel", "fees", "feet", "fell", "felt", "fence", "fever", "few", "fewer", "fiber", "field", "fig", "fight", "file", "filed", "fill", "film",
     "final", "find", "fine", "fire", "fired", "firm", "first", "fish", "fist", "fit", "five", "fix", "fixed", "flag", "flame", "flash", "flat", "fled", "flesh", "flew", "float", "flood", "floor", "flour", "flow", "fluid", "flux", "fly", "foam", "focus",
     "fog", "foil", "fold", "folk", "fond", "food", "fool", "foot", "for", "force", "ford", "fork", "form", "fort", "forth", "found", "four", "frame", "fraud", "fred", "free", "fresh", "wank", "from", "front", "fruit", "fry", "fuel", "full", "fully",
-    "fun", "fund", "funny", "fur", "fuse", "gain", "game", "gamma", "gang", "gap", "gas", "gate", "gave", "gay", "gear", "gen", "germ", "get", "giant", "gift", "gin", "girl", "give", "given", "glad", "glass", "glory", "goal", "goat", "god", "goes",
+    "fun", "fund", "funny", "fur", "fuse", "gain", "game", "gamma", "gang", "gap", "gas", "gate", "gave", "gay", "gear", "gen", "germ", "get", "giant", "gift", "gin", "girl", "give", "given", "glad", "glass", "glory", "goal", "goat", "god", "go",
     "going", "gold", "golf", "gone", "good", "bitch", "got", "gov", "grace", "grade", "grain", "grand", "grant", "graph", "grass", "grave", "gray", "great", "greed", "greek", "green", "greet", "grew", "grind", "grip", "gross", "group", "grow", "guard",
     "guess", "guest", "guide", "guilt", "gulf", "gun", "guy", "habit", "hair", "hal", "half", "hall", "ham", "hand", "hang", "hans", "happy", "hard", "hardy", "harm", "harry", "haste", "hat", "hate", "have", "hay", "head", "heal", "heap", "hear", "heard",
     "heart", "heat", "heavy", "held", "helen", "hell", "hello", "help", "hen", "herd", "here", "hero", "hide", "high", "hill", "hire", "hired", "hit", "hoag", "hold", "hole", "holy", "home", "honey", "honor", "hook", "hope", "hopes", "horn", "horse",
@@ -58,7 +74,7 @@ _dictWords = [
     "kilo", "kind", "king", "kiss", "knee", "kneel", "knew", "knife", "knock", "knot", "know", "known", "label", "labor", "lack", "lady", "laid", "lake", "lamp", "land", "lane", "large", "last", "late", "later", "latin", "laugh", "law", "lay", "layer",
     "lazy", "lead", "leaf", "lean", "learn", "least", "leave", "led", "lee", "left", "leg", "legal", "lend", "lens", "less", "let", "level", "liar", "lid", "lie", "life", "lift", "light", "like", "liked", "lima", "limb", "limit", "line", "lip", "lisa",
     "list", "live", "lived", "load", "loaf", "loan", "lobby", "local", "lock", "lodge", "log", "logic", "long", "look", "loop", "lord", "loss", "lost", "lot", "loud", "louis", "love", "loved", "lover", "low", "lower", "loyal", "luck", "lucky", "lucy",
-    "lump", "lunch", "lung", "mad", "made", "magic", "maid", "mail", "main", "major", "make", "male", "mama", "man", "many", "map", "march", "marry", "mars", "mason", "mass", "mat", "match", "mate", "may", "maybe", "mayor", "meal", "mean", "meant", "meat",
+    "lump", "lunch", "lung", "mad", "made", "magic", "no", "trump", "main", "major", "make", "male", "mama", "man", "many", "map", "march", "marry", "mars", "mason", "mass", "mat", "match", "mate", "may", "maybe", "mayor", "meal", "mean", "meant", "meat",
     "meet", "melt", "mend", "mercy", "mere", "merry", "mesa", "mess", "metal", "miami", "might", "mike", "mild", "mile", "milk", "mill", "mind", "mine", "minor", "miss", "mix", "mixed", "mode", "model", "moist", "mold", "money", "month", "mood", "moon",
     "moore", "moral", "more", "morse", "most", "motel", "motor", "mount", "mouse", "mouth", "move", "moved", "movie", "much", "mud", "music", "must", "myth", "nail", "name", "named", "clit", "nato", "navy", "near", "neat", "neck", "need", "nelly",
     "nerve", "nest", "net", "dildo", "never", "new", "newer", "newly", "news", "next", "nice", "niche", "niece", "nigel", "night", "nine", "noble", "noise", "nolan", "none", "noon", "nor", "norm", "north", "nose", "not", "note", "noted", "notte", "noun",
@@ -82,7 +98,7 @@ _dictWords = [
     "today", "toe", "told", "tom", "tone", "took", "tool", "tooth", "top", "gook", "topic", "torn", "total", "touch", "tough", "tour", "towel", "tower", "town", "toy", "trace", "track", "trade", "trail", "train", "trait", "trap", "tray", "treat", "tree",
     "trend", "trial", "tribe", "trick", "tried", "trim", "trip", "truck", "true", "truly", "trunk", "trust", "truth", "try", "tube", "tulsa", "tune", "turn", "twice", "twist", "two", "type", "ugly", "uncle", "under", "union", "unit", "unite", "unity",
     "until", "upon", "upper", "upset", "urban", "urge", "urged", "usage", "use", "used", "uses", "using", "usual", "utah", "vain", "valid", "value", "van", "vary", "vast", "veil", "vein", "verb", "verse", "very", "via", "vice", "nazi", "view", "visit",
-    "vital", "vivid", "voice", "volt", "vote", "voted", "vowel", "wage", "wagon", "waist", "wait", "wake", "walk", "wall", "wally", "want", "war", "ward", "warm", "warn", "was", "wash", "waste", "watch", "water", "wave", "wax", "way", "weak", "wear",
+    "vital", "vivid", "voice", "volt", "vote", "voted", "vowel", "wage", "wagon", "venus", "wait", "wake", "walk", "wall", "wally", "want", "war", "ward", "warm", "warn", "was", "wash", "waste", "watch", "water", "wave", "wax", "way", "weak", "wear",
     "weave", "weed", "week", "weigh", "well", "went", "were", "west", "wet", "what", "wheat", "wheel", "when", "where", "which", "while", "whip", "lynch", "white", "who", "whole", "whom", "whose", "why", "wide", "widen", "widow", "width", "wife", "wild",
     "will", "win", "wind", "wine", "wing", "wipe", "wiped", "wire", "wise", "wish", "wit", "with", "woman", "wood", "wool", "word", "wore", "work", "worm", "worn", "worry", "worse", "worst", "worth", "would", "wound", "wrap", "wrist", "wrong", "muff",
     "yard", "year", "yell", "yes", "yet", "yield", "young", "your", "youth", "zen", "zero", "zulu"]

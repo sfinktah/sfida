@@ -2418,8 +2418,8 @@ def SkipJumps(ea, apply=False, returnJumps=False, returnTarget=False, until=None
         printi("ea was not int: {}".format(type(ea)))
     # apply = 0
     if (isOffset(ea)):
-        target = SkipJumps(GetTarget(ea), apply=apply)
-        if apply and target != GetTarget(ea) and idaapi.cvar.inf.min_ea <= target < idaapi.cvar.inf.maxEA:
+        target = SkipJumps(getptr(ea))
+        if apply and target != getptr(ea) and idaapi.cvar.inf.min_ea <= target < idaapi.cvar.inf.maxEA:
             setptr(ea, target)
         return target
 
@@ -2429,6 +2429,8 @@ def SkipJumps(ea, apply=False, returnJumps=False, returnTarget=False, until=None
             new_target = SkipJumps(target)
             if new_target != target:
                 nassemble(ea, string_between('[rel ', ']', diida(ea), repl=hex(new_target)), apply=1)
+        if returnTarget:
+            return target
         return ea
 
     
@@ -2446,8 +2448,8 @@ def SkipJumps(ea, apply=False, returnJumps=False, returnTarget=False, until=None
             match_NN_initial.extend(range(idaapi.NN_ja, idaapi.NN_jz + 1))
         else:
             conditional = False
-    if callable(iteratee):
-        iteratee(ea, -1, *args, **kwargs)
+    if callable(iteratee) and target != ea:
+        iteratee(target, -1, *args, **kwargs)
     while target != idc.BADADDR and not IsUnknown(target):
         if target == ea:
             match_NN = match_NN_initial
@@ -3474,7 +3476,7 @@ def last_iterable(iterable, *defaultvalue):
     return last
 
     
-def all_xrefs_(funcea=None, xref_getter=None, key='frm', iteratee=None, filter=None, pretty=False):
+def all_xrefs_(funcea=None, xref_getter=None, key='unset', iteratee=None, filter=None, pretty=False):
     if isinstance(funcea, list):
         return _.chain([all_xrefs_(x, xref_getter=xref_getter, key=key, iteratee=iteratee, filter=filter, pretty=pretty) for x in funcea]).flatten('shallow').sort().uniq('sorted').value()
     if xref_getter is None:
@@ -3507,7 +3509,8 @@ def all_xrefs_(funcea=None, xref_getter=None, key='frm', iteratee=None, filter=N
                 diida(x.to))
             for x in xref_getter(head)
             if x.type not in (ida_xref.fl_F,)])
-    xrefs = _.chain([iteratee(x) for x in xrefs if filter(x) and not ida_funcs.is_same_func(x[0], funcea)]).sort().uniq('sorted').value()
+    xrefs = _.chain([iteratee(x) for x in xrefs if filter(x) # and not ida_funcs.is_same_func(x[0], funcea)
+        ]).sort().uniq('sorted').value()
 
     if pretty:
         for x in _.uniq(sorted(xrefs, key=lambda x: (x[2], x[0])), 1):
@@ -3515,11 +3518,11 @@ def all_xrefs_(funcea=None, xref_getter=None, key='frm', iteratee=None, filter=N
         return
     return xrefs
 
-def all_xrefs_to(funcea=None, iteratee=None, filter=None, pretty=False):
-    return all_xrefs_(funcea=funcea, iteratee=iteratee, filter=filter, pretty=pretty, xref_getter=idautils.XrefsTo, key='frm')
+def all_xrefs_to(funcea=None, iteratee=None, filter=None, pretty=False, key='frm'):
+    return all_xrefs_(funcea=funcea, iteratee=iteratee, filter=filter, pretty=pretty, xref_getter=idautils.XrefsTo, key=key)
 
-def all_xrefs_from(funcea=None, iteratee=None, filter=None, pretty=False):
-    return all_xrefs_(funcea=funcea, iteratee=iteratee, filter=filter, pretty=pretty, xref_getter=idautils.XrefsFrom, key='to')
+def all_xrefs_from(funcea=None, iteratee=None, filter=None, pretty=False, key='to'):
+    return all_xrefs_(funcea=funcea, iteratee=iteratee, filter=filter, pretty=pretty, xref_getter=idautils.XrefsFrom, key=key)
 
 def call_refs_from(funcea=None):
     return all_xrefs_from(funcea, filter=lambda x: x[2] == 'fl_CN', iteratee=lambda x: x[0])
@@ -6522,7 +6525,8 @@ def get_create_data_func(size):
     sizes = [ ida_bytes.FF_BYTE, ida_bytes.FF_WORD, ida_bytes.FF_DWORD, ida_bytes.FF_QWORD, ida_bytes.FF_OWORD, ida_bytes.FF_YWORD ]
     n = log2(size);
     ff_size = sizes[n]
-    return lambda x: ida_bytes.create_data(x, ff_size, size, ida_idaapi.BADADDR)
+    # return lambda x: ida_bytes.create_data(x, ff_size, size, ida_idaapi.BADADDR)
+    return lambda x: (MyMakeUnknown(x, size, 0), ida_bytes.create_data(x, ff_size, size, ida_idaapi.BADADDR))[1]
 
 
 # This is the same as idautils.Chunks()

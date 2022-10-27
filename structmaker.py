@@ -2322,7 +2322,7 @@ def StructMaker(ea, struct_name, var=None, self_offset = 0, floor = 0):
         f = f.replace('pVehicle_3', 'self')
         f = f.replace('pVehicle_4', 'self')
         f = f.replace('pVehicle', 'self')
-        # print("line: %s" % f)
+        print("line: %s" % f)
         for (_gap, _offset) in re.findall(pattern_4, f):
             offset = int(_gap, 16) + int(_offset, 10)
             if offset < floor: continue
