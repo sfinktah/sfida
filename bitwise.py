@@ -710,7 +710,7 @@ solution: [7, 13, 14, 15] = (5, 18, 19, 20)
     mov r15, [rsp] == pop r15   4c 8b 3c 24 48 8d 64 24 08 == 41 5f
 """
 
-if True and __name__ == "__main__":
+if False and __name__ == "__main__":
     # xmms = braceexpand('xmm{0..15}')
     bm1 = BitwiseMask([nassemble(x) for x in braceexpand('movupd  xmmword [rsp], xmm{0..15}')])
     
