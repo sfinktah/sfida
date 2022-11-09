@@ -55,6 +55,52 @@ def rename_lvar(src, dst, ea):
         else:
             print("couldn't find var {}".format(src))
 
+def set_lvar_name_type(ea, src, name, t, vu=None):
+    """
+    Change the name or type of a local variable 
+
+    @param ea: address of function
+    @param src: current name of variable
+    @param name: new name (or None to leave as is)
+    @param t: new type (str, tinfo_t, or None to leave as is)
+    @param v: handle to existing pseudocode window (vdui_t, or None)
+    """
+    # m = [ea for ea in [pprev(ea, 1) for ea in l if GetFuncName(ea)] if ea]
+    def get_tinfo_elegant(name):
+        ti = ida_typeinf.tinfo_t()
+        til = ti.get_til()
+        # get_named_type(self, til, name, decl_type=BTF_TYPEDEF, resolve=True, try_ordinal=True)
+        if ti.get_named_type(til, name, ida_typeinf.BTF_STRUCT, True, True):
+            return ti
+        return None
+
+    def get_pseudocode_vu(ea, vu=None):
+        func = idaapi.get_func(ea)
+        if func:
+            return idaapi.open_pseudocode(func.start_ea, 0)
+
+    if isinstance(t, str):
+        tif = get_tinfo_by_parse(t)
+        if not tif:
+            raise ValueError("Couldn't get tinfo_t for type '{}'".format(t))
+        t = tif
+    elif isinstance(t, ida_typeinf.tinfo_t) or t is None:
+        pass
+    else:
+        raise TypeError("Unknown type for t '{}'".format(type(t)))
+
+    vu = get_pseudocode_vu(ea, vu)
+    if vu:
+        lvars = [n for n in vu.cfunc.lvars if n.name == src]
+        if len(lvars) == 1:
+            print("changing name/type of {}/{} to {}/{}".format(lvars[0].name, lvars[0].type(), name, str(t)))
+            if t:
+                vu.set_lvar_type(lvars[0], t)
+            if name:
+                vu.rename_lvar(lvars[0], name, 1)
+        else:
+            print("[set_lvar_name_type] couldn't find var {}".format(src))
+    return False
 
 def set_lvar_type(src, t, ea):
     if isinstance(t, str):

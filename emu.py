@@ -378,7 +378,8 @@ def insnHookActual(unicornObject, address, instructionSize, userData):
             else:
                 _spd = 'unset'
             stack_pointer = helper.getRegVal('rsp')
-            stepout("{:9x} {:5x} {:16} {}{} ; spd: {}".format(address, helper.getRegVal('rsp') - 0x11000, TagRemoveSubstring(fnName), string_between('; ', '', insn, repl=''), extra, _spd))
+            # stepout("{:9x} {:5x} {:16} {}{} ; spd: {}".format(address, MakeSigned(helper.getRegVal('rsp'), 64) - 0x11000, TagRemoveSubstring(fnName), string_between('; ', '', insn, repl=''), extra, _spd))
+            stepout("{:9x} {:5x} {:16} {}{} ; spd: {}".format(address, MakeSigned(helper.getRegVal('rsp'), 64), TagRemoveSubstring(fnName), string_between('; ', '', insn, repl=''), extra, _spd))
 
             show_after()
 
@@ -525,12 +526,12 @@ def memHook(unicornObject, accessType, memAccessAddress, memAccessSize, memValue
         if accessType & 1:
             writtento.add(memAccessAddress)
             _type = "write"
-            if memAccessAddress >= ida_ida.cvar.inf.min_ea and memAccessAddress < 0x150000000 and memAccessAddress != 0x1402bae8a:
-                out("                mem: {} [0x{:x}] {:x} {:x}b {}".format(_type, memAccessAddress, memValue, memAccessSize, idc.get_name(memAccessAddress)))
+            if memAccessAddress >= ida_ida.cvar.inf.min_ea: #  and memAccessAddress < 0x150000000 and memAccessAddress != 0x1402bae8a:
+                out("                mem: {} [{:#x}] {:x} {:x}b {}".format(_type, MakeSigned(memAccessAddress, 64), memValue, memAccessSize, idc.get_name(memAccessAddress)))
         else:
             _type = "read "
-            if memAccessAddress >= ida_ida.cvar.inf.min_ea and memAccessAddress < 0x150000000 and memAccessAddress != 0x1402bae8a:
-                out("                mem: {} [0x{:x}] {:x} {:x}b {}".format(_type, memAccessAddress, memValue, memAccessSize, idc.get_name(memAccessAddress)))
+            if memAccessAddress >= ida_ida.cvar.inf.min_ea: #  and memAccessAddress < 0x150000000 and memAccessAddress != 0x1402bae8a:
+                out("                mem: {} [{:#x}] {:x} {:x}b {}".format(_type, MakeSigned(memAccessAddress, 64), memValue, memAccessSize, idc.get_name(memAccessAddress)))
             readfrom.add(memAccessAddress)
 
 

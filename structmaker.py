@@ -1670,7 +1670,7 @@ def StrucInfo(name, pack = False, parent_offset = 0, rename = False, renameRel =
                         print("[getName] _opt_array:{}, _type:{}, tif.is_float:{}".format(_opt_array, _type, tif.get_array_element().is_float()))
                         print("ValueError: {}".format(str(e)))
                         pass
-                elif _opt_array and tif and reclass:
+                elif (array or tif.is_array()) and reclass:
                     try:
                         _type = getVarType(tif.get_array_element().get_size(), unsigned=tif.get_array_element().is_unsigned(), is_float=tif.get_array_element().is_float(), reclass=reclass)
                     except ValueError as e:
@@ -1679,15 +1679,21 @@ def StrucInfo(name, pack = False, parent_offset = 0, rename = False, renameRel =
                         pass
                 else:
                     if trivial:
+                        #  mid   = idc.get_member_id(sid,    offset)
+                        #  name  = idc.get_member_name(sid,  offset)
+                        #  size  = idc.get_member_size(sid,  offset)
+                        #  flags = idc.get_member_flag(sid,  offset)
+                        #  strid = idc.get_member_strid(sid, offset)
                         try:
-                            _type = getVarType(tif.get_size(), unsigned=tif.is_unsigned(), is_float=tif.is_float(), reclass=reclass)
+                            _type = getVarType(size, unsigned=False, is_float=False, reclass=reclass)
                         except ValueError as e:
-                            print("[getName] _opt_array:{}, _type:{}, tif.is_float:{}".format(_opt_array, _type, tif.get_array_element().is_float()))
+                            #  print("[getName] _opt_array:{}, _type:{}, tif.is_float:{}".format(_opt_array, _type, tif.get_array_element().is_float()))
                             print("ValueError: {}".format(str(e)))
                             pass
                     else:
                         # dprint("[nontrivial] _type")
-                        print("[nontrivial] _type:{}".format(_type))
+                        if verbose:
+                            print("[nontrivial] _type:{}".format(_type))
                         
 
                 oprint("/* 13 0x{:04x} */ {:<32} {}{};".format(getOffset(ori_offset), _type, getName(name), _opt_array))
@@ -2686,13 +2692,13 @@ def rage_map(name, T):
             bool DynamicSize;
         }};
     """.format(name, T)
+    print(s)
     return idc.parse_decls(s)
 
 def rage_vector(name, T):
     s = f"""struct {name} {{
             {T}* elements;
-            uint16_t size;
-            uint16_t reserved;
+            atArray_size_union size;
         }};""" # .format(name, T)
     print(s)
     return idc.parse_decls(s)

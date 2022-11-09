@@ -173,6 +173,8 @@ class AdvanceInsnList(object):
         self._list_ea = ea
         self._list_prev_list = None
         self._list_next_list = None
+        self._list_parents = set()
+        self._list_children = set()
 
         if ea.__class__.__name__ == self.__class__.__name__:
             props = [x for x in dir(self) if x.startswith('_list')]
@@ -206,6 +208,25 @@ class AdvanceInsnList(object):
         """
         self._list_next_list = value
         return self._list_next_list
+
+    def addChild(self, value):
+        """ New style classes requires setters for @property methods
+        """
+        value._list_parents.add(self)
+        self._list_children.add(value)
+        return value
+
+    def removeChild(self, value):
+        if value in self._list_children:
+            self._list_children.remove(value)
+            value._list_parents.remove(self)
+        return value
+
+    def getChildren(self):
+        return list(self._list_children)
+
+    def getParents(self):
+        return list(self._list_parents)
 
     @property
     def insns(self):
@@ -289,24 +310,30 @@ class AdvanceInsnList(object):
         x = self
         # yield "loc_{:X}:".format(x.ea)
         #  print('yielding initial insns')
-        yield from x.insns
+        for i in x.insns:
+            if i.ea not in visited:
+                visited.add(i.ea)
+                yield i
 
         if isinstance(x.next, set):
             _queue = list(x.next)
             while _queue:
                 item = _queue.pop(0)
-                if item not in visited:
-                    yield from item.insns
-                    visited.add(item)
-                    if item.next:
-                        #  print('join: appending {}'.format(item.next))
-                        for x in item.next:
-                            _queue.append(x)
+                for i in item.insns:
+                    if i.ea not in visited:
+                        visited.add(i.ea)
+                        yield i
+                if item.next:
+                    #  print('join: appending {}'.format(item.next))
+                    for x in item.next:
+                        _queue.append(x)
 
         else:
-            while x.next and x.next not in visited:
-                yield from x.next.insns
-                visited.add(x)
+            while x.next:
+                for i in x.next.insns:
+                    if i.ea not in visited:
+                        visited.add(i.ea)
+                        yield i
                 x = x.next
 
 

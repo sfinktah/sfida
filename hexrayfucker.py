@@ -529,7 +529,7 @@ def get_pseudocode_vu(ea, vu=None):
 
 def get_lvar_real_stkoff(ea, name='', vu=None):
     r = foreach_lvars(ea, vu=vu, iteratee= \
-            lambda _lvar, _vu, *a: (_lvar, _lvar.get_stkoff() - _vu.cfunc.get_stkoff_delta()))
+            lambda _lvar, _i, _vu, *a: (_lvar, _lvar.get_stkoff() - _vu.cfunc.get_stkoff_delta()))
     for _lvar, _offset in r:
         print("lvar name: {:32s} offset: 0x{:3x}".format(_lvar.name, _offset))
     return r
@@ -547,9 +547,15 @@ def foreach_lvars(ea, iteratee=None, vu=None):
     lvars = get_lvars(ea=ea, vu=vu)
     if lvars:
         if callable(iteratee):
-            return [iteratee(n, vu) for n in vu.cfunc.lvars]
+            for i, n in enumerate(vu.cfunc.lvars):
+                # dprint("[foreach_lvars] n, i, vu")
+                print("[foreach_lvars] n:{}, i:{}, vu:{}".format(n, i, vu))
+                iteratee(n, i, vu) 
+            return
         return [n for n in vu.cfunc.lvars]
     return False
+    # foreach_lvars(EA(), lambda n, i, vu: vu.rename_lvar(n, lvd[i][0], 1), vu=vu)
+    # foreach_lvars(EA(), lambda n, i, vu: vu.set_lvar_type(n, get_tinfo_by_parse(lvd[i][1])), vu=vu)
 
 #  if you want to use an existing view:
 #      widget = ida_kernwin.find_widget('Pseudocode-AU')
@@ -657,7 +663,8 @@ def _rename_lvar(old, new, ea, uniq=0, vu=None):
             if name not in taken:
                 return name
 
-    old = old.strip()
+    if isinstance(old, str):
+        old = old.strip()
     new = new.strip()
     if old == new:
         return True
@@ -667,7 +674,10 @@ def _rename_lvar(old, new, ea, uniq=0, vu=None):
         if uniq:
             return False
         new = make_unique_name(new, names)
-    lvars = [n for n in vu.cfunc.lvars if n.name == old]
+    if isinstance(old, int):
+        lvars = [vu.cfunc.lvars[old]]
+    else:
+        lvars = [n for n in vu.cfunc.lvars if n.name == old]
     if lvars:
         lvar = lvars[0]
         if lvar.is_stk_var():
@@ -712,6 +722,95 @@ def get_lvar_type(src, ea, vu=None):
             print("[get_lvar_type] couldn't find var '{}'".format(src))
     return False
 
+def set_lvar_name_type_so(ea, src, name, t, vu=None):
+    """
+    Change the name or type of a local variable 
+
+    @param ea: address of function
+    @param src: current name of variable
+    @param name: new name (or None to leave as is)
+    @param t: new type (str, tinfo_t, or None to leave as is)
+    @param v: handle to existing pseudocode window (vdui_t, or None)
+
+    @note
+    Will not work with function arguments or global variables
+    """
+    # m = [ea for ea in [pprev(ea, 1) for ea in l if GetFuncName(ea)] if ea]
+    def get_tinfo_elegant(name):
+        ti = ida_typeinf.tinfo_t()
+        til = ti.get_til()
+        # get_named_type(self, til, name, decl_type=BTF_TYPEDEF, resolve=True, try_ordinal=True)
+        if ti.get_named_type(til, name, ida_typeinf.BTF_STRUCT, True, True):
+            return ti
+        return None
+
+    def get_pseudocode_vu(ea, vu=None):
+        func = idaapi.get_func(ea)
+        if func:
+            return idaapi.open_pseudocode(func.start_ea, 0)
+
+    if isinstance(t, str):
+        tif = get_tinfo_elegant(t)
+        if not tif:
+            raise ValueError("Couldn't get tinfo_t for type '{}'".format(t))
+        t = tif
+    elif isinstance(t, ida_typeinf.tinfo_t) or t is None:
+        pass
+    else:
+        raise TypeError("Unknown type for t '{}'".format(type(t)))
+
+    vu = get_pseudocode_vu(ea, vu)
+    if vu:
+        lvars = [n for n in vu.cfunc.lvars if n.name == src]
+        if len(lvars) == 1:
+            print("changing name/type of {}/{} to {}/{}".format(lvars[0].name, lvars[0].type(), name, str(t)))
+            if t:
+                vu.set_lvar_type(lvars[0], t)
+            if name:
+                vu.rename_lvar(lvars[0], name, 1)
+        else:
+            print("[set_lvar_name_type] couldn't find var {}".format(src))
+    return False
+
+def set_lvar_name_type(ea, src, name, t, vu=None):
+    """
+    l = FindInSegments("65 48 8B 04 25 58 00 00 00")
+    forceAsCode([ea for ea in l if not GetFuncName(ea)])
+    m = [ea for ea in [pprev(ea, 1) for ea in l if not GetFuncName(ea)] if ea]
+    retrace_list(m)
+    m = [ea for ea in l if GetFuncName(ea)]
+    for ea in m: 
+        list(decompile_function_search(ea, r'\b(v\d+) = TlsIndex', iteratee=lambda ea, m: set_lvar_name_type(ea, m, 'tlsIndex', None)))
+    """
+    # m = [ea for ea in [pprev(ea, 1) for ea in l if GetFuncName(ea)] if ea]
+    if src is None:
+        print("return_if: src in None")
+        return 
+    
+    if isinstance(t, str):
+        tif = get_tinfo_by_parse(t)
+        if not tif:
+            raise ValueError("Couldn't get tinfo for type '{}'".format(t))
+        t = tif
+    elif isinstance(t, ida_typeinf.tinfo_t):
+        pass
+    elif t is None:
+        pass
+    else:
+        raise TypeError("Unknown type for t '{}'".format(type(t)))
+
+    vu = get_pseudocode_vu(ea, vu)
+    if vu:
+        lvars = [n for n in vu.cfunc.lvars if n.name == src]
+        if len(lvars) == 1:
+            print("changing name/type of {}/{} to {}/{}".format(lvars[0].name, lvars[0].type(), name, str(t)))
+            if t:
+                vu.set_lvar_type(lvars[0], t)
+            vu.rename_lvar(lvars[0], name, 1)
+        else:
+            print("[set_lvar_name_type] couldn't find var {}".format(src))
+    return False
+
 def set_lvar_type(src, t, ea, vu=None):
     if t is None or src is None:
         print("return_if: t is None or src in None")
@@ -753,6 +852,41 @@ def map_lvar(src, dst, ea, vu=None):
         else:
             print("couldn't find one of the vars {} or {}".format(src, dst))
     return False
+
+# ralf rolles
+# It's better to do this directly, without using the user-interface class
+# vdui_t. Here's a small function you can call to set the name of a local
+# variable, assuming you already have the lvar_t object you want to rename:
+
+def SetLvarName(func_ea,lvar,name):
+    lsi = ida_hexrays.lvar_saved_info_t()
+    lsi.ll = lvar
+    lsi.name = name
+    ida_hexrays.modify_user_lvar_info(func_ea, ida_hexrays.MLI_NAME, lsi)
+
+# Here's a little harness I wrote to ensure it works. It decompiles some function in my database, finds the lvar_t named "v35", and renames it to "vNewName".
+
+def GetCfunc(ea):
+    f = idaapi.get_func(ea)
+    if f is None:
+        return None
+
+    # Decompile the function.
+    cfunc = None
+    try:
+        cfunc = idaapi.decompile(f)
+    finally:
+        return cfunc
+
+def SetLvarNameTest():
+    cfunc = GetCfunc(0x61FE5DDE)
+    if cfunc:
+        mba = cfunc.mba
+        for idx in xrange(mba.vars.size()):
+            var = mba.vars[idx]
+            if var.name == "v35":
+                SetLvarName(cfunc.entry_ea,var,"vNewName")
+                break
 
 def get_flags_by_size(size):
     """ see also ida_bytes.get_flags_by_size """
@@ -1644,7 +1778,7 @@ def decompile_native(ea = None):
                 for rule in rules:
                     if isinstance(rule[0], list):
                         matches = sti.multimatch(rule[0])
-                        if matches: print("line", "\nline ".join(sti.asList))
+                        if matches: print("line", "\nline ".join(sti.as_list()))
                     else:
                         matches = re.findall(rule[0], line)
                         if matches: print("\nline", line)
@@ -1661,6 +1795,176 @@ def decompile_native(ea = None):
 
                         continue
             break
+
+def decompile_rand(ea = None):
+    # https://docs.microsoft.com/en-us/search/?scope=Desktop&terms=GetCurrentProcess
+    ea = eax(ea)
+    ea = GetFuncStart(ea)
+    fnName = idc.get_name(ea);
+    # SetFuncFlags(ea, lambda f: (f & ~0x22) | 0x10 )
+    with Pseudocode(ea) as vu:
+        def rename_lvar_factory(*args, **kwargs):
+            """
+            @brief rename_lvar_factory
+
+            @param indexes [optional,iterable] index(es) to use from array of names
+            @param names [iterable] name(s) matched by (usually a regex)
+            @param uniq [default:0] only perform replace once
+            @param type [default:None]
+
+            @return list of returns from set_lvar_type
+            """
+            # dprint("[debug] args, kwargs")
+
+            nargs = dict()
+            for arg in args:
+                if len(nargs) in (0,):
+                    if contents(arg, (int,)):
+                        nargs['indexes'] = A(arg)
+                if len(nargs) in (0,1):
+                    if contents(arg, (str,)):
+                        nargs['names'] = A(arg)
+                        if 'indexes' not in nargs:
+                            nargs['indexes'] = range(len(nargs['names']))
+
+            nargs['uniq'] = 0
+            nargs['type'] = None
+            nargs.update(kwargs)
+            from operator import itemgetter
+            d = nargs
+
+            indexes, names, types, uniq = itemgetter('indexes', 'names', 'type', 'uniq')(d)
+            if types is None:
+                types = [None] * len(names)
+            elif isinstance(types, str):
+                types = (types,)
+            elif not isinstance(types, tuple):
+                types = tuple(types)
+
+            def fn_rename_lvar(*args):
+                if len(args) > len(names):
+                    skip_first = 1
+                    print("args:   {}".format(args))
+
+                    for r in range(1, len(args)):
+                        if not args[r] in args[0]:
+                            skip_first = 0
+                    if skip_first:
+                        args = args[1:]
+
+                for index, name, _type in zip(indexes, names, types):
+                    print('i,n,t: {}, {}, {}'.format(index, name, _type))
+                    if _type is None and isinstance(name, str) and eax(args[index]):
+                        old_name = args[index]
+                        fnLoc = get_ea_by_any(old_name)
+                        LabelAddressPlus(fnLoc, name)
+                    if _type:
+                        set_lvar_type(args[index], _type, ea, vu=vu)
+                    if isinstance(name, int):
+                        old_name = args[index]
+                        fnLoc = get_ea_by_any(old_name)
+                        tag_string = TagGetTagSubstring(old_name)
+                        old_name = TagRemoveSubstring(old_name)
+                        new_name = string_between('', '_', old_name) + "_" + string_between('_', '', TagRemoveSubstring(idc.get_name(ea))) + tag_string
+                        # dprint("[debug] old_name, new_name")
+                        print("[debug] old_name:{}, new_name:{}".format(old_name, new_name))
+                        
+                        LabelAddressPlus(fnLoc, new_name, force=1)
+                    else:
+                        _rename_lvar(args[index], name, ea, uniq=uniq, vu=vu)
+
+            return fn_rename_lvar
+
+        pattern_subs = [
+                # v56 = data_2->rand_base64_decoded_len.MatchingBits & data_2->rand_base64_decoded_len.Key | data_2->rand_base64_decoded_len.NonMatchingBits & ~data_2->rand_base64_decoded_len.Key;
+                # v57 = das                                          & data_2->rand_base64_decoded_len.Key | data_2->rand_base64_decoded_len.NonMatchingBits & ~data_2->rand_base64_decoded_len.Key;
+                # v54 = data_2->rand_base64_decoded_len.MatchingBits & data_2->rand_base64_decoded_len.Key | dans_4                                          & ~data_2->rand_base64_decoded_len.Key;
+                (wrap_compile(r'^\s+(v\d+) = .*(?:das\w*|MatchingBits) & .*Key \| .*(?:dans\w*|NonMatchingBits) & .*Key;'),                 2 , rename_lvar_factory(0, 'data')),
+                #     v37 = base64_decoded_len & prngSeed;
+                #     v38 = base64_decoded_len & ~prngSeed;
+
+                (wrap_compile(r'^\s+(v\d+) = \w+ & prngSeed;'),                 2 , rename_lvar_factory(0, 'das')),
+                (wrap_compile(r'^\s+(v\d+) = \w+ & ~prngSeed;'),                 2 , rename_lvar_factory(0, 'dans')),
+                #     v34 = ~prngSeed;
+                (wrap_compile(r'^\s+(v\d+) = ~prngSeed;'),                 2 , rename_lvar_factory(0, 'ns')),
+                #  (wrap_compile(r'^\s+(v\d+) [\^]= \*[::static_cast::]*(\w+);'),                                       3 , fn_vortex_1),
+                #  (wrap_compile(r'\b(o_|off_14[0-9A-F]{7})\b'),                                                        2 , fn_offset_1),
+                #  (wrap_compile(r'\b(o_+\d*)\b'),                                                                      2 , fn_offset_1),
+                #  (wrap_compile(r'^\s+if \( !([::v::]) && Zero \)'),                                                   1 , rename_lvar_factory(0, 'misdirection')),
+                #  (wrap_compile(r'^\s+(\w+)\(ptr, ([::v::]), [::static_cast::]?([::v::])\);'),                         4 , rename_lvar_factory(('ArxanMemcpy', 'src', 'length'), type=(None, 'uint8_t*', 'uint32_t'), uniq=1)),
+                #  (wrap_compile(r'^\s+(\w+)\(ptr, \w+, [::static_cast::]?\w+\);'),                                     3 , rename_lvar_factory(('ArxanMemcpy'), type=(None), uniq=1)),
+                #  (wrap_compile(r'^\s+(v\d+) = 0i64;'),                                                                2 , rename_lvar_factory(0, '_align', uniq=1)),
+                #  (wrap_compile(r'^\s+([::v::]) = [::pointer_cast::]ArxanCheckFunction_\w+ - [::pointer_cast::]\w+;'), 2 , rename_lvar_factory(0, 'Zero', uniq=1)),
+                #  (wrap_compile(r'^\s+([::v::]) = \w+_\x+ ^ \*\(_DWORD \*\)([::v::]);'),                               3 , rename_lvar_factory(('buf', 'ciphered'), type=('uint32_t', 'uint32_t *'))),
+                #  (wrap_compile(r'^\s+(dword_\x+) = \*\(_DWORD \*\)(\w+_1402FAE33);'),                                 3 , lambda all, dst, src: MakeDword(eax(src))),
+                #  (wrap_compile(r'^\s+(dword_\x+) = (dword_\x+);'),                                                    3 , rename_lvar_factory(('arxan_done_dst_{}'.format(suffix), 'arxan_done_src_{}'.format(suffix)), type=(None, None))),
+                #  (wrap_compile(r'^\s+(v\d+) = 0i64;'),                                                                2 , rename_lvar_factory(0, 'Zero', uniq=1)),
+                #  (wrap_compile(r'^\s+([::v::]).start = 0;'),                                                          2 , rename_lvar_factory(0, 'range', uniq=1)),
+                #  (wrap_compile(r'^\s+([::v::]) = &ImageBase\[range.start\];'),                                        2 , rename_lvar_factory(0, 'ptr')),
+                #  (wrap_compile(r'^\s+(Zero|v\d+) (=) 1i64;'),                                                         2 , rename_lvar_factory(0, '_align', uniq=1)),
+                #  (wrap_compile(r'^\s+(v\d+) = [::static_cast::]*\w+imagebase', re.I),                                 2 , rename_lvar_factory(0, 'ImageBase', type='uint8_t *', uniq=1)),
+                #  # guide = (uint8_t *)&unk_1439B9746;
+                #  (wrap_compile(r'^\s+(?:guide\w*) = [::reference_cast::]*(\w+);', re.I),                              2 , rename_lvar_factory(('guide_{}'.format(suffix)), type=(None))),
+                #  (wrap_compile(r'^\s+(v\d+) = a1;'),                                                                  2 , rename_lvar_factory(0, '_arg_0', uniq=1)),
+                #  (wrap_compile(r'^\s+if \((v\d+) == (24)\)'),                                                         2 , rename_lvar_factory(0, '_stack_padding', uniq=1)),
+                #  (wrap_compile(r'^\s+if \((v\d+) == (24)\)'),                                                         2 , rename_lvar_factory(0, '_stack_padding', uniq=1)),
+                #  (wrap_compile(r'([::v::]) = __ROL4__\(\2, ([::v::])\)'),                                             2 , rename_lvar_factory(('roll_amt', 'rolling_code') )),
+                #  (wrap_compile(r'([::v::]) += rolling_code ^ roll_amt'),                                              1 , rename_lvar_factory(0, 'hash')),
+                #  (wrap_compile(r'^\s+(\w+)\([::static_cast::]*&(\w+), [::static_cast::]*&(\w+)\);'),                  4 , rename_lvar_factory(('ArxanGetNextRange_{}'.format(suffix), 'guide', 'range'), type=(None, 'uint8_t*', 'arxan_range'), uniq=1)),
+                #  (wrap_compile(r'^\s+(ArxanMemcpy[^(), ]+)\(&?(\w+), &?(\w+), &?(\w+)\);'),                           5 , rename_lvar_factory((ea, 'dst', 'p_B0', 'len'), uniq=1)),
+                #  (wrap_compile(r'([::v::]) = [::reinterpet_cast::]ImageBase\[[::deref_static_cast::]([::v::])\]'),    3 , rename_lvar_factory(('acid_bath', 'acid_offset'), type=('uint64_t', 'uint32_t*'), uniq=1)),
+                #  (wrap_pattern(r"""Zero = 0i64;
+    #  ImageBase = .*
+    #  .*_arg_0 \+ _align.*
+    #  (v\d+) = [::static_cast::]*&?\w+;
+    #  (v\d+) = [::static_cast::]*&(v\d+);
+    #  (v\d+|p_B0) = [::static_cast::]*&(v\d+);
+    #  (v\d+) = 0;
+    #  (v\d+) = 0;""", split="\n"), 0, test_multimatch),
+
+                # *(_QWORD *)GetCurrentProcess_0 = GetProcAddress(pKernel32, "GetCurrentProcess");
+                #  (wrap_compile(r'\*\(_QWORD \*\)(\w\+) = GetProcAddress\((\w\+), "(\w\+)"\)')), 4, None),
+                #  # NtQueryVirtualMemory = (__int64)GetProcAddress(v1, "NtQueryVirtualMemory");
+                #  (wrap_compile(r'(\w\+) = \([^)]+\)GetProcAddress\((\w\+), "(\w\+)"\)')), 3, fn_process_handle_1),
+                #  # GetModuleFileNameA_0 = (DWORD (__stdcall *)(HMODULE, LPSTR, DWORD))GetProcAddress(pKernel32, "GetModuleFileNameA");
+                #  #  match1                  ^^ match2 ..........................  ^^                 ^match3      ^match4
+                #  (wrap_compile(r'(\w+) = \(([^(]+\([^)]+\)[^)]+\))\)GetProcAddress\((\w+), "(\w+)"\)')), 4, None),
+                #  # pKernel32 = GetModuleHandleA("kernel32.dll");
+                #  (wrap_compile(r'(\w+) = GetModuleHandle[AW]?\("(\w+).dll"\);')), 2, fn_module_handle),
+                #  # wrap_compile(r'')),
+        ]
+
+        while True:
+            lines = [ida_lines.tag_remove(x.line) for x in genAsList(vu.cfunc.get_pseudocode())]
+            if not lines:
+                print("return_unless: lines")
+                return
+
+            sti = CircularList(8)
+            for line in lines:
+                # print("line", line)
+                sti.append(line)
+                for psub in pattern_subs:
+                    if isinstance(psub[0], list):
+                        matches = sti.multimatch(psub[0])
+                        if matches: print("line", "\nline ".join(sti.as_list()))
+                    else:
+                        matches = re.findall(psub[0], line)
+                        if matches: print("\nline", line)
+                    if matches:
+                        print("match:  {}\ngroups: {}\nfnargs: {}".format(string_between('re.compile(\'', '\')', str(psub[0]), greedy=1), matches[0], psub[1]))
+                    if matches and psub[2] and callable(psub[2]):
+                        if psub[1]:
+                            for g in reby_simple(psub[1], matches):
+                                psub[2](*g)
+                        else:
+                            print("multimatch: {}".format(matches))
+                            results = _.flatten([x for x in [x.groups() for x in matches] if x])
+                            psub[2](*results)
+
+                        continue
+            break
+
 
 def decompile_arxan(ea = None):
     # https://docs.microsoft.com/en-us/search/?scope=Desktop&terms=GetCurrentProcess
@@ -1827,11 +2131,11 @@ def decompile_arxan(ea = None):
                 (wrap_pattern(r"""Zero = 0i64;
     ImageBase = .*
     .*_arg_0 \+ _align.*
-    (v\d+) = [::static_cast::]*&?\w+;
-    (v\d+) = [::static_cast::]*&(v\d+);
-    (v\d+|p_B0) = [::static_cast::]*&(v\d+);
-    (v\d+) = 0;
-    (v\d+) = 0;""", split="\n"), 0, test_multimatch),
+    ({m}v\d+) = [::static_cast::]*&?\w+;
+    ({m}v\d+) = [::static_cast::]*&({m}v\d+);
+    ({m}v\d+|p_B0) = [::static_cast::]*&({m}v\d+);
+    ({m}v\d+) = 0;
+    ({m}v\d+) = 0;""", split="\n"), 0, test_multimatch), #  def test_multimatch({m}cipher_text, p_B4, B4, p_B0, B4a, B4b, remain):
 
                 # *(_QWORD *)GetCurrentProcess_0 = GetProcAddress(pKernel32, "GetCurrentProcess");
                 #  (wrap_compile(r'\*\(_QWORD \*\)(\w\+) = GetProcAddress\((\w\+), "(\w\+)"\)')), 4, None),
@@ -1846,14 +2150,18 @@ def decompile_arxan(ea = None):
         ]
 
         arrays = get_lvars(ea, vu=vu, tif_filter=lambda tif: tif.is_array())
-        for array in arrays:
-            tif = array.tif
-            tif.remove_ptr_or_array()
-            vu.set_lvar_type(array, tif)
+        if isListlike(arrays):
+            for array in arrays:
+                tif = array.tif
+                tif.remove_ptr_or_array()
+                vu.set_lvar_type(array, tif)
 
         #  lines = decompile_function(ea)
+        if not vu:
+            print("no vu: {:#x}".format(ea))
+            return
         while True:
-            lines = [ida_lines.tag_remove(x.line) for x in genAsList(vu.cfunc.get_pseudocode())]
+            lines = [ida_lines.tag_remove(x.line) for x in vu.cfunc.get_pseudocode() if x]
             if not lines:
                 print("return_unless: lines")
                 return
@@ -1863,26 +2171,41 @@ def decompile_arxan(ea = None):
                 # print("line", line)
                 sti.append(line)
                 for psub in pattern_subs:
-                    if isinstance(psub[0], list):
+                    if psub[1] == 0 or isinstance(psub[0], list):
                         matches = sti.multimatch(psub[0])
-                        if matches: print("line", "\nline ".join(sti.asList))
+                        if matches: 
+                            print("multimatch line", "\nline ".join(sti.as_list()))
+                            print("multimatch matches", matches)
                     else:
                         matches = re.findall(psub[0], line)
-                        if matches: print("\nline", line)
-                    if matches:
-                        print("match:  {}\ngroups: {}\nfnargs: {}".format(string_between('re.compile(\'', '\')', str(psub[0]), greedy=1), matches[0], psub[1]))
+                        if matches: print("\nfindall line", line)
+                    if matches and len(psub) > 1:
+                        try:
+                            print("match:  {}\ngroups: {}\nfnargs: {}".format(string_between('re.compile(\'', '\')', str(psub[0]), greedy=1), _.first(matches), psub[1]))
+                        except KeyError:
+                            # dprint("[keyError] psub, matches")
+                            print("[keyError] psub:{}, matches:{}".format(psub, matches))
+                            raise
+                            
                     if matches and psub[2] and callable(psub[2]):
                         if psub[1]:
                             for g in reby_simple(psub[1], matches):
                                 psub[2](*g)
                         else:
-                            print("multimatch: {}".format(matches))
+                            print("debug multimatch: {}, type({})".format(matches, type(matches)))
                             results = _.flatten([x for x in [x.groups() for x in matches] if x])
+                            # results = [x for x in matches.default]
                             psub[2](*results)
 
                         continue
             break
 
+
+def decompile_arxans(l):
+    for ea in l:
+        for r in range(4):
+            if IsFuncStart(ea):
+                decompile_arxan(ea)
 
 def decompile_function_for_library_prologue_copies(ea):
     # https://docs.microsoft.com/en-us/search/?scope=Desktop&terms=GetCurrentProcess
@@ -2509,5 +2832,25 @@ def hx_set_user_cmt(ea=None, cmt=None, itp=idaapi.ITP_BLOCK1):
     elif cmt == "":
         cfunc.set_user_cmt(tl, cmt)
         cfunc.save_user_cmts() 
+
+def remove_prng_seeds():
+    for ea in FindInSegments('8b 05 ?? ?? ?? ?? 69 c0 fd 43 03 00 44 01 e8 89 05 ?? ?? ?? ??'):
+        PatchNops(ea, 21)
+        nassemble(ea, 'call PrngNext', apply=1)
+    for ea in FindInSegments('8b 0d ?? ?? ?? ?? 69 c9 fd 43 03 00 44 01 e9 89 0d ?? ?? ?? ??'):
+        PatchNops(ea, 21)
+        nassemble(ea, 'call PrngNext; mov ecx, eax', apply=1)
+
+    """
+    PrngNext: 
+        push r13
+        mov r13d, 0x269ec3
+        mov eax, [rel prngSeed]
+        imul eax, eax, 0x343fd
+        add eax, r13d
+        pop r13
+        mov [rel prngSeed], eax
+        retn
+    """
 
 

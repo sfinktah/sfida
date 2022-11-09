@@ -20,20 +20,27 @@
 # [EaseCode(x, forceStart=1) for x in t if not IsCode_(x.ea)]
 # EaseCode([x.ea for x in t if len(x)==0], forceStart=1, noExcept=1)
 
-def find_joins(t, joined=[]):
+def find_joins(t, joined=[], unjoined=[]):
     for x in t:
         x.next = set()
         x.prev = set()
     lut = _.mapObject(t, lambda v, *a: (v.ea, v))
 
     def prepend_to(after, before):
-        joined.append(before)
+        joined.append(before.ea)
+        joined.append(after.ea)
         before.next.add(after)
         after.prev.add(before)
+        # pph(before.addChild(after)._list_parents)
+
+        if after in unjoined:
+            unjoined.remove(after)
+        if before in unjoined:
+            unjoined.remove(before)
         # print("{:x} -> {:x}".format(before.ea, after.ea))
 
     failed = []
-    for chunk in lut.values():
+    for chunk in t:
         if chunk._list_insns:
             target = chunk.target
             if target in lut:
@@ -49,7 +56,8 @@ def find_joins(t, joined=[]):
                     #  prepend_to(lut[target], chunk)
                     #  break
 
-    return [x for x in t if not getattr(x, 'prev', None)] # + failed
+    return [x for x in t if not getattr(x, 'prev', None) and getattr(x, 'next', None)] # + failed
+    return [x for x in t if not x.getParents() and x.getChildren()]
 
 def assemble_joined(l, visited=set()):
     out = []
@@ -78,24 +86,29 @@ def emujoin(r):
     if _ease:
         print("easecode #2")
         [EaseCode(x.start, x.trend, forceStart=1, noExcept=1, verbose=0) for x in _.sortBy(s4, lambda v, *a: v.start)];
+        c = [(a.start, a.trend) for a in _.sortBy(s4, lambda v, *a: v.start)]
         print("coloring #2")
-        [idc.set_color(x.start, idc.CIC_ITEM, 0x200100) for x in _.sortBy(s4, lambda v, *a: v.start)];
+        for a, b in c:
+            for ea in idautils.Heads(a, b):
+                idc.set_color(ea, idc.CIC_ITEM, 0x1F1D00)
+        #  [idc.set_color(x.start, idc.CIC_ITEM, 0x1F1D00) for x in _.sortBy(s4, lambda v, *a: v.start)];
     print("advance insn list")
     t = [AdvanceInsnList(x) for x in s4]
     print("finding joins")
     joined = []
     j = find_joins(t, joined)
-    print("finding unjoined")
-    uj = [x for x in t if x not in j]
     print("assembling joins")
-    k = assemble_joined(j)
+    visited = set()
+    k = assemble_joined(j, visited)
+    #  print("visited: {}".format(hex(visited)))
     print("prepping output")
     c = []
-    s = []
+    #  s = []
     for xx in _.reverse(_.sortBy(k, lambda v, *a: len(v))):
         #  s.append(_.first(xx)[0].ea)
-        if xx:
-            s.append(xx[0].ea)
+        #  if xx:
+            #  s.append(xx[0].ea)
+        #  c.append("{}, {}".format(len(x.getParents()), len(x.getChildren())))
         for i, x in enumerate(xx):
             _pdata = ''
             if get_pdata_fnStart(x.ea) == x.ea:
@@ -107,18 +120,23 @@ def emujoin(r):
                 c.append(x.force_labeled_value.replace(': ', _pdata + ':\n    '))
             else:
                 c.append(x.labeled_indented.replace(': ', _pdata + ':\n    '))
-        c.append("---")
+        if c[-1] != "---":
+            c.append("---")
 
     c.append("---unjoined---")
 
+    uj = [x for x in t if x not in joined and not x.getChildren() and not x.getParents()]
     for xx in uj:
         #  s.append(_.first(xx))
         for i, x in enumerate(xx):
-            if not i:
-                c.append(x.force_labeled_value.replace(': ', ':\n    '))
-            else:
-                c.append(x.labeled_indented.replace(': ', ':\n    '))
-        c.append("---")
+            if x.ea not in visited:
+                visited.add(x.ea)
+                if not i:
+                    c.append(x.force_labeled_value.replace(': ', ':\n    '))
+                else:
+                    c.append(x.labeled_indented.replace(': ', ':\n    '))
+        if c[-1] != "---":
+            c.append("---")
 
     #  b = ["\n".join(_.pluck(x, 'labeled_indented')) for x in _.reverse(_.sortBy(k, lambda v, *a: len(v)))]
     #  clear(); print("\n----\n".join(b))
@@ -157,9 +175,9 @@ def chunkjoin():
     t = [AdvanceInsnList(x) for x in s4]
     print("finding joins")
     joined = []
-    j = find_joins(t, joined)
+    j = find_joins(t, joined, uj)
     print("finding unjoined")
-    uj = [x for x in t if x not in joined]
+    uj = [x for x in t if not x.getChildren() and not x.getParents()]
     print("assembling joins")
     k = assemble_joined(j)
     print("prepping output")

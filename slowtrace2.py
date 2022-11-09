@@ -288,7 +288,7 @@ def retrace_list(address, pre=None, post=None, recolor=0, func=0, color="#280c01
         for ea in [x for x in later if isJmp(x)]: later.remove(ea)
     if address is None:
         return
-    if os.path.exists('e:/git/ida/stop'):
+    if stopped():
         printi("*** STOP ***")
         return
     skipped = list()
@@ -607,7 +607,7 @@ def retrace_unpatch(address, **kwargs):
     # refresh_slowtrace2(); 
     retrace_list(address, applySkipJumps=0, forceRemoveChunks=0, once=1, pre=[GetFuncName, unpatch_func2, unpatch_func, ZeroFunction, unpatch_func2, unpatch_func, ZeroFunction, unpatch_func2, unpatch_func, ZeroFunction], **kwargs)
 
-def retrace(address=None, color="#280c01", no_hash=False, no_func_tails=False,  retails=False, redux=False, unpatchFirst=False, unpatch=False, once=False, recreate=False, chunk=False, **kwargs):
+def retrace(address=None, color="#280c01", no_hash=False, no_func_tails=False,  retails=False, redux=False, unpatchFirst=False, unpatch=False, once=False, recreate=False, chunk=False, noFixChunks=False, **kwargs):
     if isinstance(address, list):
         return [retrace(x, **kwargs) for x in address]
 
@@ -617,15 +617,31 @@ def retrace(address=None, color="#280c01", no_hash=False, no_func_tails=False,  
     # dprint("[retrace] args, kwargs")
     if idc.batch(0):
         printi("*** Batch Was enabled ***")
+
+    # TODO: check calling stack, and reset depth if we were called from the command "line"
+    address = eax(address)
     with TraceDepth() as _depth:
 
     # printi("[retrace] args:{}, kwargs:{}".format(args, kwargs))
     
 
         funcea = GetFuncStart(address)
+        # dprint("[retrace] funcea")
+        if debug: print("[retrace] funcea:{}".format(funcea))
+        
         if funcea != idc.BADADDR:
             address = funcea
-        address = SkipJumps(eax(address))
+        # dprint("[retrace] address")
+        if debug: print("[retrace] address:{}".format(address))
+        
+        address = SkipJumps(address, includeStart=True, includeEnd=False, iteratee=lambda ea, i, *a: MakeThunk(ea))
+            #  elif ea + IdaGetInsnLen(ea) < GetFuncEnd(ea):
+                #  mnem = idc.print_insn_mnem(ea)
+                #  if mnem and mnem.startswith('jmp'):
+                    #  target = GetTarget(ea)
+                    #  if not IsSameChunk(target, ea):
+                        #  #  printi(["FixThunks", hex(ea), GetFuncName(ea)])
+                        #  SetFuncEnd(ea, ea + MyGetInstructionLength(ea))
         start_address = address
         #  depth = kwargs.get('depth', 0)
         #
@@ -716,7 +732,9 @@ def retrace(address=None, color="#280c01", no_hash=False, no_func_tails=False,  
                     return
                 last_rv = rv
                 last_hash = _hash
-                FixChunks(ea, leave=ea)
+                if not noFixChunks:
+                    if debug: print("calling FixChunks #1")
+                    FixChunks(ea, leave=ea)
                 
                 warn = 0
                 traceOutput = []
@@ -749,7 +767,7 @@ def retrace(address=None, color="#280c01", no_hash=False, no_func_tails=False,  
                     if re.match(r""".*(slvars.rsp_diff|couldn't create instruction|\[warn]|unexpected stack change)""", r):
                         #  pp(r)
                         patches += 1
-                printi("slowtrace returned {}".format(rv))
+                printi("slowtrace returned 0x{:x}".format(rv))
                 ft_patches = 0
                 if not no_func_tails:
                     ft = func_tails(funcea, returnErrorObjects=1, quiet=1, externalTargets=externalTargets, extra_args=extra_args)
@@ -785,12 +803,12 @@ def retrace(address=None, color="#280c01", no_hash=False, no_func_tails=False,  
                                 count = count_limit - 1
                                 continue
                     # ft = func_tails(funcea, returnErrorObjects=1, quiet=1, externalTargets=externalTargets)
-                    if ft:
+                    if not no_func_tails and ft:
                         if not IsFunc_(funcea):
                             printi("0x{:x} is no longer a function, switching to 0x{:x}".format(funcea, address))
                             funcea = address
                         ft = func_tails(funcea, returnErrorObjects=0, quiet=1, externalTargets=externalTargets, extra_args=extra_args)
-                    if ft:
+                    if not no_func_tails and ft:
                         printi('\n'.join([str(x) for x in ft]))
                         
                         return -1
@@ -868,6 +886,7 @@ def retrace(address=None, color="#280c01", no_hash=False, no_func_tails=False,  
                 printi("[retrace] slowtrace threw {}: {}".format(e.__class__.__name__, str(e)))
                 tb = traceback.format_exc()
                 printi(tb)
+                if debug: print("calling FixChunks #2")
                 FixChunks(ea, leave=ea)
                 #  ZeroFunction(ea)
                 pass
@@ -881,6 +900,7 @@ def retrace(address=None, color="#280c01", no_hash=False, no_func_tails=False,  
                 printi("[retrace] slowtrace threw {}: {}".format(e.__class__.__name__, str(e)))
                 tb = traceback.format_exc()
                 printi(tb)
+                if debug: print("calling FixChunks #3")
                 FixChunks(ea, leave=ea)
                 pass
                 #  printi("RelocationPatchedError...")
@@ -980,6 +1000,7 @@ def slowtrace2(ea=None,
                adjustStack=True,
                adjustStackFake=False,
                anal=False,
+               appendChunks=False,
                codeRefsTo=set(),
                color=None,
                count=None,
@@ -1009,6 +1030,7 @@ def slowtrace2(ea=None,
                modify=True,
                noAppendChunks=False,
                noDenyJmp=False,
+               noFixChunks=False, # unused
                noJunk=True,
                noMakeFunction=False,
                noObfu=False,
@@ -1042,7 +1064,6 @@ def slowtrace2(ea=None,
                vimlike=False,
                #  willVisit=set(),
                which=None,
-               appendChunks=False,
                ):
     ##  check_for_update()
     check_for_update_1()
@@ -1237,6 +1258,8 @@ def slowtrace2(ea=None,
             path = 'C:/Users/sfink/Downloads/cyg-packages/bin'
         elif os.path.exists('C:/cygwin64/bin'):
             path = 'C:/cygwin64/bin'
+        elif os.path.exists('C:/cygwin/bin'):
+            path = 'C:/cygwin/bin'
 
         vim_filename = 'cmdvim.bat'
         if path is None:
@@ -1298,12 +1321,14 @@ def slowtrace2(ea=None,
             #  rv = SmartAddChunk(new, old)
 
     def SmartAddChunk(new, old, end=0):
-        if not modify and not appendChunks:
+        if noAppendChunks or not modify and not appendChunks:
             return
 
         if GetChunkStart(new) == slvars.startLoc:
             return
         if GetChunkNumber(new, slvars.startLoc) == 0:
+            return
+        if IsSameFunc(new, old):
             return
 
         if IsChunk(new):
@@ -1690,7 +1715,7 @@ def slowtrace2(ea=None,
             if 'slvars' in globals(): sprint(AdvanceFailure(msg))
             raise AdvanceFailure(msg)
         else:
-            if debug: sprint("considering extending function")
+            # if debug: sprint("considering extending function")
             #  fnEnd = EndOfFlow(current_ea)
             if nextHead >= fnEnd and idc.is_flow(ida_bytes.get_flags(nextHead)) and not isFlowEnd(current_ea):
         #  if idc.is_flow(ida_bytes.get_flags(_next_head)) and not isFlowEnd(current_ea) and _next_head == _next_insn:
@@ -1709,7 +1734,8 @@ def slowtrace2(ea=None,
                                 printi("Exception calling SetChunkEnd({:#x}, {:#x})".format(current_ea, idc.next_not_tail(nextHead)))
                                 raise e
             else:
-                if debug: sprint("considering extending function.. nope")
+                # if debug: sprint("considering extending function.. nope")
+                pass
             CheckChunkChange(nextHead, current_ea)
             #  if debug: sprint("AdvanceHead is returning {}".format(hex(nextHead)))
             return nextHead
@@ -2052,8 +2078,8 @@ def slowtrace2(ea=None,
                     if len(_jrefs) > 1:
                         _jrefs = _.filter(_jrefs, lambda v, *a: bad_as_none(GetMinSpd(eax(v))))
                         if len(_jrefs) > 1:
-                            _jrefs = _.filter(_jrefs, lambda v, *a: GetSpds(eax(v)))
-                            if len(_jrefs) > 1:
+                            _jrefs = _.filter(_jrefs, lambda v, *a: GetSpds(eax(v)) and not _.contains(GetFuncStart(xrefs_to(v)), slvars.startLoc))
+                            if len(_jrefs) > 0:
                                 isRealFunc = setIsRealFunc("jmpRef: more than 1 ref: {}".format(_jrefs))
                 if debug:
                     for r in jmpRefs:
@@ -2249,7 +2275,7 @@ def slowtrace2(ea=None,
                 midfunc = 0
             forceJump = None
             forceJumpRsp = None
-            if debug: sprint("Top of loop, type rspHist: {}".format(type(slvars.rspHist)))
+            # if debug: sprint("Top of loop, type rspHist: {}".format(type(slvars.rspHist)))
             slvars.rspHist.append(slvars.rsp)
 
             if cursor:
@@ -2470,6 +2496,7 @@ def slowtrace2(ea=None,
 
                     if True and True:
                         m = sti.multimatch([
+                            # r'(.*)**?',
                             r'mov rax, rsp',
                             # sub rsp, 0xb8
                             r'lea r11, \[rax]',
@@ -2477,6 +2504,7 @@ def slowtrace2(ea=None,
                             # retn
                         ])
                         if m:
+                            print("matched: {}".format("   ".join([str(x) for x in sti.as_list()])))
                             target_rsp = slvars.rspMarks[m.default[0]]
                             spd = -slvars.rsp
                             sprint("[slowtrace2] adjusting spd at {:x} from {:x} by {:x} to get {:x}".format(ea, spd, target_rsp - spd, target_rsp))
@@ -2524,6 +2552,7 @@ def slowtrace2(ea=None,
                         ])
                         
                         if m:
+                            print("matched: {}".format("   ".join([str(x) for x in sti.as_list()])))
                             #  sprint("*** found r11 spd shennanigans***")
                             setglobal('_m', m)
                             sti.clear()
@@ -2673,11 +2702,11 @@ def slowtrace2(ea=None,
                     prev_ea = ea
                     ea = ReverseHead(ea)
                     msg = "{:x} made patches (reversing head) to {:x}".format(prev_ea, ea)
-                    printi(msg)
+                    if debug: printi(msg)
                     continue
                 else:
                     msg = "made patches (resuming)"
-                    printi(msg)
+                    if debug: printi(msg)
                     continue
                 #  printi("slvars.rsp", slvars.rsp)
                 
@@ -3388,6 +3417,10 @@ def slowtrace2(ea=None,
                                 balanceSpd = __spd // -8
 
                                 mainLoc = SkipJumps(GetTarget(callLoc))
+                                if not IsFunc_(balanceLoc):
+                                    ForceFunction(balanceLoc)
+                                if not HasUserName(balanceLoc):
+                                    LabelAddressPlus(balanceLoc, "Balance_{}".format(long_to_words(mainLoc - ida_ida.cvar.inf.min_ea)))
                                 sprint("ArxanStackBalance calls 0x" + hex(mainLoc)[2:] + ", after " + str(skipped_insn_count) + " instructions, spd: " + str(balanceSpd))
                                 mainName = 'BADADDR'
                                 if mainLoc != idc.BADADDR:
@@ -3406,7 +3439,8 @@ def slowtrace2(ea=None,
                                     _stackMut = None
                                     if HasUserName(mainLoc) and idc.get_func_name(mainLoc).startswith('Arxan') \
                                             and IsFuncSpdBalanced(mainLoc):
-                                                _stackMut = FindStackMutators(mainLoc, depth=depth+1, path=[ea]+balanceCalls)
+
+                                                _stackMut = FindStackMutators(mainLoc, depth=depth+1, path=[slvars.startLoc, ea]+balanceCalls)
                                                 if not len(_stackMut) > 2:
                                                     _stackMut = None
                                     if not _stackMut:
@@ -3652,7 +3686,7 @@ def slowtrace2(ea=None,
                                                         #  cave_pos += len(nassemble(cave_pos, "jmp 0x{:x}".format(r2[-1][0]), apply=1))
 
                                                     else:
-                                                        raise ArxanFailure("Couldn't fit all this Arxan shit in ({} bytes, need {} at {:x})", 5 + sum_sizes_first, remaining, balanceLoc)
+                                                        raise ArxanFailure("Couldn't fit all this Arxan shit in ({} bytes, need {} at 0x{:x})".format(5 + sum_sizes_first, remaining, balanceLoc))
 
                                                     # this was a rubbish idea
                                                     #   if len(sizes) > 2 and sizes[-1] == 0:
@@ -3669,11 +3703,11 @@ def slowtrace2(ea=None,
                                                     # forceCode(balanceLoc, cave_pos)
                                                     # idc.add_func(balanceLoc, cave_start)
                                                     # idc.add_func(cave_start, cave_pos)
-                                                    LabelAddressPlus(balanceLoc, "BalanceFillerBunnyOri_{}".format(long_to_words(mainLoc - ida_ida.cvar.inf.min_ea)))
-                                                    LabelAddressPlus(cave_start, "BalanceFillerBunnyCave_{}".format(long_to_words(mainLoc - ida_ida.cvar.inf.min_ea)))
+                                                    LabelAddressPlus(balanceLoc, "FillerBunnyOri_{}".format(long_to_words(mainLoc - ida_ida.cvar.inf.min_ea)))
+                                                    LabelAddressPlus(cave_start, "FillerBunnyCave_{}".format(long_to_words(mainLoc - ida_ida.cvar.inf.min_ea)))
                                                     #  ForceFunction(balanceLoc)
                                                     # ForceFunction(cave_start)
-                                                    Commenter(cave_start).add("Arxan Code Cave for 0x{:x}".format(ea))
+                                                    Commenter(cave_start).add("Filler Bunny Code Cave for 0x{:x}".format(ea))
                                                     # SetFuncEnd(cave_start, 
 
                                                     ea = ReverseHead(ea)
@@ -3824,9 +3858,9 @@ def slowtrace2(ea=None,
                                                 #  cave_start = balanceLoc + asm_len
                                                 #  ida_funcs.del_func(balanceLoc)
                                                 #  MyMakeUnknown(balanceLoc, cave_end - balanceLoc)
-                                                #  PatchBytes(balanceLoc, asm, "BalanceFillerBunny")
+                                                #  PatchBytes(balanceLoc, asm, "FillerBunny")
                                                 #  MyMakeFunction(balanceLoc, balanceLoc + asm_len)
-                                                #  LabelAddressPlus(balanceLoc, "BalanceFillerBunny")
+                                                #  LabelAddressPlus(balanceLoc, "FillerBunny")
     #  
                                                 #  asm = ''
                                                 #  skip_next = 0
@@ -3932,7 +3966,7 @@ def slowtrace2(ea=None,
             if isConditionalJmp(mnem):
                 fnLoc = GetTarget(ea) # target = GetOperandValue(ea, 0)
                 if not is_real_func(ea, fnLoc):
-                    if modify or appendChunks:
+                    if not noAppendChunks and (modify or appendChunks):
                         if debug: sprint("ShowAppendFchunk 2182")
                         ShowAppendFchunk(slvars.startLoc, target, EndOfFlow(target, soft=ignoreInt), ea)
 
@@ -4392,7 +4426,8 @@ def slowtrace2(ea=None,
             # callStack = branch.state.callStack
             # rspStack = branch.state.rspStack
             if debug: sprint("ShowAppendFchunk 2830")
-            ShowAppendFchunk(branch.source, branch.target, EndOfFlow(branch.target, soft=ignoreInt), "branchRestore")
+            if not noAppendChunks:
+                ShowAppendFchunk(branch.source, branch.target, EndOfFlow(branch.target, soft=ignoreInt), "branchRestore")
             isBranchRestore = 1
 
             for k in _.keys(branch.state):

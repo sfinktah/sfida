@@ -124,8 +124,9 @@ class CircularList(object):
                     min = 0
                 pattern = pattern[0:-2]
 
-            # dprint("[multimatch] pattern, multi, greedy, line, i, bsize")
-            #  print("[multimatch] pattern:{}, multi:{}, greedy:{}, line:{}, i:{}, bsize:{}".format(pattern, multi, greedy, line, i, bsize))
+            if debug:
+                # dprint("[multimatch] pattern, multi, greedy, line, i, bsize")
+                print("[multimatch] pattern:{}, multi:{}, greedy:{}, line:{}, i:{}, bsize:{}".format(pattern, multi, greedy, line, i, bsize))
             
 
             m = re.search(pattern, text, flags)

@@ -1232,6 +1232,7 @@ class IDARequestHandler(HTTPRequestHandler):
             i = EvalInterpreter(superglobals())
             _result = i.eval(cmd)
 
+            if idarest_plugin_t.config['api_debug']: idc.msg('result: {}\n'.format(_result))
             if 'return' in args:
                 return getglobal(args['return'], None)
             else:

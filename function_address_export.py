@@ -25,8 +25,8 @@ def save():
     try:
         with open('e:\\git\\pokey\\bin\\QuickRelease\\functions.json', 'w') as f:
             json.dump(funclist, f)
-        with open('e:\\git\\pokey\\bin\\QuickRelease\\names.json', 'w') as f:
-            json.dump(_.zipObject([(y, x-ida_ida.cvar.inf.min_ea) for x, y in Names()]), f)
+        #  with open('e:\\git\\pokey\\bin\\QuickRelease\\names.json', 'w') as f:
+            #  json.dump(_.zipObject([(y, x-ida_ida.cvar.inf.min_ea) for x, y in Names()]), f)
     except IOError:
         print("file not writable or some such")
 
@@ -341,15 +341,14 @@ def get_func_heads_chunk_order(funcea, tailCheck=None):
 
 
     
-def json_save_names(fn):
+def json_save_names(fn = 'e:\\git\\pokey\\bin\\QuickRelease\\names.json'):
     skip = 0
     numLocs = len(list(idautils.Names()))
     count = 0
     lastPercent = 0
 
     for x in Segments():
-        if SegName(x) != ".text":
-            continue
+        #  if SegName(x) != ".text": continue
 
         for ea, fnName in idautils.Names():
             count = count + 1
@@ -363,7 +362,7 @@ def json_save_names(fn):
             if skip:
                 #  print("skipping: %s" % fnName)
                 continue
-            chunks = list(idautils.Chunks(ea))
+            #  chunks = list(idautils.Chunks(ea))
 
             funclist[fnName] = ea - ida_ida.cvar.inf.min_ea;
             
@@ -387,7 +386,7 @@ def json_save_functions():
         if SegName(x) != ".text":
             continue
 
-        for ea in idautils.Functions(idc.get_segm_attr(x, SEGATTR_START), idc.get_segm_attr(x, SEGATTR_END)):
+        for ea in idautils.Functions(): # idc.get_segm_attr(x, SEGATTR_START), idc.get_segm_attr(x, SEGATTR_END)):
             count = count + 1
             if GetMnem(ea) == "jmp" and GetFuncSize(ea) > 5:
                 SetFunctionEnd(ea, idc.next_head(ea))

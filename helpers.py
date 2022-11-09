@@ -123,13 +123,15 @@ def myassert(condition, message):
 def PrevGap(ea=None):
     ea = eax(ea)
     gap = ea - PrevHead(ea) + InsnLen(PrevHead(ea))
+    if gap > 256:
+        return 256
     return gap
 
 def MakePrevHeadSuggestions(ea=None):
     ea = eax(ea)
     gap = PrevGap(ea)
     if gap > 0:
-        for start in range(PrevHead(ea) + InsnLen(PrevHead(ea)), ea):
+        for start in range(ea - gap, ea):
             yield start, diida(start, ea, returnLength=1)
 
 def PrevMakeHead(ea=None):
@@ -139,22 +141,31 @@ def PrevMakeHead(ea=None):
     count = 0
     for start, _suggestion in suggestions:
         length, suggestion = _suggestion
+        print("Suggestion {:#x}:\n{}".format(start, indent(4, suggestion)))
+
         failed = False
         end = start + length
         if end != ea:
-            print("bad end: {:x} {}".format(end, suggestion))
+            print("  bad end: {:x} {}".format(end, suggestion))
             continue
         for mnem in unlikely:
             if re.match(r'\b' + re.escape(mnem) + '\b', suggestion):
-                print("rejected unlikely: {}".format(suggestion))
+                print("  rejected unlikely: {}".format(suggestion))
                 failed = True
                 break
         if failed:
             continue
-        print("suggestion: {}".format(suggestion))
         if count == 0:
-            print("Easing code {:x} - {:x}".format(start, ea))
-            EaseCode(start, ea, forceStart=True)
+            print("  Easing code {:x} - {:x}".format(start, ea))
+            new_start = start
+            while new_start < ea:
+                new_start = EaseCode(start, ea, forceStart=True)
+                if new_start == start:
+                    print("  Got stuck at {:#x}".format(start))
+                    return
+                start = new_start
+            return
+
         count += 1
 
 
@@ -1092,6 +1103,9 @@ def get_version_resource():
     c = r
     while getattr(c, 'numberof_id_entries', 0): c = c.childs[c.numberof_id_entries - 1]
     ba = bytearray(c.content)
+    # dprint("[get_version_resource] ba")
+    print("[get_version_resource] ba:{}".format(ba))
+    
     bs = ba.decode('utf-16le')
     src = [(x.split('-')) for x in [x.replace('\x00', '-') for x in bs.split('\x01')]]
     res = \
@@ -1741,6 +1755,9 @@ class prevpath(object):
 
 def pprev(ea=None, data=0, stop=None, depth=0, show=0):
     results = []
+    if not getattr(pprev, 'history', None):
+        pprev.history = []
+    pprev.history.append(ea)
 
     def get_unwind_info(offset):
         record = [0, 0, '']
@@ -1790,6 +1807,9 @@ def pprev(ea=None, data=0, stop=None, depth=0, show=0):
     paths.append(prevpath(ea, depth, paths, visited, None, links, data=data))
     deadpaths = []
 
+    print("start: {:3} {:32} {:x} {}".format(
+        0, GetFuncName(ea), ea, diida(ea)))
+
     while len(paths):
         #  print("viable {}/dead {}".format(len(paths), len(deadpaths)))
         # for path in paths:
@@ -1807,10 +1827,19 @@ def pprev(ea=None, data=0, stop=None, depth=0, show=0):
                     #  print("path: {}".format(hex(history(path))))
                 return ea
             if ea:
+                _diida = diida(path.ea)
                 if idc.print_insn_mnem(ea) == 'call' and GetTarget(ea) in visited:
-                    print("call:  {:3} {:32} {:x} {}".format(path.depth, GetFuncName(path.ea), path.ea, diida(path.ea)))
+                    tfn = GetFuncName(GetTarget(path.ea))
+                    tgt = hex(GetTarget(path.ea))[2:]
+                    if tgt in _diida.lower():
+                        tgt = '' 
+                    else: tgt = f' {tgt}'
+                    if tfn in _diida:
+                        tfn = ''
+                    else: tfn = f' {tfn}'
+                    print("call:  {:3} {:32} {:x} {}{}{}".format(path.depth, GetFuncName(path.ea)[0:32], path.ea, _diida, tgt, tfn))
                 if isSegmentInXrefsTo(ea, '.pdata') and get_pdata_fnStart(ea) == ea:
-                    print("pdata: {:3} {:32} {:x} {}".format(path.depth, GetFuncName(path.ea), path.ea, diida(path.ea)))
+                    print("pdata: {:3} {:32} {:x} {}".format(path.depth, GetFuncName(path.ea)[0:32], path.ea, _diida))
                 paths.append(path)
 
     for path in deadpaths:
@@ -1872,7 +1901,8 @@ HELPER_HOTKEYS.append(MyHotkey("Shift-Alt-F", makeFunctionFromInstruction))
 HELPER_HOTKEYS.append(MyHotkey("Shift-Alt-J", down))
 HELPER_HOTKEYS.append(MyHotkey("Shift-Alt-K", up))
 HELPER_HOTKEYS.append(MyHotkey("Shift-Alt-N", nextFn))
-HELPER_HOTKEYS.append(MyHotkey("Shift-Alt-O", fake_cli_factory("hotkey_patch()")))
+# HELPER_HOTKEYS.append(MyHotkey("Shift-Alt-O", fake_cli_factory("hotkey_patch()")))
+HELPER_HOTKEYS.append(MyHotkey("Shift-Alt-O", hotkey_patch))
 HELPER_HOTKEYS.append(MyHotkey("Shift-Alt-P", prev))
 HELPER_HOTKEYS.append(MyHotkey("Shift-Alt-U", hotkey_unchunk))
 HELPER_HOTKEYS.append(MyHotkey("Shift-Alt-[", mark_start))

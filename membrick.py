@@ -124,7 +124,7 @@ WolfSniff.cpp""".split('\n'):
         else:
             pass
             # print("line(spl): {}: {}".format(len(spl), line))
-            
+
 
 
 
@@ -287,14 +287,14 @@ def find_checksummers3():
 
 def find_checksummers6():
     """
-    48 8b 05 ?? ?? ?? ?? 
-    48 89 45 68 
-    48 8d 05 ?? ?? ?? ?? 
-    48 89 45 48 
-    48 8b 05 ?? ?? ?? ?? 
-    48 f7 d8 
-    48 03 45 48 
-    48 89 45 48 
+    48 8b 05 ?? ?? ?? ??
+    48 89 45 68
+    48 8d 05 ?? ?? ?? ??
+    48 89 45 48
+    48 8b 05 ?? ?? ?? ??
+    48 f7 d8
+    48 03 45 48
+    48 89 45 48
     48 8b 45 48
 
     48 8b 05 ?? ?? ?? ??
@@ -411,7 +411,7 @@ def find_checksummers5():
 
 def find_set_return_addresses():
     patterns = ['55 48 83 ec 30 48 8d 6c 24 20 48 89 4d 20 48 89 55 28 8b 05']
-    
+
     results = []
     for ea in FindInSegments(patterns, 'any'):
         ForceFunction(ea)
@@ -429,7 +429,7 @@ def find_lame_memcpys():
             #  '55 0f 1f 84 00 00 00 00 00 48 83 ec 20 48 8d 6c 24 20 48 89 4d 10 48 89 55 18 44 89 45 20 8b 45 20 83 f8 04 0f 82 ?? ?? ?? ?? e9',
             #  '55 48 83 ec 20 48 8d 6c 24 20 48 89 4d 10 48 89 55 18 44 89 45 20 8b 45 20 83 f8 04 0f 82 ?? ?? ?? ?? e9',
     ]
-    patterns = [x[0:38] for x in patterns] 
+    patterns = [x[0:38] for x in patterns]
     results = []
     for ea in FindInSegments(patterns, 'any'):
         #  if idc.get_wide_byte(ea) == 0x48:
@@ -472,11 +472,11 @@ def find_lame_memcpys():
 def find_checksum_workers():
     patterns = [[
             # start sigs
-            '55 48 83 ec 40 48 8d 6c 24 20 48 89 4d 30 48 89 55 38 33 c0 89 45 08 89', 
+            '55 48 83 ec 40 48 8d 6c 24 20 48 89 4d 30 48 89 55 38 33 c0 89 45 08 89',
             '48 8d 64 24 f8 48 89 2c 24 48 83 ec 40 48 8d 6c 24 20 48 89 4d 30 48 89 55 38',
             ], [
             # middle sigs
-            '48 83 c2 01 48 8b 4d 30 48 89 11 3d 80 00 00 00', 
+            '48 83 c2 01 48 8b 4d 30 48 89 11 3d 80 00 00 00',
             '48 8b 45 30 48 8b 00 0f b6 00 83 e0 7f 8b 55 08 89 d1 d3 e0',
             '83 45 08 07 48 8b 45 30 48 8b 00 0f b6 00 0f b6 c0']]
     results = []
@@ -645,36 +645,50 @@ def find_checksummers_from_balances():
     patterns = [
         "6A 10 48 F7 C4 0F 00 00 00 0F 85 ?? ?? ?? ?? E9",
         "68 10 00 00 00 48 F7 C4 0F 00 00 00 0F 85 ?? ?? ?? ?? E9",
+        "6a 10 e8 ?? ?? ?? ?? 48 8d 64 24 08 0f 1f 00 e9"
     ]
     results = []
     for pattern in patterns:
         for ea in [e for e in FindInSegments(pattern, 'any')]:
-            try: 
+            try:
                 r = AdvanceToMnemEx(ea, term=('call', 'retn'), inclusive=1, ease=1)
                 sti = CircularList(r)
+                #  push 0x10   test rsp, 0xf   jnz sub_143BE71D6   push 0x18   sub rsp, 8   call ArxanCheck_owe_bound_alert                
                 m = sti.multimatch([
+                    r'(.*)**?',
                     r'push.*0x10',
                     r'test rsp, 0xf',
                     r'jnz .*',
                     r'push.*0x18',
                     r'(add|sub) rsp, .*',
-                    r'(mov|lea).*r[sb]p.*r[sb]p',
-                    r'(mov|lea).*r[sb]p.*r[sb]p',
-                    r'lea rbp, \[rel ({jmp}\w+)]',
-                    r'xchg \[rsp], rbp',
-                    r'push rbp',
-                    r'lea rbp, \[rel ({call}\w+)]',
-                    r'xchg \[rsp], rbp',
-                    r'retn?',
+                    #  r'(mov|lea).*r[sb]p.*r[sb]p',
+                    #  r'(mov|lea).*r[sb]p.*r[sb]p',
+                    #  r'lea rbp, \[rel ({jmp}\w+)]',
+                    #  r'xchg \[rsp], rbp',
+                    #  r'push rbp',
+                    #  r'lea rbp, \[rel ({call}\w+)]',
+                    #  r'xchg \[rsp], rbp',
+                    #  r'retn?',
+                    #  r'(.*)**',
+                    r'call ({call}\w+)',
                 ])
+                if not m:
+                    m = sti.multimatch([
+                        #  r'(.*)**?',
+                        r'push 0x10',
+                        r'call ({call}\w+)',
+                        #  r'lea rsp, \[rsp[+]8\]',
+                        #  r'(.*)**',
+                    ])
                 target = None
                 if m:
                     target = m['call'][0]
-                    #  while obfu._patch(m['default'][5].ea):
-                        #  pass
-#  
+                    # print("matched: target: {}, {}".format(m['call'], "   ".join([str(x) for x in sti.as_list()])))
+
+                else:
+                    print("no multimatch: {}".format("   ".join([str(x) for x in sti.as_list()])))
                     #  r = AdvanceToMnemEx(ea, term='call', inclusive=1, ease=1)
-                        
+
                 if target or r and r.insns:
                     if not target:
                         insns = _.pluck(r.insns, 'insn')
@@ -683,25 +697,28 @@ def find_checksummers_from_balances():
                             continue
                         insn = insns[-1]
                         target = string_between('', ' ', insn, greedy=1, inclusive=1, repl='')
-                    print("{:x} {}".format(eax(target), target))
+                    print("found check: {:x} {}".format(eax(target), target))
                     if not IsCode_(target):
                         EaseCode(ea, forceStart=1)
                     if isUnconditionalJmpOrCall(eax(target)):
+                        print("   isUnconditionalJmpOrCall")
                         continue
                     results.append(eax(target))
                     if not HasUserName(eax(target)):
                         LabelAddressPlus(eax(target), "ArxanCheck_{}".format(long_to_words(eax(target) - ida_ida.cvar.inf.min_ea)))
+                    if GetFuncName(ea):
+                        LabelAddressPlus(GetChunkStart(ea), "Balance_{}".format(long_to_words(eax(target) - ida_ida.cvar.inf.min_ea)), force=1)
             except AdvanceFailure:
                 pass
     return results
 
 def find_rbp_frame():
-    patterns = ["55 48 81 ec ?? ?? 00 00 48 8d 6c 24 ??", 
+    patterns = ["55 48 81 ec ?? ?? 00 00 48 8d 6c 24 ??",
                 "55 48 83 EC ?? 48 8D 6C 24 ??",
-                "48 89 6c 24 f8 48 8d 64 24 f8 48 81 ec ?? ?? 00 00 48 8d 6c 24 ??", 
+                "48 89 6c 24 f8 48 8d 64 24 f8 48 81 ec ?? ?? 00 00 48 8d 6c 24 ??",
                 "48 89 6c 24 f8 48 8d 64 24 f8 48 83 EC ?? 48 8D 6C 24 ??"
                 ]
-    
+
     #   b1180
     #  any:0000000143ADEB2E 000 48 89 6C 24 F8                                mov     [rsp+var_8], rbp ; [PatchBytes] mov/lea->push order swap: rbp
     #  any:0000000143ADEB2E                                                                           ; [PatchBytes] lea rsp, qword ptr [rsp-8]; mov [rsp], rbp
@@ -722,7 +739,18 @@ def find_rbp_frame():
     return results
 
 def find_stack_align_adjust():
-    patterns = ["6a 10 48 f7 c4 0f 00 00 00 0f 85 ?? ?? ?? ?? e9"]
+    #  .text:0000000143765941 6A 10                                       push    10h
+    #  .text:0000000143765943 48 F7 C4 0F 00 00 00                        test    rsp, 0Fh
+    #  .text:000000014376594A 0F 85 ?? ?? ?? ??                           jnz     loc_1438E5D8C
+    #  .text:0000000143765950 E9 51 BF 5C FD                              jmp     loc_140D318A6
+
+    #  .text:0000000143765941 6A 10                                       push    10h
+    #  .text:0000000143765943 E8 ?? ?? ?? ??                              call    ArxanCheck_mama_dive_orgy
+    #  .text:0000000143765948 48 8D 64 24 08                              lea     rsp, [rsp+8]
+    #  .text:000000014376594D 0F 1F 00                                    nop     dword ptr [rax]
+    #  .text:0000000143765950 E9 51 BF 5C FD                              jmp     loc_140D318A6
+
+    patterns = ["6a 10 48 f7 c4 0f 00 00 00 0f 85 ?? ?? ?? ?? e9", "6a 10 e8 ?? ?? ?? ?? 48 8d 64 24 08 0f 1f 00 e9"]
     results = FindInSegments(patterns, 'any')
     starts = []
     for ea in results:
@@ -733,21 +761,29 @@ def find_stack_align_adjust():
         if fnStart is None:
             print("[find_stack_align_adjust] couldn't trace back from {:x}".format(ea))
             continue
-        while diida(fnStart - 1).startswith("push"):
-                fnStart -= 1
-        if not fnStart:
-            continue
-        while idc.get_wide_byte(fnStart - 1) == 0x41 or idc.get_wide_byte(fnStart - 2) == 0x41:
-            if idc.get_wide_byte(fnStart - 2) == 0x41:
-                fnStart -= 2
-            if idc.get_wide_byte(fnStart - 1) == 0x41:
-                fnStart -= 1
-        ForceFunction(fnStart)
-        print(hex(fnStart), hex(ea), idc.generate_disasm_line(fnStart, idc.GENDSM_FORCE_CODE))
-        push_count, new_ea, unused2 = CountConsecutiveMnem(fnStart, ["push", "pushf", "pushfq"])
-        if push_count > 8 or diida(new_ea) == 'test rsp, 0xf':
-            TagAddress([fnStart], "stack_align")
-            starts.append(fnStart)
+        length = ea - fnStart
+        if False:
+            while diida(fnStart - 1).startswith("push"):
+                    fnStart -= 1
+            if not fnStart:
+                continue
+            while idc.get_wide_byte(fnStart - 1) == 0x41 or idc.get_wide_byte(fnStart - 2) == 0x41:
+                if idc.get_wide_byte(fnStart - 2) == 0x41:
+                    fnStart -= 2
+                if idc.get_wide_byte(fnStart - 1) == 0x41:
+                    fnStart -= 1
+        if IsTail(fnStart):
+            print("[find_stack_align_adjust] shifting to head of {:x}".format(fnStart))
+            fnStart = idc.get_item_head(fnStart)
+        if length > 48:
+            # ForceFunction(fnStart)
+            print(hex(fnStart), hex(ea), idc.generate_disasm_line(fnStart, idc.GENDSM_FORCE_CODE))
+            push_count, new_ea, unused2 = CountConsecutiveMnem(fnStart, ["push", "pushf", "pushfq"])
+            if push_count > 8 or diida(new_ea) == 'test rsp, 0xf':
+                # TagAddress([fnStart], "stack_align")
+                starts.append(fnStart)
+        else:
+            print("[find_stack_align_adjust] skipping short function (length: {})".format(length))
     return starts
 
         #  if can_call('retrace'):
@@ -763,7 +799,7 @@ def find_imagebase_offsets():
     base = ida_ida.cvar.inf.min_ea
     r = xrefs_to(base)
     un = [x for x in r if Qword(x) == base]
-    for x in un: 
+    for x in un:
         LabelAddressPlus(x, 'o_imagebase')
 
 #  del retrace
@@ -771,7 +807,7 @@ def find_imagebase_offsets():
 #  def retrace(ea, *args, **kwargs):
     #  global retrace_later
     #  retrace_later.add(ea)
-#  
+#
 #  retrace_later = set()
 
 # sprint = print
@@ -863,7 +899,7 @@ def DoesFuncReturn(ea=None):
 
 def IsFarFunc(ea=None):
     """
-    Is function FAR 
+    Is function FAR
 
     calls idc.get_func_flags(ea) & 0x22
 
@@ -875,7 +911,7 @@ def IsFarFunc(ea=None):
 
 def SetFarFunc(ea=None, flags=None):
     """
-    Is function FAR 
+    Is function FAR
 
     calls idc.set_func_flags(ea) & 0x22
 
@@ -924,7 +960,7 @@ def TagMakeTagSubstring(tags):
         return ""
     # dprint("[debug] tags, len(tags)")
     #  print("[debug] tags:{}, len(tags):{}".format(tags, len(tags)))
-    
+
     return "_$.{}$".format(".".join(tags))
 
 def GetTags(ea):
@@ -946,7 +982,7 @@ def UpgradeTag(ea, tags, remove=False):
     if matches:
         # dprint("[debug] matches")
         #  print("[debug] matches:{}".format(matches))
-        
+
         for match in matches:
             _found.add(match.lstrip('_'))
         label = re.sub(pattern, '', label)
@@ -1034,7 +1070,7 @@ def LabelManyAddresses(l, label, force = False):
             #  #  continue
         # dprint("[labelling] ex, label")
         #  print("[labeling] ea:{:x}, label:{}".format(ea, label))
-        
+
         MemLabelAddressPlus(ea, label)
         #  print("[labeled] ea:{:x}, label:{}".format(ea, idc.get_name(ea), ida_name.GN_VISIBLE))
 
@@ -1203,7 +1239,7 @@ def FindInSegments(searchstr, segments=None, start=None, stop=None, limit=None, 
     for seg_start in idautils.Segments():
         seg_name = idc.get_segm_name(seg_start)
         seg_names.add(seg_name)
-        if segments != "all" and seg_name not in segments:
+        if segments != "all" and segments != "any" and seg_name not in segments:
             continue
         seg_end = idc.get_segm_attr(seg_start, idc.SEGATTR_END)
         ea = seg_start
@@ -1338,10 +1374,10 @@ def mb(pattern, limit=1, index=0, spare=0):
         # transpose index => limit, and spare => index
         # dprint("[mb] ' '.join(tmp), index, spare")
         print("[mb] ' '.join(tmp):{}, index:{}, spare:{}".format(' '.join(tmp), index, spare))
-        
+
         return mb(' '.join(tmp), index, spare)
-        
-    
+
+
     if isinstance(pattern, str):
         #  base = idaapi.cvar.inf.min_ea
         #  ptr = idc.FindBinary(base, idc.SEARCH_DOWN | idc.SEARCH_CASE, pattern)
@@ -1795,7 +1831,7 @@ class membrick_memo(object):
             return self
         MemLabelAddressPlus(self.val(), name)
         return self
-    
+
     def add_tag(self, name):
         if self.in_error(): return self.error_return_chained()
         TagAddress(self.val(), name)
@@ -1831,14 +1867,14 @@ class membrick_memo(object):
         if self.in_error():
             return None
         return self.obj
-    
+
     @ea.setter
     def ea(self, value):
         """ New style classes requires setters for @property methods
         """
         self.obj = value
         return self.obj
-    
+
     def eax(self, T=long_type):
         """ returns the object instead of instance
         """
@@ -2074,7 +2110,7 @@ def rssign():
 #  for st in "Age CloudKey CountryCode Email LanguageCode MFAEnabled Minor PlayerAccountId PosixTime Privileges PublicIp Response RockstarAccount SecsUntilExpiration Services SessionId SessionKey SessionTicket Status Ticket UpdatePassword".split(" "):
     #  tmp.extend( FindInSegments(st, segments='.rdata', binary=0, predicate=lambda x: IsStrlit(x) and GetString(x) == asBytesRaw(st), iteratee=lambda x: RecurseCallersChart(x, exe=None)) )
 #  RecurseCallersChart(tmp[0], exe='dot')
-#  
+#
 # [0x2d2ba20, 0x2d2ba50, 0x2d2ba70, 0x2d2ba90, 0x2d2bab0, 0x2d2bad0, 0x2d2baf0, 0x2d2bb10, 0x2d2bb20, 0x2d2bb40, 0x2d2bb80, 0x2d2bb60, 0x2d2bbc0, 0x2d2bba0, 0x2d2bbe0, 0x2d2bc10, 0x2d2bc40, 0x2d2bc70, 0x2d2bca0, 0x2d2bcf0, 0x2d2bd10, 0x2d2bd40, 0x2d2bda0, 0x2d2bd70, 0x2d2be00, 0x2d2bdd0, 0x2d2be30, 0x2d2be80, 0x2d2bed0, 0x2d2bf20, 0x2d2bf90, 0x2d2bfb0, 0x2d2bfd0, 0x2d2bff0, 0x2d2c010, 0x2d2c030, 0x2d2c050, 0x2d2c070, 0x2d2c090, 0x2d2c0c0, 0x2d2c0f0, 0x2d2c0f0, 0x2d2c110, 0x2d2c130, 0x2d2c140, 0x2d2c2b0, 0x2d2c3e0, 0x2d2c520, 0x2d2c540, 0x2d2c560, 0x2d2c580, 0x2d2c6c0, 0x2d2c750, 0x2d2c7b0, 0x2d2c7e0, 0x2d2c810, 0x2d2c830, 0x2d2c850, 0x2d2c870, 0x2d2c890, 0x2d2c8b0, 0x2d2c8d0, 0x2d2c8f0, 0x2d2c910, 0x2d2c930, 0x2d2c950, 0x2d2c970, 0x2d2c9a0, 0x2d2c9c0, 0x2d2c9e0, 0x2d2ca00, 0x2d2ca20, 0x2d2ca40, 0x2d2ca70, 0x2d2cab0, 0x2d2caf0, 0x2d2cb30, 0x2d2cb60, 0x2d2cb90, 0x2d2cbb0, 0x2d2cbd0, 0x2d2cbf0, 0x2d2cc10, 0x2d2cc40, 0x2d2cc70, 0x2d2ce20, 0x2d2ce60, 0x2d2cee0, 0x2d2cf30, 0x2d2cfd0, 0x2d2cf80, 0x2d2d070, 0x2d2d020, 0x2d2cdd0, 0x2d2cca0, 0x2d2cd20, 0x2d2cd60, 0x2d2cdb0, 0x2d2d120, 0x2d2d1b0, 0x2d2dbc0, 0x2d2d1f0, 0x2d2d250, 0x2d2d470, 0x2d2d500, 0x2d2d7c0, 0x2d2d8a0, 0x2d2d8f0, 0x2d2d940, 0x2d2d980, 0x2d2d9a0, 0x2d2d9c0, 0x2d2d9e0, 0x2d2da00, 0x2d2da20, 0x2d2da40, 0x2d2da60, 0x2d2da80, 0x2d2daa0, 0x2d2dac0, 0x2d2dae0, 0x2d2db00, 0x2d2db20, 0x2d2db40, 0x2d2db60, 0x2d2db80, 0x2d2dba0, 0x2d2dc70, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0, 0x2d2b9c0]
 # [0x2d2b9bc, 0x2d2ba46, 0x2d2ba63, 0x2d2ba83, 0x2d2baa8, 0x2d2bacc, 0x2d2baec, 0x2d2bb04, 0x2d2bb1b, 0x2d2bb3c, 0x2d2bb5c, 0x2d2bb7c, 0x2d2bb9c, 0x2d2bbbc, 0x2d2bbdc, 0x2d2bbfd, 0x2d2bc2d, 0x2d2bc5d, 0x2d2bc95, 0x2d2bce1, 0x2d2bcfd, 0x2d2bd33, 0x2d2bd63, 0x2d2bd90, 0x2d2bdc0, 0x2d2bdf0, 0x2d2be20, 0x2d2be71, 0x2d2bec1, 0x2d2bf11, 0x2d2bf7f, 0x2d2bfa7, 0x2d2bfc3, 0x2d2bfe3, 0x2d2c003, 0x2d2c025, 0x2d2c043, 0x2d2c06a, 0x2d2c086, 0x2d2c0b2, 0x2d2c0eb, 0x2d2c105, 0x2d2c126, 0x2d2c13c, 0x2d2c2a9, 0x2d2c3a5, 0x2d2c519, 0x2d2c534, 0x2d2c559, 0x2d2c579, 0x2d2c62f, 0x2d2c74c, 0x2d2c779, 0x2d2c7d9, 0x2d2c80a, 0x2d2c82a, 0x2d2c84a, 0x2d2c869, 0x2d2c88a, 0x2d2c8aa, 0x2d2c8c9, 0x2d2c8e4, 0x2d2c908, 0x2d2c92a, 0x2d2c948, 0x2d2c96b, 0x2d2c990, 0x2d2c9b6, 0x2d2c9d4, 0x2d2c9f8, 0x2d2ca18, 0x2d2ca3b, 0x2d2ca60, 0x2d2ca9d, 0x2d2cadd, 0x2d2cb1e, 0x2d2cb4d, 0x2d2cb7d, 0x2d2cbac, 0x2d2cbca, 0x2d2cbea, 0x2d2cc09, 0x2d2cc31, 0x2d2cc61, 0x2d2cc90, 0x2d2ccd9, 0x2d2cd59, 0x2d2cd9d, 0x2d2cdc8, 0x2d2ce0d, 0x2d2ce53, 0x2d2cea0, 0x2d2ced5, 0x2d2cf25, 0x2d2cf75, 0x2d2cfc5, 0x2d2d015, 0x2d2d065, 0x2d2d0b5, 0x2d2d10d, 0x2d2d1a1, 0x2d2d1dd, 0x2d2d232, 0x2d2d245, 0x2d2d44b, 0x2d2d466, 0x2d2d4e2, 0x2d2d4f5, 0x2d2d712, 0x2d2d72e, 0x2d2d74c, 0x2d2d897, 0x2d2d8de, 0x2d2d93a, 0x2d2d97b, 0x2d2d994, 0x2d2d9b4, 0x2d2d9d4, 0x2d2d9f4, 0x2d2da14, 0x2d2da34, 0x2d2da54, 0x2d2da74, 0x2d2da94, 0x2d2dab4, 0x2d2dad4, 0x2d2daf4, 0x2d2db14, 0x2d2db34, 0x2d2db54, 0x2d2db74, 0x2d2db94, 0x2d2dbb4, 0x2d2dc5d, 0x2d2dc93]
 #
@@ -2092,7 +2128,7 @@ def rssign():
 #  for asm, addrs in _.groupBy(t, lambda v, *asm: diida(v)).items():
 #      for addr in addrs[1:]:
 #          nassemble(addr, "jmp 0x{:x}".format(addrs[0]), 1)
-#  
+#
 #
 
 # funcs = _.uniq([x for x in GetFuncStart(xrefs_to(eax('register_native_handler'))) if x != idc.BADADDR])

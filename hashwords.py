@@ -28,7 +28,7 @@ false = False
 true = True
 
 _possible_lame = ["notte", "noted", "ally", "waist"] # not nor fees hans use used uses seas sieze bath bathe
-_possible_replacements = ["titan", "bull", "tub", "io", "on", "to", "at", "in", "penis", "fuji", "xerox", "dwarf", "pluto", "venus", "xena", "eros", "ida", ]
+_possible_replacements = ["titan", "bull", "tub", "io", "on", "to", "at", "in", "fuji", "xerox", "dwarf", "pluto", "venus", "xena", "eros", "ida", ]
 _changes = {
         'ally': 'alley',
         'acres': 'acre',
@@ -45,6 +45,8 @@ _changes = {
         'maid':  'no', # alternative (but existing 'made' conflicted)
         'mail':  'trump', # alternative (but existing 'mail' conflicted)
         'boar':  'bore', # alternative
+        'penis': 'piece', # alternative
+        'hay':   'hey', # alternative 
 }
 _dictWords = [
     "able", "about", "above", "ache", "acid", "acre", "act", "actor", "adapt", "add", "admit", "adopt", "after", "again", "age", "agent", "ago", "agree", "ahead", "aids", "aim", "air", "orgy", "alert", "alfa", "alike", "alive", "alan", "allow", "alley",
@@ -67,7 +69,7 @@ _dictWords = [
     "fog", "foil", "fold", "folk", "fond", "food", "fool", "foot", "for", "force", "ford", "fork", "form", "fort", "forth", "found", "four", "frame", "fraud", "fred", "free", "fresh", "wank", "from", "front", "fruit", "fry", "fuel", "full", "fully",
     "fun", "fund", "funny", "fur", "fuse", "gain", "game", "gamma", "gang", "gap", "gas", "gate", "gave", "gay", "gear", "gen", "germ", "get", "giant", "gift", "gin", "girl", "give", "given", "glad", "glass", "glory", "goal", "goat", "god", "go",
     "going", "gold", "golf", "gone", "good", "bitch", "got", "gov", "grace", "grade", "grain", "grand", "grant", "graph", "grass", "grave", "gray", "great", "greed", "greek", "green", "greet", "grew", "grind", "grip", "gross", "group", "grow", "guard",
-    "guess", "guest", "guide", "guilt", "gulf", "gun", "guy", "habit", "hair", "hal", "half", "hall", "ham", "hand", "hang", "hans", "happy", "hard", "hardy", "harm", "harry", "haste", "hat", "hate", "have", "hay", "head", "heal", "heap", "hear", "heard",
+    "guess", "guest", "guide", "guilt", "gulf", "gun", "guy", "habit", "hair", "hal", "half", "hall", "ham", "hand", "hang", "hans", "happy", "hard", "hardy", "harm", "harry", "haste", "hat", "hate", "have", "hey", "head", "heal", "heap", "hear", "heard",
     "heart", "heat", "heavy", "held", "helen", "hell", "hello", "help", "hen", "herd", "here", "hero", "hide", "high", "hill", "hire", "hired", "hit", "hoag", "hold", "hole", "holy", "home", "honey", "honor", "hook", "hope", "hopes", "horn", "horse",
     "host", "hot", "hotel", "hour", "house", "how", "huge", "human", "humor", "hung", "hunt", "hurry", "hurt", "hut", "ice", "idaho", "idea", "ideal", "idle", "image", "imply", "inch", "index", "india", "infer", "ink", "inn", "inner", "input", "into",
     "iowa", "iron", "issue", "item", "jail", "james", "jaw", "jazz", "jean", "jet", "jew", "jewel", "job", "join", "joint", "joke", "judge", "juice", "dick", "july", "jump", "june", "jury", "just", "cock", "keep", "kept", "key", "kick", "kid", "kill",
@@ -80,7 +82,7 @@ _dictWords = [
     "nerve", "nest", "net", "dildo", "never", "new", "newer", "newly", "news", "next", "nice", "niche", "niece", "nigel", "night", "nine", "noble", "noise", "nolan", "none", "noon", "nor", "norm", "north", "nose", "not", "note", "noted", "notte", "noun",
     "novel", "now", "nude", "null", "nurse", "nut", "oar", "obey", "occur", "ocean", "odd", "odor", "off", "offer", "often", "ohio", "oil", "okay", "old", "older", "omit", "once", "one", "only", "onset", "onto", "open", "opera", "oral", "orbit", "order",
     "pussy", "organ", "oscar", "other", "ought", "ounce", "our", "out", "outer", "over", "owe", "owen", "own", "owned", "owner", "pace", "pack", "pad", "page", "paid", "pain", "paint", "pair", "pale", "palm", "pan", "panel", "panic", "papa", "paper",
-    "park", "part", "party", "pass", "past", "paste", "path", "paul", "pause", "paw", "pay", "pea", "peace", "pearl", "pen", "penny", "pest", "pet", "pete", "phase", "phone", "piano", "pick", "piece", "pig", "pike", "pile", "pilot", "pin", "pinch", "pink",
+    "park", "part", "party", "pass", "past", "paste", "path", "paul", "pause", "paw", "pay", "pea", "peace", "pearl", "pen", "penny", "pest", "pet", "pete", "phase", "phone", "piano", "pick", "penis", "pig", "pike", "pile", "pilot", "pin", "pinch", "pink",
     "pint", "pip", "pipe", "pitch", "pity", "place", "plain", "plan", "plane", "plant", "plate", "plato", "play", "plead", "plot", "plow", "pluck", "plug", "plus", "poem", "poet", "pogo", "point", "pole", "pond", "pool", "poor", "pope", "porch", "port",
     "post", "pot", "pound", "pour", "power", "pray", "press", "price", "pride", "prime", "print", "prior", "prize", "proof", "proud", "prove", "pull", "pump", "pupil", "pure", "push", "put", "quart", "dong", "queen", "quick", "quiet", "quite", "quote",
     "race", "radar", "radio", "rail", "rain", "raise", "rake", "ran", "ranch", "rang", "range", "rank", "rapid", "rare", "rate", "ratio", "raw", "ray", "razor", "reach", "react", "read", "ready", "real", "rear", "rebel", "recur", "red", "refer", "rely",

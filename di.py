@@ -436,19 +436,29 @@ def destart(ea=None, length=None):
     ea = eax(ea)
     length = length or 300
     l = [der(ea - x, x) for x in range(1, length)]
-    j = [len(x) for x in l]
-    m = _.max(j)
-    p = j.index(m) + 1
-    q = l[p-1]
-    setglobal('destart_debug', {'l': l, 'j': j, 'm': m, 'p': p, 'q': q})
+
+    # doesn't help much
+    l = [x for x in l if _.all(x, lambda x, *a: x.mnemonic.startswith(('PUSH', 'MOVUPD', 'LEA')))] # not _.contains(x, lambda x, *a: 'FLAG_NOT_DECODABLE' in x.flags)]
+    # dprint("[destart] l")
+    # print("[destart] l:{}".format(l))
+    
+
+    # j = [len(x) for x in l]
+    # m = _.max(j)
+    # p = j.index(m) + 1
+    # q = l[p-1]
+    q = l[-1]
+    # setglobal('destart_debug', {'l': l, 'j': j, 'm': m, 'p': p, 'q': q})
+    setglobal('destart_debug', {'l': l.copy(), 'q': q.copy()})
     q.reverse()
-    for i in range(1, len(q)):
-        if q[i].flowControl != 'FC_NONE':
-            q = q[0:i]
-            break
-        if IsRef(q[i].address):
-            q = q[0:i+1]
-            break
+    if False:
+        for i in range(1, len(q)):
+            if q[i].flowControl != 'FC_NONE':
+                q = q[0:i]
+                break
+            if IsRef(q[i].address):
+                q = q[0:i+1]
+                break
     while q and not str(q[-1]).startswith('PUSH'):
         print("popping", q[-1])
         #  print("q: {}".format(pf(q)))
@@ -558,8 +568,10 @@ def get_name_or_hex(ea):
     return name
 
 def get_operand_size_type(size):
-    sizes = ['byte', 'word', 'dword', 'qword', 'dqword', 'tword']
+    sizes = ['byte', 'word', 'dword', 'qword', 'dqword', 'tword', 'dtword']
     n = log2(size // 8);
+    if n >= len(sizes):
+        raise ValueError("size: {} [{}]".format(size, n))
     return sizes[n];
 
 def diida(ea=None, length=None, mnemOnly=False, filter=None, iteratee=None, returnLength=False, labels=False):

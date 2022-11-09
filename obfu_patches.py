@@ -108,7 +108,7 @@ def simple_patch_factory(s):
         else:
             result = interpolate_inner(s)
         # dprint("[simple_patch_factory] result")
-        printi("[simple_patch_factory] result:{}".format(result))
+        if obfu_debug: printi("[simple_patch_factory] result:{}".format(result))
 
         return list(result)
         # is this causing the results to be totally nopped sometimes? probably

@@ -500,10 +500,14 @@ class Obfu(object):
                             if r.start == sortedRanges[0].start:
                                 if obfu_debug: printi("r.last: {:x}".format(r.last))
                                 # disabled because it was causing overruns into the next chunk (when there were two jmps)
-                                if True and isJmp(r.last + 1) and not isJmp(idc.get_item_head(r.last)):
+                                # now attempting to curtail it by checking for end of flow
+                                if not isFlowEnd(r.last) or isJmp(r.last) and not isFlowEnd(r.last+1):
+                                    if obfu_debug: printi("flow doesn't end at {:x} {}".format(r.last, diida(r.last)))
+                                    #  if True and not isFlowEnd(r.last + 1) and isJmp(r.last + 1) and not isFlowEnd(idc.get_item_head(r.last)) isJmp(idc.get_item_head(r.last)):
                                     r.last += GetInsnLen(r.last + 1)
-                                    if obfu_debug: printi("r.last (new): {:x}".format(r.last))
-
+                                    if obfu_debug: printi("r.last (+new): {:x}".format(r.last))
+                                else:
+                                    if obfu_debug: printi("flow ends at {:x} {}".format(r.last, diida(r.last)))
             _targetRanges = format(targetRanges)
             if obfu_debug: printi("targetRanges: {}".format(targetRanges))
 

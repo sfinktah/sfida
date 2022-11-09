@@ -109,7 +109,10 @@ class IdaRestClient(IdaRestConfiguration, object):
         self.update_hosts()
         results = dict()
         if host is not None:
-            url = 'http://{}/ida/api/v1.0/'.format(host)
+            if not host.startswith('http'):
+                url = 'http://{}/ida/api/v1.0/'.format(host)
+            else:
+                url = host
             try:
                 request = requests.get(url + route, params=kwargs, timeout=(self.connect_timeout, self.read_timeout))
                 if request.status_code != 200:
