@@ -22,6 +22,9 @@ from underscoretest import _
 abort_file = os.path.dirname(os.path.abspath(__file__)) + '/.abort'
 refresh_zmqclient = make_refresh(os.path.abspath(__file__))
 
+noExists = True
+noUnmatched = False
+
 pending_functions = []
 
 def days_between(d1, d2):
@@ -254,10 +257,16 @@ def zrequest(j):
         print("waiting for response")
         try:
             message = socket.recv()
+            if not message:
+                print("W: message was {}".format(type(message)))
+                return 0
         except zmq.error.Again as e:
             print("again");
             print((str(e)))
             continue
+        except KeyboardInterrupt:
+            print("W: interrupt received, stopping")
+            return 0
         #  print("Received reply: [ %s ]" % message)
         try:
             try:
@@ -364,6 +373,8 @@ def add_alt_matches(ea):
 
 
 def sig_maker_auto_zmq(ea, colorise=False, force=False, special=False):
+    global noExists
+    global noUnmatched
     global remote_version
     _exists = 0
     ignore_existing_pattern = 0
@@ -402,6 +413,11 @@ def sig_maker_auto_zmq(ea, colorise=False, force=False, special=False):
             print(("%s: skipping unmatched" % fnName))
             return
         return
+    pattern = r"\[PATTERN;(EXISTS|MULTIPLE|UNMATCHED):" + remote_version
+    if noExists:
+        pattern = pattern.replace('EXISTS', 'XEXISTSX')
+    if noUnmatched:
+        pattern = pattern.replace('UNMATCHED', 'XUNMATCHEDX')
     if check_re(ea, r"\[PATTERN;(EXISTS|MULTIPLE|UNMATCHED):" + remote_version):
     #  if check_re(ea, r"\[PATTERN;UNMATCHED:" + remote_version):
         for x in  check_re(ea, r"\[PATTERN;(EXISTS|MULTIPLE|UNMATCHED):" + remote_version):
@@ -520,9 +536,13 @@ def sig_maker_auto_zmq(ea, colorise=False, force=False, special=False):
     if _exists:
         pattern = ''
     try:
-        cfunc = idaapi.decompile(ea)
-        func_def = str(cfunc).split("\n")
-        decl = [x for x in func_def if len(x) and not x[0] == '/'][0]
+        # cfunc = idaapi.decompile(ea)
+        # str(cfunc).split("\n")
+        func_def = decompile_function(ea)
+        if not func_def:
+            decl = idc.get_type(ea)
+        else:
+            decl = [x for x in func_def if len(x) and not x[0] == '/'][0]
         # dprint("[decl] decl")
         if debug: print("[decl] decl:{}".format(decl))
 

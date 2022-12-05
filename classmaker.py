@@ -935,7 +935,7 @@ def decompile_member(ea, memberType, fnNameAlt = None, offset=0):
         print("// DecompilationFailure: 0x0%0x" % (ea))
         return make_vfunc_struct_sig("void", "__fastcall", "error_%0xd" % offset, "", offset=offset)
 
-def ClassMaker(ea, memberType = None, className = None, famList = [], parentTypeName = None, redo = False, vtableOnly = False):
+def ClassMaker(ea, memberType = None, className = None, famList=None, parentTypeName = None, redo = False, vtableOnly = False):
     """
     ea should be the location of the vtable line:
         ; const rage::CSyncDataReader::`vftable'
@@ -944,6 +944,7 @@ def ClassMaker(ea, memberType = None, className = None, famList = [], parentType
         or
     ClassMaker(idc.get_screen_ea(), "CPed *self")
     """
+    famList = A(famList)
 
     global __class_maker_member_names
     global __class_maker_struct

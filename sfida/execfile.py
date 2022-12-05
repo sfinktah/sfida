@@ -135,7 +135,8 @@ def _isflattenable(iterable):
 # 
 # execfile = _make_execfile()
 
-def execfile(filename, _globals=None, args=[]):
+def execfile(filename, _globals=None, args=None):
+    args = _A(args)
     if _isflattenable(filename):
         return [execfile(x, _globals, args) for x in filename]
 
@@ -285,9 +286,12 @@ def _import(import_stmt, default_cmd='import', global_depth=0):
           (though this generally seems to work, though not exhaustively tested)
           see: https://docs.python.org/3/tutorial/modules.html#packages
     """
-    debug = 1
+    if 'debug' in globals():
+        debug = globals()['debug']
+    else:
+        debug = False
+
     if debug: print("*** {} ***".format(import_stmt))
-    debug = 0
     if default_cmd not in import_stmt:
         # lazy invocation: `_import('module')`
         if debug: print("inserting '{}' prefix".format(default_cmd))

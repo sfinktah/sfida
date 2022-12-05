@@ -13,6 +13,28 @@ import os
 refresh_circular = make_refresh(os.path.abspath(__file__))
 refresh = make_refresh(os.path.abspath(__file__))
 
+def re_search(pattern, string, flags=0):
+    try:
+        return re.search(pattern, string, flags)
+    except Exception as e:
+        print("{}: {}: in pattern-{} {} processing-{} {}".format(e.__class__.__name__, str(e), type(pattern), pattern, type(string), string))
+        raise
+
+def strip_pattern(pattern):
+    if pattern.endswith(('++', '**', '++?', '**?')):
+        multi = True
+        greedy = True
+        if pattern.endswith('?'):
+            greedy = False
+            pattern = pattern[0:-1]
+
+        if pattern.endswith('++'):
+            min = 1
+        elif pattern.endswith('**'):
+            min = 0
+        pattern = pattern[0:-2]
+    return pattern
+
 class CircularList(object):
     """
     https://stackoverflow.com/questions/4151320/efficient-circular-buffer/40784706#40784706
@@ -29,7 +51,7 @@ class CircularList(object):
         self.end = len(self._data) % self.size
 
     def clear(self):
-        self.__init__(self.size, [])
+        self.__init__(self.size)
 
     def extend(self, data):
         self._data.extend(data)
@@ -56,7 +78,7 @@ class CircularList(object):
         try:
             idx = (index + self.end) % len(self._data)
             result = self._data.pop(idx)
-            self.size -= 1
+            # self.size -= 1
             self.end -= 1
             return result
 
@@ -81,7 +103,7 @@ class CircularList(object):
         return string_between('({', '}', pattern, inclusive=1, repl= \
                 lambda v: '(?P<{}>'.format(string_between('({', '}', v)))
 
-    def multimatch(self, pattern_list, flags=0, predicate=None, iteratee=None, gettext=None, anchor=None, groupiter=None):
+    def multimatch(self, pattern_list, flags=0, predicate=None, iteratee=None, gettext=None, anchor='end', groupiter=None):
         if gettext is None:
             gettext=lambda o: o if isinstance(o, str) else o.insn
         #  if groupiter is None:
@@ -91,7 +113,7 @@ class CircularList(object):
         group_matches['default'] = matches
         last_pattern = self.pattern_transform(pattern_list[-1])
         if anchor == 'end':
-            if not re.search(last_pattern, self[-1], flags):
+            if not re_search(strip_pattern(last_pattern), call_if_callable(gettext, self[-1], default=self[-1]), flags):
                 return None
         pattern_iter = iter(stutter_chunk([self.pattern_transform(x) for x in pattern_list], 2, 1))
         _pattern, peek = next(pattern_iter)
@@ -129,10 +151,10 @@ class CircularList(object):
                 print("[multimatch] pattern:{}, multi:{}, greedy:{}, line:{}, i:{}, bsize:{}".format(pattern, multi, greedy, line, i, bsize))
             
 
-            m = re.search(pattern, text, flags)
+            m = re_search(pattern, text, flags)
             matchline = line
             if multi and not greedy and peek:
-                mpeek = re.search(peek, text, flags)
+                mpeek = re_search(peek, text, flags)
             else: 
                 mpeek = None
 
@@ -191,13 +213,14 @@ class CircularList(object):
                 
                 for k, v in m.groupdict().items():
                     group_matches[k].append( call_if_callable(groupiter, matchline, default=v) )
-                    # dprint("[multi] k, v")
+                    group_matches[k + "_insn"].append(line)
+                    #  dprint("[multi] k, v")
                     #  print("[either] k:{}, v:{}".format(k, v))
                     
                 if multi:
                     repetitions[pattern_count].append(matchline)
-                    # dprint("[multi] repetitions[pattern_count]")
-                    #  print("[multi] repetitions[pattern_count]:{}".format(repetitions[pattern_count]))
+                    #  dprint("[multi] repetitions[pattern_count]")
+                    # print("[multi] repetitions[pattern_count]:{}".format(repetitions[pattern_count]))
                     
                 elif not multi:
                     try:
@@ -241,6 +264,12 @@ class CircularList(object):
 
     def __getitem__(self, key):
         """Get element by end, relative to the current end"""
+
+        # https://stackoverflow.com/questions/2936863/implementing-slicing-in-getitem
+        if isinstance(key, slice):
+            # Get the start, stop, and step from the slice
+            return [self[ii] for ii in range(*key.indices(len(self)))]
+
         try:
             if len(self._data) == self.size:
                 idx = (key + self.end) % self.size

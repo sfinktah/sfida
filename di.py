@@ -9,7 +9,7 @@ import ida_ua, idaapi
 import distorm3
 # import distorm3 as distorm3
 # from start import asBytesRaw
-from string_between import string_between
+# from string_between import string_between
 from idc import *
 
 try:
@@ -100,9 +100,13 @@ def GetMnemDi(ea=None):
     """
     ea = eax(ea)
     d = de(ea)
-    if not de:
+    if not d:
         return ''
-    d = d[0]
+    try:
+        d = d[0]
+    except IndexError:
+        pph(d)
+        raise
     m = d.mnemonic.lower().replace('ret', 'retn')
     return m
 
@@ -353,7 +357,12 @@ def de(ea = None, length = None):
         ea = ScreenEA()
     if length is None:
         length = MyGetInstructionLength(ea)
+    if length > ida_ida.cvar.inf.min_ea:
+        length = length - ea
     return deCode(getCode(ea, length), ea)
+
+def de1(ea=None, length=None):
+    return _.first(de(ea=ea, length=length))
 
 def derange(ea = None, length = None, dt=distorm_64_bit_flag(), features = 0):
     if ea is None:
@@ -414,7 +423,7 @@ def destart2(ea=None, length=None):
         if IsRef(q[i].address):
             q = q[0:i+1]
             break
-    print("not popping", q[-1])
+    # print("not popping", q[-1])
     result = q[-1].address
     for ea in range(result, result + 16):
         #  print("ea: {:x} isref: {}".format(ea, IsRef(ea)))
@@ -465,7 +474,7 @@ def destart(ea=None, length=None):
         q.pop();
     if not q:
         return None
-    print("not popping {} at {:x}".format(q[-1], q[-1].address))
+    # print("not popping {} at {:x}".format(q[-1], q[-1].address))
     result = q[-1].address
     for ea in range(result, result + 16):
         #  print("ea: {:x} isref: {}".format(ea, IsRef(ea)))
@@ -577,6 +586,10 @@ def get_operand_size_type(size):
 def diida(ea=None, length=None, mnemOnly=False, filter=None, iteratee=None, returnLength=False, labels=False):
     if ea is None:
         ea = ScreenEA()
+    if IsOffset(ea, loose=1):
+        return "dq offset {}".format(ean(getptr(ea)))
+    if IsData(ea) and IsStruct(ea):
+        return "struct"
     if length is None: # Default to 1 instruction
         length = MyGetInstructionLength(ea) or 15
     if length > ea:
@@ -604,7 +617,7 @@ def diida(ea=None, length=None, mnemOnly=False, filter=None, iteratee=None, retu
             break
 
         def getMnem(asm, _insn_de=None):
-            if asm.startswith('rep'):
+            if asm.startswith(('rep', 'lock')):
                 return asm
             if _insn_de:
                 mnem = _insn_de.mnemonic.lower()
@@ -614,7 +627,7 @@ def diida(ea=None, length=None, mnemOnly=False, filter=None, iteratee=None, retu
                 return mnem[0].lower().replace('ret', 'retn')
 
         mnem = getMnem(insn, insn_de)
-        if mnem == '' or mnem.startswith(('rep', 'repne', 'repe')):
+        if mnem == '' or mnem.startswith(('rep', 'repne', 'repe', 'lock')):
             result.append(insn)
             continue
 
@@ -999,6 +1012,16 @@ def diStrip(ea1=None, ea2=None):
 
     return 0
 
+def insn_sample():
+    history = set()
+    for funcea in idautils.Functions():
+        for head in GetFuncHeads(funcea):
+            if insn_match(head, None, (idc.o_reg, 4)):
+                disasm = diida(head)
+                disasm = re.sub(r'0x[0-9a-f]+', 'n', disasm)
+                if disasm not in history:
+                    history.add(disasm)
+                    insn_preview(head)
 
 def shr(dest, count=1, bits=64):
     return (dest & (1 << bits) - 1) >> count
@@ -1053,3 +1076,167 @@ def shv86():
         'rcx': rcx,
         'rdx': rdx,
     })
+
+d = None
+def reverse_assembler():
+    results = []
+    global d
+    def size(d, *args):
+        si = []
+        for op in d.operands:
+            field = None
+            if op.type in ('AbsoluteMemory', 'AbsoluteMemoryAddress'):
+                field = 'dispSize'
+                ra = (8, 32)
+                if op.type in ('AbsoluteMemoryAddress', ):
+                    ra = (8, 32, 64)
+            elif op.type == 'Register':
+                pass
+            elif op.type == 'Immediate':
+                field = 'size'
+                ra = (8, 16, 32, 64)
+            else:
+                pass
+                # v.dispSize == 0x20 or v.size in (8, 32, 64)):
+            if field is None:
+                si.append(0)
+            else:
+                r = getattr(op, field)
+                if not isinstance(r, int):
+                    pph(d)
+                    raise RuntimeError('unexpected field size type {}'.format(type(r)))
+
+                if r not in (0, 8, 16, 32, 64):
+                    pph(d)
+                    raise RuntimeError('unexpected field size {} ({})'.format(r, str(d)))
+                if r in ra:
+                    si.append(r)
+                elif r not in (0, 8, 32):
+                    print("{} = {}".format(field, r))
+
+        si = A(si)
+        while len(si) < 2:
+            si.append(0)
+        return sum(si), si[0], si[1]
+
+    def size_format(d, si):
+        disasm = str(d)
+        if not si[0]:
+            return disasm
+        op = []
+        op.append(string_between('', d.mnemonic, disasm, inclusive=1))
+        if not op[0]:
+            raise RuntimeError('asm didn\'t string_between: "{}" "{}"'.format(disasm, d.mnemonic))
+        op.append(string_between(d.mnemonic + ' ', ',', disasm))
+        op.append(string_between(', ', '', disasm))
+        for i in range(1, 3):
+            if si[i]:
+                op[i] = op[i].replace("0x0", "0x" + "0" * (si[i]>>2))
+        result = op[0]
+        if op[1]:
+            result += " " + op[1]
+        if op[2]:
+            result += ", " + op[2]
+        return result
+
+
+
+    def prefix_count(c):
+        count = 0
+        # vex
+        if c and c[0] in (0xc4, 0xc5, 0x8f):
+            count += 1
+            c = c[1:]
+        else:
+            while c and c[0] in (0x66, ):
+                count += 1
+                c = c[1:]
+            while c and c[0] & 0xf0 == 0x40:
+                count += 1
+                c = c[1:]
+            if c and c[0] == 0x0f:
+                count += 1
+                c = c[1:]
+                # 3dnow is 0x0f 0x0f, but it's otherwise very confusing
+                if c and c[0] in (0x38, 0x3a):
+                    count += 1
+                    c = c[1:]
+        return count
+
+    def prefix_strip(c):
+        if c and c[0] in (0xc4, 0xc5, 0x8f):
+            c = c[1:]
+        else:
+            while c and c[0] in (0x66, ) or c[0] & 0xf0 == 0x40:
+                c = c[1:]
+            if c and c[0] in (0x0f, ):
+                c = c[1:]
+                if c and c[0] in (0x38, 0x3a):
+                    c = c[1:]
+
+        return bytes(c)
+
+    def prefix_invalid(c):
+        if c and c[0] in (0x66, ):
+            c = c[1:]
+            if c and (c[0] & 0xf0) == 0x40: return True
+            if c and c[0] in (0x0f, 0x66, 0xc4, 0xc5, 0x8f): return True
+
+        elif c and (c[0] & 0xf0) == 0x40:
+            c = c[1:]
+            if c and (c[0] & 0xf0) == 0x40: return True
+            if c and c[0] in (0x0f, 0x66): return True
+            if c and c[0] in (0xc4, 0xc5, 0x8f): return True
+        return False
+
+
+    def recurse(b, i):
+        global d
+        c = b + bytes([i])
+        if len(c) > 15:
+            r = len(c) - 1 - prefix_count(c)
+            print("    overlong  {:18} ; {}".format(r, " ".join(["{:02x}".format(x) for x in c])))
+            return r
+        if prefix_invalid(c):
+            r = 0
+            print("prefix invalid{:18} ; {}".format(r, " ".join(["{:02x}".format(x) for x in c])))
+            return r
+        e = deCode(c)
+        if e:
+            d = e[0]
+            if d.rawFlags != 0xffff and len(e) < 2:
+                if prefix_count(c) and str(deCode(prefix_strip(c))[0]) == d:
+                    return 0
+                si = size(d)
+                if si[0]:
+                    results.append("{:32} ; {}".format(
+                        size_format(d, si) ,
+                            " ".join(["{:02x}".format(x) for x in c])
+                            ))
+                    r = si[0]>>3
+                    # print("    [disp]size{:18} ; {}".format(r, " ".join(["{:02x}".format(x) for x in c[0:-r]])))
+                    # print(results[-1])
+                    if not (len(results) % 5000):
+                        print(results[-1])
+                    return r
+                results.append("{:32} ; {}".format(str(d), " ".join(["{:02x}".format(x) for x in c])))
+                if not (len(results) % 1000):
+                    print(results[-1])
+                return True
+        for i in range(256):
+            r = recurse(c, i)
+            if r and type(r) is int:
+                # print("              {:18} ; {}".format(r, " ".join(["{:02x}".format(x) for x in c])))
+                return r - 1
+
+    b = bytes()
+    for i in range(256):
+        r = recurse(b, i)
+        if r and type(r) is int:
+            print("    ERROR     {:18} ; {}".format(r, " ".join(["{:02x}".format(x) for x in b])))
+
+    return results
+
+    # d = deCode(bytes(bytearray.fromhex('80 1c 0d ef 00 00 00 00')))
+    # pph(deCode(bytes(bytearray.fromhex('40 09 0c 4d 00 00 00 00')))[0])
+

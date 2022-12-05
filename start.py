@@ -78,11 +78,19 @@ _cwd = os.path.dirname(os.path.realpath(os.curdir))
 _ourname = sys.argv[0]
 _basename = os.path.dirname(os.path.realpath(_ourname))
 
-print("start.py...")
-print("__file__:   %s" % __file__)
-print("_basename:  %s" % _basename)
-print("_cwd:       %s" % _cwd)
-print("_ourname:   %s" % _ourname)
+#  print("start.py...")
+#  print("__file__:   %s" % __file__)
+#  print("_basename:  %s" % _basename)
+#  print("_cwd:       %s" % _cwd)
+#  print("_ourname:   %s" % _ourname)
+print("""
+          _____╭╌╌╮      ╭╌╌╮     __         ╭╌╌╮     
+  .______╱ ____╲__| ____ |  | ___╱  |______  |  l__   
+ ╱  ___╱╲   __╲|  |╱    ╲|  |╱ ╱╲   __╲__  ╲ |     ╲  
+ ╲___ ╲  |  |  |  ┃   ┃  ╲    <  |  |  ╱ __ ╲|  ╰╮  ╲ 
+╱____  ) |  |  |__┃___┃  ╱__┃_ ╲ |  | (____  ╱___|  ╱ 
+     ╲╱  ╰╌╌╯obfukungfu╲╱     ╲╱ ╰╌╌╯idapro╲╱     ╲╱  
+        """)
 
 scriptDir = os.path.dirname(__file__)
 #  if os.path.exists('e:/git/ida'):
@@ -117,8 +125,9 @@ debug = 0
 filenames = [
             "idc695.py",
             "attrdict1.py",
-            "sfida/sf_is_flags.py",
             "circularlist.py",
+            "slowtrace_helpers.py",
+            "sfida/sf_is_flags.py",
             "iced.py",
             "di.py",
             "nasm.py",
@@ -127,7 +136,6 @@ filenames = [
             "braceexpand.py",
             "JsonStoredList.py",
             "keypatch.py",
-            "slowtrace_helpers.py",
             "file_get_contents.py",
             "slowtrace2.py",
             "hotkey_utils.py",
@@ -234,6 +242,7 @@ Qword = idc.get_qword
 GetTrueName = idc.get_name
 GetMnem = idc.print_insn_mnem
 Name = lambda x: idc.get_name(x, ida_name.GN_VISIBLE)
+
 def do_start():
     if str(type(execfile)) == "<class 'module'>":
         unload('execfile')
@@ -241,7 +250,7 @@ def do_start():
         home = scriptDir
         fnfull = os.path.abspath(os.path.join(home, fn))
         if os.path.exists(fnfull) and os.path.isfile(fnfull):
-            # print("start-load: {}...".format(fnfull))
+            idc.msg("[{}] ".format(os.path.basename(fnfull)))
             #  exec(open(fnfull).read())
 
             if str(type(execfile)) == "<class 'module'>":
@@ -250,10 +259,13 @@ def do_start():
                 execfile(fnfull, globals())
                 if str(type(execfile)) == "<class 'module'>":
                     raise TypeError("{} redefined execfile as a module".format(fnfull))
-            except TypeError as e:
-                raise TypeError("{} while executing {}".format(str(e), fnfull))
+            except:
+                print("[error]")
+                raise
         else:
-            print("No such file: %s" % fnfull)
+            print("\nNo such file: %s" % fnfull)
+
+    print("")
 
     try:
         ir = get_ir()

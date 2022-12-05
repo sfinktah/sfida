@@ -171,6 +171,47 @@ def mark_sp_factory(mark):
     return patch
 
 
+def adjust_sp_factory(mark):
+    """
+    Typical Input:
+               4d 8d 5b ??                lea r11, [r11+8] 
+    """
+    global slvars
+
+    def patch(search, replace, original, ea, addressList, patternComment, addressListWithNops, **kwargs):
+        context = kwargs.get('context', None)
+        context = context or dict()
+        slvars = context.get('slvars', None)
+        if mark not in patchmarks:
+            if obfu_debug: printi("Potential SP adjustment failed due to no patchmark {:x}".format(ea))
+            return []
+
+        value = patchmarks[mark]
+        disp = 0
+
+        if idc.get_operand_type(ea, 1) == o_displ:
+            disp = MakeSigned(idc.get_operand_value(ea, 1), 8)
+
+        if not disp:
+            printi("{:x} expected idc.get_operand_value to be non-zero".format(ea))
+
+        new_value = value + disp
+
+        if obfu_debug:
+            printi("{:x} retrieved mark {}: {:x} + {:x}".format(ea, mark, value, disp))
+            printi("{:x} changed mark {}: to {:x}".format(ea, mark, new_value))
+
+        patchmarks[mark] = new_value
+
+        dst = ea
+        cmt = "[MARK+={:#x}]".format(disp)
+        Commenter(idc.prev_head(dst), "line").remove_matching(r'^\[MARK')
+        Commenter(idc.prev_head(dst), "line").add(cmt).commit()
+
+        # cmt = "[SPD={}] '{}'".format( hex(_spd), mark )
+
+    return patch
+
 def set_sp_factory(mark, offset=0):
     """
     Typical Input:
@@ -178,7 +219,7 @@ def set_sp_factory(mark, offset=0):
     """
     global slvars
 
-    def patch(search, replace, original, ea, addressList, patternComment, addressListWithNops, **kwargs):
+    def patch(search=None, replace=None, original=None, ea=None, addressList=None, patternComment=None, addressListWithNops=None, **kwargs):
         context = kwargs.get('context', None)
         context = context or dict()
         slvars = context.get('slvars', None)
@@ -203,29 +244,41 @@ def set_sp_factory(mark, offset=0):
         if obfu_debug:
             printi("{:x} retrieved mark {}: {:x} + {:x}".format(ea, mark, value, disp))
             printi("{:x} adjusting spd from {:x} by {:x} to get {:x}".format(ea, spd, (value + disp) - spd, (value + disp)))
+        # _spd = (value + disp) - spd
         _spd = (value + disp) - spd
         if not isinstance(_spd, int):
             # dprint("[debug] _spd value, disp, spd")
             printi("[debug] _spd:{}, value:{}, disp:{}, spd:{}".format(_spd, value, disp, spd))
 
-        # printi("[debug] _spd:{}, value:{}, disp:{}, spd:{}".format(_spd, value, disp, spd))
-        dst = idc.get_item_head(ea + len(search))
-        cmt = "[SPD={:x}] '{}' ({:x} + {:x} - {:x} ({}))".format(_spd, mark, value, disp, spd, offset if offset is not None else "")
-        Commenter(idc.prev_head(dst), "line").remove_matching(r'^\[SPD=')
-        Commenter(idc.prev_head(dst), "line").add(cmt).commit()
-        if obfu_debug: printi("dst started: {:x}".format(dst))
-        move_to_next = False
-        if isNop(idc.prev_head(dst)):
-            while isNop(dst):
-                move_to_next = True
-                dst = GetTarget(dst, failnone=True) or idc.next_head(dst)
+        if 'trigger' in kwargs:
+            # idc.add_user_stkpnt(ea + MyGetInstructionLength(ea), _spd + offset)
+            # printi("should probably add an SPD comment here")
+            cmt = "[SPD+={:#x}] triggered '{}' ({:x} + {:x} - {:x} ({}))".format(_spd, mark, value, disp, spd, offset if offset is not None else "")
+            Commenter(ea, "line").remove_matching(r'^\[SPD+=')
+            Commenter(ea, "line").add(cmt).commit()
+            # don't add offset to trigger (idk why)
+            idc.add_user_stkpnt(ea + MyGetInstructionLength(ea), _spd)
+            #  raise "hahaha"
+        else:
 
-        if obfu_debug: printi("dst finished: {:x}".format(dst))
-        if move_to_next:
-            dst = idc.next_head(dst)
-            printi("dst move to next_head: {:x}".format(dst))
-        # idc.add_user_stkpnt(ea + len(search), _spd)
-        idc.add_user_stkpnt(dst, _spd + offset)
+        # printi("[debug] _spd:{}, value:{}, disp:{}, spd:{}".format(_spd, value, disp, spd))
+            dst = idc.get_item_head(ea + len(search))
+            cmt = "[SPD+={:#x}] '{}' ({:x} + {:x} - {:x} ({}))".format(_spd, mark, value, disp, spd, offset if offset is not None else "")
+            Commenter(idc.prev_head(dst), "line").remove_matching(r'^\[SPD+=')
+            Commenter(idc.prev_head(dst), "line").add(cmt).commit()
+            if obfu_debug: printi("dst started: {:x}".format(dst))
+            move_to_next = False
+            if isNop(idc.prev_head(dst)):
+                while isNop(dst):
+                    move_to_next = True
+                    dst = GetTarget(dst, failnone=True) or idc.next_head(dst)
+
+            if obfu_debug: printi("dst finished: {:x}".format(dst))
+            if move_to_next:
+                dst = idc.next_head(dst)
+                printi("dst move to next_head: {:x}".format(dst))
+            # idc.add_user_stkpnt(ea + len(search), _spd)
+            idc.add_user_stkpnt(dst, _spd + offset)
 
         # cmt = "[SPD={}] '{}'".format( hex(_spd), mark )
 
@@ -263,7 +316,8 @@ def mark_sp_reg_factory(reg):
     return patch
 
 
-def gen_mask(pattern, previous=[]):
+def gen_mask(pattern, previous=None):
+    previous = A(previous)
     if not isinstance(previous, list):
         raise Exception("argument 'previous' was not a list (type: {})".format(type(previous)))
 
@@ -303,12 +357,22 @@ def patch_32bit_add(search, replace, original, ea, addressList, patternComment, 
         #  pp(e.__dict__)
         globals()['e'] = e
         flags = e.rawFlags & FLAG_MASK
-        if e.mnemonic == 'ADD' \
-                and e.opcode == 11 \
+        if e.mnemonic in ('ADD', 'SUB') \
+                and e.opcode in (11, 51) \
                 and flags == (FLAG_DST_WR | FLAG_IMM_SIGNED) \
                 and e.operands[0].type == 'Register' \
                 and e.operands[1].type == 'Immediate' \
-                and e.operands[1].size == 32:
+                and (e.operands[1].size == 32 or e.operands[1].value < 0):
+                    flip = e.operands[1].value < 0
+                    if flip:
+                        e.operands[1].value = 0 - e.operands[1].value
+                        if e.mnemonic == 'ADD':
+                            e.mnemonic = 'SUB'
+                        elif e.mnemonic == 'SUB':
+                            e.mnemonic = 'ADD'
+                        else:
+                            raise ValueError('Unexpected mnemonic {}'.format(e.mnemonic))
+
                     requiredSize = bitsize_signed_2(e.operands[1].value)
                     if requiredSize == 16:
                         requiredSize = 32
@@ -316,7 +380,7 @@ def patch_32bit_add(search, replace, original, ea, addressList, patternComment, 
                     if requiredSize == 8:
                         addresses = addressList[0:e.size]
                         return (addresses,
-                                (["add {}, {}".format(e.operands[0].name, e.operands[1].value)]))
+                                (["{} {}, {}".format(e.mnemonic, e.operands[0].name, e.operands[1].value)]))
     else:
         if obfu_debug: printi("patch_32bit_add: e was type %s" % type(e))
     return []
@@ -783,9 +847,12 @@ def obfu_append_patches():
     """
     028 -250   48 81 ec 50 02 00 00                 sub rsp, 0x250
     278        48 8d 6c 24 20                       lea rbp, [rsp+0x20]
+               48 8d ac 24 80 00 00 00              lea rbp, [rsp+80h]
     .....................................................
                48 8d a5 30 02 00 00                 lea rsp, [rbp+0x230]
+    ....
     """
+    obfu.append("", "mark lea rbp, [rsp+x]", hex_pattern("48 8d ac 24 ?? ?? ?? ??"),                                 [], mark_sp_factory('lea_rbp_rsp_x'))
     obfu.append("", "mark lea rbp, [rsp+x]", hex_pattern("48 8d 6c 24 ??"),                                          [], mark_sp_factory('lea_rbp_rsp_x'))
     obfu.append("", "set  lea rsp, [rbp+x]", hex_pattern("48 8d a5 ?? ?? ?? ??"),                                    [], set_sp_factory('lea_rbp_rsp_x'))
     obfu.append("", "set  lea rsp, [rbp+x]", hex_pattern("48 8d 65 ??"),                                             [], set_sp_factory('lea_rbp_rsp_x'))
@@ -796,7 +863,11 @@ def obfu_append_patches():
     obfu.append("", "lea r11, [rsp+????????h]",
                                              hex_pattern("4c 8d 9c 24 ?? ?? ?? ??") or nassemble("lea r11, [rsp+]"), [], mark_sp_factory('mov_r11_rsp'))
     obfu.append("", "mov rsp, r11",          hex_pattern("49 8b e3")       or nassemble("mov rsp, r11"),             [], set_sp_factory('mov_r11_rsp'))
-    obfu.append("", "push r11; pop rsp",     hex_pattern("41 53 5c")       or nassemble("push r11; pop rsp"),        [], set_sp_factory('mov_r11_rsp', 8))
+
+    # needs to be rewritten for obfu_patches, gets a bit confused.  works much better as a trigger from slowtrace2
+    obfu.append("", "push r11; pop rsp",     hex_pattern("90 41 53 5c")       or nassemble("push r11; pop rsp"),        [], set_sp_factory('mov_r11_rsp', 8), trigger='mov_r11_rsp')
+
+    obfu.append("", "lea r11, [r11+??h]",    hex_pattern("4d 8d 5b ??"),                                             [], adjust_sp_factory('mov_r11_rsp'))
 
     obfu.append("""
             0:  48 8d 64 24 f8          lea    rsp, [rsp-0x8]
@@ -1153,31 +1224,6 @@ def obfu_append_patches():
     # 48 81 c1 f8 ff ff ff                  add rcx, 0FFFFFFFFFFFFFFF8h
     # 51                                    push rcx
     # 5c                                    pop rsp
-    with BitwiseMask() as bm:
-        for r in r64:
-            # convert 32-bit ADD to 8-bit ADD
-            if r == 'rsp':
-                continue
-
-            # search      = hex_pattern([re.sub(r' de ad ff 08', ' f8 ff ff ff', listAsHex(kassemble(search_asm)))])
-            search_asm  = "add {}, dword 0fffffff8h".format(r)
-            search      = nassemble(search_asm)
-            bm.add_list(search)
-
-            search      = hex_pattern(listAsHex(search).replace('f8 ff ff ff', '08 00 00 00'))
-            bm.add_list(search)
-
-
-            #  printi("searchasm:  %s" % search_asm)
-            #  printi("replaceasm: %s" % replace_asm)
-            #  printi("search:     %s" % listAsHex(search))
-            #  printi("replace:    %s" % listAsHex(replace))
-
-        #  [values, mask] = gen_mask(None, previous)
-        #  obfu.append_bitwise(values, mask, patch_32bit_add)
-        obfu.append_bitwise(bm.value, bm.mask, patch_32bit_add, resume=1)
-        if obfu_debug: pp([binlist(bm._set), binlist(bm._clear), bm._size, bm._reserved, binlist(bm.value), binlist(bm.mask)])
-
 
     """
     55                                  push rbp
@@ -1373,7 +1419,7 @@ def obfu_append_patches():
             bit_pattern(["00~ff 00~ef 00~ff 0c~fc"]),
 
             # extra registers are 41 FF 70/77 ??
-            safe=1, reflow=1
+            safe=1, resume=1,
     )
 
     obfu.append("""
@@ -1554,7 +1600,7 @@ def obfu_append_patches():
             simple_patch_factory([
                 "jmp {hex(idc.get_operand_value(addressList[1], 1))}",
                 "int3"]),
-            safe=1, reflow=1
+            safe=1, reflow=0
     )
 
     obfu.append("""
@@ -1665,8 +1711,8 @@ def obfu_append_patches():
 
         #  [values, mask] = gen_mask(None, previous)
         #  obfu.append_bitwise(values, mask, patch_32bit_add)
-        obfu.append_bitwise(bm.value, bm.mask, patch_32bit_add, resume=1)
-        if obfu_debug: pp([binlist(bm._set), binlist(bm._clear), bm._size, bm._reserved, binlist(bm.value), binlist(bm.mask)])
+        obfu.append_bitwise(bm.value, bm.mask, patch_32bit_add, reflow=1)
+        # if obfu_debug: pp([binlist(bm._set), binlist(bm._clear), bm._size, bm._reserved, binlist(bm.value), binlist(bm.mask)])
 
     if "bitwise_mov32,64":
         searches = [
@@ -2021,6 +2067,8 @@ def obfu_append_patches():
             #  search      = kassemble(search_asm)
             #  obfu.append_slow(search_asm, search_asm, search, replace)
 
+
+            # These may not work, because visual studio uses different operands for `mov` -- not sure if that includes [reg]
             search_asm  = "push {1}; mov {0}, [rsp]; mov {2}, rsp; add {2}, 8; mov rsp, {2};".format(dst, src, tmp)
             search     = kassemble(search_asm)
             obfu.append(search_asm, search_asm, search, process_replace_nocheck(replace, replace_asm), safe=1, resume=1)
@@ -2055,7 +2103,7 @@ def obfu_append_patches():
             #            push {2}; pop rsp | mov rsp, {2}
             #        """))
 
-    printi("slow_load: 4")
+    if obfu_debug: printi("slow_load: 4")
     #  disabled until we can prioritise this below the checksummer stack fix
     #  obfu.append("add rsp to previously pushed constant", 'add rsp, xmmword ptr [rsp+8]',
             #  hex_pattern(["48 03 64 24 ??"]),
@@ -2552,7 +2600,7 @@ def obfu_append_patches():
         ]),
         [], # This can be a replacement hex pattern as above, of any length, if the replacement is simple, otherwise
         generate_compact_cmov_abs_patch(0x03, 0x18, 0x22),
-        safe=1, reflow=1
+        safe=1, reflow=0
         )
 
     obfu.append("push qword rel; retn", "push qword rel tailcall",
@@ -2844,16 +2892,27 @@ def obfu_append_patches():
             process_hex_pattern(["53"])
             , safe=1, resume=1)
 
-    obfu.append("""
-            0:  48 89 e0                mov    rax,rsp
-            3:  48 05 f8 ff ff ff       add    rax,0xfffffffffffffff8
-            9:  48 89 c4                mov    rsp,rax
-            c:  48 89 04 24             mov    QWORD PTR [rsp],rax
-            """, "mov [rsp], r64 => push r64",
-            bit_pattern("48 89 e0 48 05 f8 ff ff ff 48 89 c4 48 89 04~3c 24"),
-            "", lambda a, b, c, *z, **kw: (len(a), [0x50 + (c[14] >> 3)]),
-            resume=1
-    )
+
+    # this seems superfluous
+    #  obfu.append("""
+            #  0:  48 89 e0                mov    rax,rsp
+            #  3:  48 05 f8 ff ff ff       add    rax,0xfffffffffffffff8
+            #  9:  48 89 c4                mov    rsp,rax
+            #  c:  48 89 04 24             mov    QWORD PTR [rsp],rax
+            #  """, "mov [rsp], r64 => push r64",
+            #  bit_pattern("48 89 e0 48 05 f8 ff ff ff 48 89 c4 48 89 04~3c 24"),
+            #  "", lambda a, b, c, *z, **kw: (len(a), [0x50 + (c[14] >> 3)]),
+            #  resume=1
+    #  )
+    
+    #  .text:1432ab519  340      es::LoadFromJSON 48 89 e2                      	mov rdx, rsp
+    #  .text:1432ab51c  340      es::LoadFromJSON 48 81 c2 f8 ff ff ff          	add rdx, 0xfffffff8
+    #  .text:1432ab523  340      es::LoadFromJSON 48 89 d4                      	mov rsp, rdx
+    #  .text:1432ab526  340      es::LoadFromJSON 4c 89 0c 24                   	mov [rsp], r9
+    #  .text:1432ab52a  340      es::LoadFromJSON 8b 04 24                      	mov eax, [rsp]
+    #  .text:1432ab52d  340  -10 es::LoadFromJSON 4c 8b 0c 24                   	mov r9, [rsp]
+    #  .text:1432ab531  350      es::LoadFromJSON 48 8d 64 24 08                	lea rsp, [rsp+8]
+
     #  (two groups of 5, order swapped)
     #  00~ff 00~ff 00~bf 00~ff 00~97
     #  00~ff 00~ff 00~ff 00~ff 00~ff
@@ -3025,7 +3084,8 @@ def obfu_append_patches():
             #  "c3"
             #  ])
         #  safe=1, reflow=1
-            safe=1, reflow=1
+        # XXX: maybe should be reflow=1 - though might be faster to let it redo?
+            safe=1, reflow=0
         )
 
 
@@ -3553,6 +3613,186 @@ off_14329CF38:
     dq offset loc_143270ED0
 loc_143270ED0:
     jmp rax
+---
+
+000   48 8B C4                                      mov     rax, rsp
+000   48 81 EC 98 00 00 00                          sub     rsp, 98h
+...
+098   4C 8D 18                                      lea     r11, [rax]
+...
+098   49 8B E3                                      mov     rsp, r11
+098   C3                                            retn
+
+-(full version)-
+.text:0000000140010BF4                                   sub_140010BF4   proc near               ; CODE XREF: sub_14002081C+75↓p
+.text:0000000140010BF4                                                                           ; sub_140021820+268↓p ...
+.text:0000000140010BF4
+.text:0000000140010BF4                                   var_98          = xmmword ptr -98h
+.text:0000000140010BF4                                   var_88          = xmmword ptr -88h
+.text:0000000140010BF4
+.text:0000000140010BF4 000 48 8B C4                                      mov     rax, rsp                            ; <--
+.text:0000000140010BF7 000 48 81 EC 98 00 00 00                          sub     rsp, 98h                            ; <--
+.text:0000000140010BFE 098 F3 0F 10 59 14                                movss   xmm3, dword ptr [rcx+14h]
+.text:0000000140010C03 098 F3 0F 10 51 18                                movss   xmm2, dword ptr [rcx+18h]
+.text:0000000140010C08 098 F3 0F 10 41 04                                movss   xmm0, dword ptr [rcx+4]
+.text:0000000140010C0D 098 0F 29 70 E8                                   movaps  xmmword ptr [rax-18h], xmm6
+.text:0000000140010C11 098 0F 29 78 D8                                   movaps  xmmword ptr [rax-28h], xmm7
+.text:0000000140010C15 098 44 0F 29 40 C8                                movaps  xmmword ptr [rax-38h], xmm8
+.text:0000000140010C1A 098 F3 0F 59 42 14                                mulss   xmm0, dword ptr [rdx+14h]
+.text:0000000140010C1F 098 F3 44 0F 10 02                                movss   xmm8, dword ptr [rdx]
+.text:0000000140010C24 098 F3 0F 10 49 08                                movss   xmm1, dword ptr [rcx+8]
+.text:0000000140010C29 098 F3 0F 10 71 20                                movss   xmm6, dword ptr [rcx+20h]
+.text:0000000140010C2E 098 44 0F 29 48 B8                                movaps  xmmword ptr [rax-48h], xmm9
+.text:0000000140010C33 098 44 0F 29 50 A8                                movaps  xmmword ptr [rax-58h], xmm10
+.text:0000000140010C38 098 44 0F 29 58 98                                movaps  xmmword ptr [rax-68h], xmm11
+.text:0000000140010C3D 098 F3 0F 59 4A 24                                mulss   xmm1, dword ptr [rdx+24h]
+.text:0000000140010C42 098 F3 44 0F 10 5A 10                             movss   xmm11, dword ptr [rdx+10h]
+.text:0000000140010C48 098 F3 44 0F 10 4A 20                             movss   xmm9, dword ptr [rdx+20h]
+.text:0000000140010C4E 098 44 0F 29 60 88                                movaps  xmmword ptr [rax-78h], xmm12
+.text:0000000140010C53 098 44 0F 29 6C 24 10                             movaps  [rsp+98h+var_88], xmm13
+.text:0000000140010C59 098 44 0F 29 34 24                                movaps  [rsp+98h+var_98], xmm14
+.text:0000000140010C5E 098 F3 44 0F 10 61 10                             movss   xmm12, dword ptr [rcx+10h]
+.text:0000000140010C64 098 F3 44 0F 10 31                                movss   xmm14, dword ptr [rcx]
+.text:0000000140010C69 098 F3 44 0F 10 6A 08                             movss   xmm13, dword ptr [rdx+8]
+.text:0000000140010C6F 098 41 0F 28 FC                                   movaps  xmm7, xmm12
+.text:0000000140010C73 098 0F 28 EE                                      movaps  xmm5, xmm6
+.text:0000000140010C76 098 0F 28 E6                                      movaps  xmm4, xmm6
+.text:0000000140010C79 098 F3 44 0F 59 72 04                             mulss   xmm14, dword ptr [rdx+4]
+.text:0000000140010C7F 098 F3 44 0F 59 29                                mulss   xmm13, dword ptr [rcx]
+.text:0000000140010C84 098 F3 44 0F 58 F0                                addss   xmm14, xmm0
+.text:0000000140010C89 098 F3 0F 10 42 18                                movss   xmm0, dword ptr [rdx+18h]
+.text:0000000140010C8E 098 45 0F 28 D0                                   movaps  xmm10, xmm8
+.text:0000000140010C92 098 F3 0F 59 41 04                                mulss   xmm0, dword ptr [rcx+4]
+.text:0000000140010C97 098 F3 0F 59 7A 04                                mulss   xmm7, dword ptr [rdx+4]
+.text:0000000140010C9C 098 F3 0F 59 62 04                                mulss   xmm4, dword ptr [rdx+4]
+.text:0000000140010CA1 098 F3 44 0F 58 F1                                addss   xmm14, xmm1
+.text:0000000140010CA6 098 F3 0F 10 4A 28                                movss   xmm1, dword ptr [rdx+28h]
+.text:0000000140010CAB 098 F3 44 0F 58 E8                                addss   xmm13, xmm0
+.text:0000000140010CB0 098 0F 28 C3                                      movaps  xmm0, xmm3
+.text:0000000140010CB3 098 F3 0F 59 49 08                                mulss   xmm1, dword ptr [rcx+8]
+.text:0000000140010CB8 098 F3 0F 59 72 08                                mulss   xmm6, dword ptr [rdx+8]
+.text:0000000140010CBD 098 F3 41 0F 59 C3                                mulss   xmm0, xmm11
+.text:0000000140010CC2 098 F3 44 0F 58 E9                                addss   xmm13, xmm1
+.text:0000000140010CC7 098 0F 28 CA                                      movaps  xmm1, xmm2
+.text:0000000140010CCA 098 F3 41 0F 59 C9                                mulss   xmm1, xmm9
+.text:0000000140010CCF 098 F3 45 0F 59 D4                                mulss   xmm10, xmm12
+.text:0000000140010CD4 098 F3 44 0F 59 62 08                             mulss   xmm12, dword ptr [rdx+8]
+.text:0000000140010CDA 098 F3 44 0F 58 D0                                addss   xmm10, xmm0
+.text:0000000140010CDF 098 0F 28 C3                                      movaps  xmm0, xmm3
+.text:0000000140010CE2 098 F3 44 0F 58 D1                                addss   xmm10, xmm1
+.text:0000000140010CE7 098 0F 28 CA                                      movaps  xmm1, xmm2
+.text:0000000140010CEA 098 F3 0F 59 42 14                                mulss   xmm0, dword ptr [rdx+14h]
+.text:0000000140010CEF 098 F3 0F 59 4A 24                                mulss   xmm1, dword ptr [rdx+24h]
+.text:0000000140010CF4 098 F3 0F 59 5A 18                                mulss   xmm3, dword ptr [rdx+18h]
+.text:0000000140010CF9 098 F3 0F 58 F8                                   addss   xmm7, xmm0
+.text:0000000140010CFD 098 F3 44 0F 58 E3                                addss   xmm12, xmm3
+.text:0000000140010D02 098 F3 0F 10 59 28                                movss   xmm3, dword ptr [rcx+28h]
+.text:0000000140010D07 098 F3 0F 59 52 28                                mulss   xmm2, dword ptr [rdx+28h]
+.text:0000000140010D0C 098 F3 0F 58 F9                                   addss   xmm7, xmm1
+.text:0000000140010D10 098 F3 41 0F 59 E8                                mulss   xmm5, xmm8
+.text:0000000140010D15 098 0F 28 CB                                      movaps  xmm1, xmm3
+.text:0000000140010D18 098 F3 44 0F 58 E2                                addss   xmm12, xmm2
+.text:0000000140010D1D 098 F3 0F 10 51 24                                movss   xmm2, dword ptr [rcx+24h]
+.text:0000000140010D22 098 F3 44 0F 59 01                                mulss   xmm8, dword ptr [rcx]
+.text:0000000140010D27 098 F3 41 0F 59 C9                                mulss   xmm1, xmm9
+.text:0000000140010D2C 098 F3 44 0F 59 49 08                             mulss   xmm9, dword ptr [rcx+8]
+.text:0000000140010D32 098 0F 28 C2                                      movaps  xmm0, xmm2
+.text:0000000140010D35 098 F3 41 0F 59 C3                                mulss   xmm0, xmm11
+.text:0000000140010D3A 098 F3 44 0F 59 59 04                             mulss   xmm11, dword ptr [rcx+4]
+.text:0000000140010D40 098 F3 0F 58 E8                                   addss   xmm5, xmm0
+.text:0000000140010D44 098 0F 28 C2                                      movaps  xmm0, xmm2
+.text:0000000140010D47 098 F3 0F 58 E9                                   addss   xmm5, xmm1
+.text:0000000140010D4B 098 F3 45 0F 58 D8                                addss   xmm11, xmm8
+.text:0000000140010D50 098 F3 0F 59 42 14                                mulss   xmm0, dword ptr [rdx+14h]
+.text:0000000140010D55 098 F3 0F 59 52 18                                mulss   xmm2, dword ptr [rdx+18h]
+.text:0000000140010D5A 098 0F 28 CB                                      movaps  xmm1, xmm3
+.text:0000000140010D5D 098 F3 0F 58 E0                                   addss   xmm4, xmm0
+.text:0000000140010D61 098 F3 0F 58 F2                                   addss   xmm6, xmm2
+.text:0000000140010D65 098 F3 45 0F 58 D9                                addss   xmm11, xmm9
+.text:0000000140010D6A 098 F3 0F 59 4A 24                                mulss   xmm1, dword ptr [rdx+24h]
+.text:0000000140010D6F 098 F3 0F 59 5A 28                                mulss   xmm3, dword ptr [rdx+28h]
+.text:0000000140010D74 098 F3 0F 58 E1                                   addss   xmm4, xmm1
+.text:0000000140010D78 098 F3 0F 58 F3                                   addss   xmm6, xmm3
+.text:0000000140010D7C 098 F3 44 0F 11 19                                movss   dword ptr [rcx], xmm11
+.text:0000000140010D81 098 F3 44 0F 11 71 04                             movss   dword ptr [rcx+4], xmm14
+.text:0000000140010D87 098 44 0F 28 34 24                                movaps  xmm14, xmmword ptr [rsp]
+.text:0000000140010D8C 098 4C 8D 18                                      lea     r11, [rax]                            ; <--
+.text:0000000140010D8F 098 F3 44 0F 11 69 08                             movss   dword ptr [rcx+8], xmm13
+.text:0000000140010D95 098 F3 44 0F 11 51 10                             movss   dword ptr [rcx+10h], xmm10
+.text:0000000140010D9B 098 F3 0F 11 79 14                                movss   dword ptr [rcx+14h], xmm7
+.text:0000000140010DA0 098 45 0F 28 43 C8                                movaps  xmm8, xmmword ptr [r11-38h]
+.text:0000000140010DA5 098 45 0F 28 4B B8                                movaps  xmm9, xmmword ptr [r11-48h]
+.text:0000000140010DAA 098 45 0F 28 53 A8                                movaps  xmm10, xmmword ptr [r11-58h]
+.text:0000000140010DAF 098 F3 44 0F 11 61 18                             movss   dword ptr [rcx+18h], xmm12
+.text:0000000140010DB5 098 F3 0F 11 71 28                                movss   dword ptr [rcx+28h], xmm6
+.text:0000000140010DBA 098 F3 0F 11 69 20                                movss   dword ptr [rcx+20h], xmm5
+.text:0000000140010DBF 098 41 0F 28 73 E8                                movaps  xmm6, xmmword ptr [r11-18h]
+.text:0000000140010DC4 098 45 0F 28 5B 98                                movaps  xmm11, xmmword ptr [r11-68h]
+.text:0000000140010DC9 098 45 0F 28 63 88                                movaps  xmm12, xmmword ptr [r11-78h]
+.text:0000000140010DCE 098 F3 0F 11 61 24                                movss   dword ptr [rcx+24h], xmm4
+.text:0000000140010DD3 098 0F 28 78 D8                                   movaps  xmm7, xmmword ptr [rax-28h]
+.text:0000000140010DD7 098 44 0F 28 6C 24 10                             movaps  xmm13, xmmword ptr [rsp+10h]
+.text:0000000140010DDD 098 49 8B E3                                      mov     rsp, r11                              ; <--
+.text:0000000140010DE0 098 C3                                            retn
 
 
+---
+mov r11, rsp with a twist adjusting r11 in the middle of the code
+
+000   4C 8B DC                 mov     r11, rsp
+000   55                       push    rbp
+008   49 8D 6B B9              lea     rbp, [r11-47h]
+008   48 81 EC 90 00 00 00     sub     rsp, 90h
+...
+098   4D 8D 5B F8              lea     r11, [r11-8]  ; <-- trick simple de-obfu by adjusting r11 mid-func
+...
+098   49 8B E3                 mov     rsp, r11
+008   5D                       pop     rbp
+000   C3                       retn
+---
+lea instead of add rsp, x
+.text:14355339f  108      sub_140A6DBE5    4c 8d 9c 24 f0 00 00 00       	lea r11, [rsp+0xf0]
+.text:1435533a7  108      sub_140A6DBE5    40 8a c5                      	mov al, bpl
+.text:1435533aa  108      sub_140A6DBE5    49 8b 5b 20                   	mov rbx, [r11+0x20]
+.text:1435533ae  108      sub_140A6DBE5    49 8b 6b 28                   	mov rbp, [r11+0x28]
+.text:1435533b2  108      sub_140A6DBE5    49 8b 73 30                   	mov rsi, [r11+0x30]
+.text:1435533b6  108      sub_140A6DBE5    41 0f 28 73 f0                	movaps xmm6, [r11-0x10]
+.text:1435533bb  108      sub_140A6DBE5    41 0f 28 7b e0                	movaps xmm7, [r11-0x20]
+.text:1435533c0  108      sub_140A6DBE5    45 0f 28 43 d0                	movaps xmm8, [r11-0x30]
+.text:1435533c5  108      sub_140A6DBE5    49 8b 7b 38                   	mov rdi, [r11+0x38]
+.text:1435533c9  108      sub_140A6DBE5    45 0f 28 4b c0                	movaps xmm9, [r11-0x40]
+.text:1435533ce  108      sub_140A6DBE5    45 0f 28 53 b0                	movaps xmm10, [r11-0x50]
+.text:1435533d3  108   -8 sub_140A6DBE5    41 53                         	push r11
+.text:1435533dc  110      sub_140A6DBE5    5c                            	pop rsp
+.text:1435533dd  110    8 sub_140A6DBE5    41 5f                         	pop r15
+
+---
+initial pops done via wierd rsp/mov combo
+.text:143b99b0d    0      jectCreatePickup 48 89 5c 24 10                	mov [rsp+0x10], rbx
+.text:143b99b12    0   -8 jectCreatePickup 55                            	push rbp
+.text:143b99b1c    8      jectCreatePickup 48 89 e3                      	mov rbx, rsp
+.text:143b99b1f    8      jectCreatePickup 48 83 c3 f8                   	add rbx, -8
+.text:143b99b26    8      jectCreatePickup 48 89 dc                      	mov rsp, rbx
+.text:143b99b29    8      jectCreatePickup 48 89 34 24                   	mov [rsp], rsi
+.text:143b99b2d    8   -8 jectCreatePickup 57                            	push rdi
+.text:143b99b36   10      jectCreatePickup 48 89 e3                      	mov rbx, rsp
+.text:143b99b39   10      jectCreatePickup 48 83 c3 f8                   	add rbx, -8
+.text:143b99b40   10      jectCreatePickup 48 89 dc                      	mov rsp, rbx
+.text:143b99b43   10      jectCreatePickup 4c 89 24 24                   	mov [rsp], r12
+.text:143b99b47   10      jectCreatePickup 48 89 e3                      	mov rbx, rsp
+.text:143b99b4a   10      jectCreatePickup 48 83 c3 f8                   	add rbx, -8
+.text:143b99b51   10      jectCreatePickup 48 89 dc                      	mov rsp, rbx
+.text:143b99b54   10      jectCreatePickup 4c 89 3c 24                   	mov [rsp], r15
+.text:143b99b58   10   -8 jectCreatePickup 54                            	push rsp
+.text:143b99b59   18    8 jectCreatePickup 5d                            	pop rbp
+.text:143b99b62   10  -50 jectCreatePickup 48 83 ec 50                   	sub rsp, 0x50
+
+"""
+
+"""
+converting from nasm to msvc `mov`
+; HOW TO CONVERT FROM NASM to MSVC
+" (c[-1] & 0b11000000) | (c[-1] & 0b111000 >> 3) | (c[-1] & 0b000111) << 3
+" c[-2]  ^ 2
+" (c[-3] & 0b11111010) | (c[-3] & 0b100)   >> 2  | (c[-3] & 0b001)    << 2
 """

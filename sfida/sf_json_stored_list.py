@@ -22,7 +22,7 @@ with open(os.path.dirname(__file__) + os.sep + 'refresh.py', 'r') as f:    \
         os.path.basename(__file__).replace('.py', '')).replace('__FILE__', \
             __file__), __file__, 'exec'))
 
-def json_load(_fn, _default=[]):
+def json_load(_fn, _default=None):
     try:
         with open(_fn, 'r') as f:
             return json.load(f)

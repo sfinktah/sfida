@@ -162,6 +162,25 @@ class BitwiseMask(object):
                 return False
         return True
 
+    def dword(self, places=4):
+        # Python>bm1.mask
+        # [0xfb, 0xff, 0xc7]
+        # Python>bm1.value
+        # [0x48, 0x29, 0xc4]
+        # if ida_bytes.get_dword(ea) & 0x00c7fffb == 0x00c42948:
+        # (0xc7fffb, 0xc42948)
+        _mask   = self.mask  
+        _value  = self.value 
+        __mask  = 0
+        __value = 0
+        for x in range(min(places, len(self))-1, -1, -1):
+            __mask  <<= 8
+            __mask  |=  _mask[x]
+            __value <<= 8
+            __value |=  _value[x]
+        return "v & {:#x} == {:#x}".format(__mask, __value)
+        return __mask, __value
+
     def sub(self, b):
         value = self.value
         mask = self.mask
@@ -712,7 +731,9 @@ solution: [7, 13, 14, 15] = (5, 18, 19, 20)
 
 if False and __name__ == "__main__":
     # xmms = braceexpand('xmm{0..15}')
-    bm1 = BitwiseMask([nassemble(x) for x in braceexpand('movupd  xmmword [rsp], xmm{0..15}')])
+    r64 = ['rax', 'rcx', 'rdx', 'rbx', 'rsp', 'rbp', 'rsi', 'rdi', 'r8', 'r9', 'r10', 'r11', 'r12', 'r13', 'r14', 'r15']
+    bm1 = BitwiseMask([nassemble("sub rsp, {}".format(reg)) for reg in r64])
+    bm2 = BitwiseMask([[x[0], x[1] + 2, x[2]] for x in [nassemble("sub {}, rsp".format(reg)) for reg in r64]])
     
     print("[tri] {}".format(bm1.tri))
     tri1 = bm1.tri.replace(' ', '')

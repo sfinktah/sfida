@@ -111,11 +111,11 @@ class Pattern(BasicPattern):
     # @param replFunc function to perform replacements
     # @param safe if True, doesn't require backtracking
     # @param group predicate to speed lookups
-    def __init__(self, notes='', brief='', search=None, repl=[], replFunc=None, safe=False, group=None, **kwargs):
+    def __init__(self, notes='', brief='', search=None, repl=None, replFunc=None, safe=False, group=None, **kwargs):
         self.notes = notes
         self.brief = brief
         self.search = search
-        self.repl = repl
+        self.repl = A(repl)
         self.replFunc = replFunc
         self.safe = safe
         self.group = group
@@ -239,6 +239,7 @@ class Obfu(object):
         return flag
 
     def __init__(self):
+        self.quiet = False
         self._depth = 0
         self.combed = []
         self.default_comb_len = 2048
@@ -254,6 +255,7 @@ class Obfu(object):
         self.longestPattern = 0
         self.groups = None
         self.labels = dict()
+        self.triggers = {}
 
         self.slow_patterns = []
         self.slow_patterns_bitwise = []
@@ -346,8 +348,13 @@ class Obfu(object):
     # @param group predicate to speed lookups
     #
     # @return None
-    def append(self, notes='', brief='', search=None, repl=[], replFunc=None, safe=False, group=None, **kwargs):
+    def append(self, notes='', brief='', search=None, repl=None, replFunc=None, safe=False, group=None, trigger=None, **kwargs):
         #  printi("append: \"{}\", <<{}>>, <<{}>>, {}".format(brief, search, repl, replFunc))
+        if repl is None:
+            repl = A(repl) 
+        if trigger:
+            self.triggers[trigger] = replFunc
+
         if isinstance(search, PatternGroup):
             for item in search:
                 self.append(notes=notes, brief=brief, search=item, repl=repl, replFunc=replFunc, safe=safe, group=group, **kwargs)
@@ -365,10 +372,13 @@ class Obfu(object):
                     group = bm
 
         if isinstance(search, BitwiseMask):
+            if obfu_debug: printi("[Obfu::append] BitwiseMask: {}".format(str(brief)))
             if replFunc:
                 self.append_bitwise(search=search.value, mask=search.mask, replFunc=replFunc, brief=brief, safe=safe, group=group, **kwargs)
             elif isinstance(repl, BitwiseMask):
                 self.append_bitwise(search=search.value, mask=search.mask, replFunc=make_bitwise_patch(repl), brief=brief, safe=safe, group=group, **kwargs)
+            else:
+                printi("[Obfu::append] Don't understand replacement method for BitwiseMask {}, repl is {}, replFunc is {}".format(str(brief), type(repl), type(replFunc)))
             return
 
         self.add(
@@ -410,8 +420,12 @@ class Obfu(object):
                 length = length or len(search)
                 repl = length, repl
             else:
+                printi("{:x} non-str repl:Search: {}\n                   Replace: {}\n                   Comment: {}"
+                        .format(addressList[0], 
+                            listAsHex(repl), 
+                            ahex(repl), 
+                            patternComment)) # listAsHex(search), 
                 repl = (length or len(repl), repl)
-                printi("*** non-str repl: {}".format(repl))
 
         if isinstance(repl, tuple) and len(repl) == 2:
             _search, _repl = repl
@@ -501,7 +515,9 @@ class Obfu(object):
                                 if obfu_debug: printi("r.last: {:x}".format(r.last))
                                 # disabled because it was causing overruns into the next chunk (when there were two jmps)
                                 # now attempting to curtail it by checking for end of flow
-                                if not isFlowEnd(r.last) or isJmp(r.last) and not isFlowEnd(r.last+1):
+                                # that only seems to work sometimes... (flow doesn't end at 143a659cb clc)
+                                # back to disabling!
+                                if False and (not isFlowEnd(r.last) or isJmp(r.last) and not isFlowEnd(r.last+1)):
                                     if obfu_debug: printi("flow doesn't end at {:x} {}".format(r.last, diida(r.last)))
                                     #  if True and not isFlowEnd(r.last + 1) and isJmp(r.last + 1) and not isFlowEnd(idc.get_item_head(r.last)) isJmp(idc.get_item_head(r.last)):
                                     r.last += GetInsnLen(r.last + 1)
@@ -724,20 +740,22 @@ class Obfu(object):
 
             # 141057f05 Search|Replace (A): 21|('0x15', ['<generator object recursive_map at 0x0000021AAAFC8F48>', '<generator object recursive_map at 0x0000021AAAFC8F48>'])
             #          jmp via push rbp, xchg, lea rsp, jmp rsp-8
-            printi("{:x} replFunc:    Search: {}\n                   Replace: {}\n                   Comment: {}"
-                    .format(ea, 
-                        listAsHex(search), 
-                        ahex(repl), 
-                        patternComment)) # listAsHex(search), 
+            if not self.quiet:
+                printi("{:x} replFunc:    Search: {}\n                   Replace: {}\n                   Comment: {}"
+                        .format(ea, 
+                            listAsHex(search), 
+                            ahex(repl), 
+                            patternComment)) # listAsHex(search), 
 
             if self.process_replacement(search, repl, addressList, patternComment, addressListWithNops, addressListFull, length=len(search), pat=pat, context=context):
                 return {'addressList': addressList, 'safe': safe}
         elif repl:
             #  printi("{:x} Search|Replace (B): {}|{}\n          {}".format(ea, listAsHex(search), ahex(repl), patternComment))
-            printi("{:x} repl:        Search: {}\n                   Replace: {}\n                   Comment: {}"
-                    .format(ea, listAsHex(search), 
-                        ahex(repl), 
-                        patternComment)) # listAsHex(search), 
+            if not self.quiet:
+                printi("{:x} repl:        Search: {}\n                   Replace: {}\n                   Comment: {}"
+                        .format(ea, listAsHex(search), 
+                            ahex(repl), 
+                            patternComment)) # listAsHex(search), 
             if self.process_replacement(search, (search, repl), addressList, patternComment,
                                         addressListWithNops, addressListFull, pat=pat, context=context):
                 return {'addressList': addressList, 'safe': safe}
@@ -1204,6 +1222,10 @@ class Obfu(object):
                 flaggedAddresses.append((x + z, f))
 
         return addresses, clean, instructions, nopset, jmps, jccs_unvisited, flaggedAddresses
+
+    def trigger(self, ea, name, **kwargs):
+        if name in self.triggers:
+            return self.triggers[name](ea=ea, **kwargs, trigger=True)
 
     def _patch(self, ea, length=None, context=None, depth=0):
         self._depth = depth

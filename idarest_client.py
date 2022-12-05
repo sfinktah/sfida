@@ -202,6 +202,9 @@ class IdaRestClient(IdaRestConfiguration, object):
             LabelAddressPlus(EA(), p[row][1])
 
     def GetTypes2(self, types='Hash', ask=False, flags=None):
+        # names = _.flatten(irc.get_json('names', 'http://192.168.1.123:2011/ida/api/v1.0/').json()['data'], 1)
+        # pph([(x, ean(x), y) for x, y in names if ean(x) != y and not re_match_array(r'^(NATIVE|The|Arxan|Balance|\w+Bunny|.*stack_align|.*Concurrency)', [ean(x), y])])
+        # [LabelAddressPlus(x, y) for x, y in names if ean(x) != y and not re_match_array(r'^(NATIVE|The|Arxan|Balance|\w+Bunny|.*stack_align|.*Concurrency)', [ean(x), y])];
         if flags is not None:
             results = self.get_json('get_type', type=types, flags=flags)
         else:
@@ -212,13 +215,13 @@ class IdaRestClient(IdaRestConfiguration, object):
             # key
             string_between('/', '', k, rightmost=1), 
             # value
-            v['data'][0]['data']
+            "/*({})*/ {}".format(len(v['data'][0]['data']), v['data'][0]['data'])
         ))
         p = _.pairs(o)
         variable_chooser = _MyChoose(
             p,
             "Select Function",
-            [["Database", 25], ["Function", 16]]
+            [["Database", 25], ["Function", 128]]
         )
         row = variable_chooser.Show(modal=True)
         if row != -1:
@@ -232,7 +235,7 @@ class IdaRestClient(IdaRestConfiguration, object):
 
 
     @staticmethod
-    def GetTypes(types, decls={}):
+    def GetTypes(types, decls=None):
         """
         An example of how to request type decls from all hosts and then
         select only one
@@ -244,6 +247,9 @@ class IdaRestClient(IdaRestConfiguration, object):
             if not isinstance(l, list):
                 return [l]
             return l
+
+        if decls is None:
+            decls = {}
 
         count = 0
         q = IdaRestClient()

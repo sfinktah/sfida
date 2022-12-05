@@ -248,7 +248,7 @@ except:
 
 def IsCode(ea): return (idc.get_full_flags(ea) & idc.MS_CLS) == idc.FF_CODE
 
-def PatchBytes(ea, patch=None, comment=None, code=False):
+def PatchBytes(ea, patch=None, comment=None, code=False, put=False):
     """
     @param ea [optional]:           address to patch (or ommit for screen_ea)
     @param patch list|string|bytes: [0x66, 0x90] or "66 90" or b"\x66\x90" (py3)
@@ -288,7 +288,8 @@ def PatchBytes(ea, patch=None, comment=None, code=False):
                 byte_len -= 1
             for b8bit in b:
                 yield b8bit;
-        def hex_pattern_as_bytearray(str_list, int8_list=[]): 
+        def hex_pattern_as_bytearray(str_list, int8_list=None): 
+            int8_list = A(int8_list)
             for item in str_list:
                 l = len(item)
                 if l % 2:
@@ -305,6 +306,9 @@ def PatchBytes(ea, patch=None, comment=None, code=False):
             patch = [-1 if '?'in x else int(x, 16) for x in patch.split(' ')]
 
     length = len(patch)
+    for addr in range(ea, ea + length):
+        idc.del_stkpnt(GetFuncStart(ea), addr)
+    idc.add_user_stkpnt(ea, 0)
 
     # deal with fixups
     fx = idaapi.get_next_fixup_ea(ea - 1)
@@ -329,7 +333,11 @@ def PatchBytes(ea, patch=None, comment=None, code=False):
     # [0x140a79dfd, 0x140a79e05, 0x140a79e09, 0x140a79e0a]
     if isinstance(patch, bytearray):
         # fast patch
-        idaapi.patch_bytes(ea, byte_type(patch))
+        if put:
+            unpatch(ea, ea + len(patch))
+            idaapi.put_bytes(ea, byte_type(patch))
+        else:
+            idaapi.patch_bytes(ea, byte_type(patch))
         if 'emu_helper' in globals() and hasattr(globals()['emu_helper'], 'writeEmuMem'):
             # print("[PatchBytes] also writing to writeEmuMem")
             emu_helper.writeEmuMem(ea, patch)
@@ -339,7 +347,11 @@ def PatchBytes(ea, patch=None, comment=None, code=False):
         if comment:
             Commenter(ea, 'line').add(comment)
         # slower patch to allow for unset values
-        [idaapi.patch_byte(ea+i, patch[i]) for i in range(length) if patch[i] != -1]
+        if put:
+            [ida_bytes.revert_byte(ea+i) for i in range(length) if patch[i] != -1]
+            [idaapi.put_byte(ea+i, patch[i]) for i in range(length) if patch[i] != -1]
+        else:
+            [idaapi.patch_byte(ea+i, patch[i]) for i in range(length) if patch[i] != -1]
         if 'emu_helper' in globals() and hasattr(globals()['emu_helper'], 'writeEmuMem'):
             # print("[PatchBytes] also writing to writeEmuMem")
             [helper.writeEmuMem(ea+i, bytearray([patch[i]])) for i in range(length) if patch[i] != -1]
@@ -461,14 +473,27 @@ def MakeTerms(length):
 
     return result
 
-def PatchNops(ea, count = None, comment="PatchNops"):
+def PatchNops(ea, count = None, comment="PatchNops", put=False, nop=0x90):
     if count is None and ea < 100000:
         ea, count = count, ea
     if ea is None:
         ea = ScreenEA()
     while count > ea:
         count = count - ea
-    PatchBytes(ea, MakeNops(count), code=1, comment=comment)
+    for addr in range(ea, ea + count + 1):
+        idc.add_user_stkpnt(addr, 0)
+    if nop == 0x90:
+        PatchBytes(ea, MakeNops(count), code=1, comment=comment, put=put)
+    else:
+        MyMakeUnknown(ea, count, DOUNK_DELNAMES)
+        if put:
+            unpatch(ea, count)
+            ida_bytes.put_bytes(ea, bytes([nop] * count))
+        else:
+            ida_bytes.patch_bytes(ea, bytes([nop] * count))
+        idc.SetType(ea, "_BYTE[{}]".format(count))
+        idc.set_cmt(ea, comment, 0)
+        # PatchBytes(ea, [nop] * count, code=1, comment=comment, put=put)
     #  comment_formatted = "[PatchNops] {}".format(ea, str(comment))
     #  idc.auto_wait()
     #  if 'Commenter' in globals():
@@ -851,7 +876,7 @@ def kassemble(string, ea=None, apply=False, arch=None, mode=None, syntax=None):
             MakeCode(ea)
         return result[0]
     # failed
-    return result
+    return None
 
 def iassemble(string, ea=None, apply=False, arch=None, mode=None, syntax=None):
     """ try to assemble with keypath, then ida, then nasm
@@ -863,14 +888,14 @@ def iassemble(string, ea=None, apply=False, arch=None, mode=None, syntax=None):
         if ea == BADADDR:
             ea = 0
 
+    result = qassemble(ea, string)
+    if result is list:
+        if apply:
+            PatchBytes(ea, result)
+            MakeCode(ea)
+        return result
     string = ida_resolve(string)
     result = kp.assemble(kp.ida_resolve(string, ea), ea, arch, mode, syntax)
-    if type(result) is tuple and result[1] > 0:
-        if apply:
-            PatchBytes(ea, result[0])
-            MakeCode(ea)
-        return result[0]
-    result = qassemble(ea, string, apply=apply)
     if type(result) is tuple and result[1] > 0:
         if apply:
             PatchBytes(ea, result[0])
@@ -888,31 +913,28 @@ def ida_resolve(assembly):
     def rename_if_possible(match):
         name = match.group(1)
         # dprint("[rename_if_possible] match.group(0), match.group(1)")
-        if debug: print("[rename_if_possible] match.group(0):{}, match.group(1):{}".format(match.group(0), match.group(1)))
-        if name.endswith(':'):
-            return name
-        
-        ea = idc.get_name_ea_simple(name)
-        if IsValidEA(ea):
-            return hex(ea)
+        if name and not re.match(r'^[_a-zA-Z]\w+$', name.rstrip(':')):
+            print("[rename_if_possible] name: '{}'".format(name))
+            if name.endswith(':'):
+                return "LABEL_" + re.sub(r'[^_a-zA-Z0-9]', '_', name)
+            else:
+                ea = idc.get_name_ea_simple(name)
+                if IsValidEA(ea):
+                    return hex(ea)
+                #  else:
+                    #  raise ValueError("Couldn't resolve label '{}'".format(name))
         return name
 
     def _resolve(assembly):
         # assembly = re.sub(r'(?<=[^\w])([a-zA-Z@$%&().?:_\[\]][a-zA-Z0-9@$%&().?:_\[\]]+)(?=[ *+-\]]|$)', rename_if_possible, assembly)
         # assembly = re.sub(r'(?<!\w)([a-zA-Z@$%&().?:_\[\]][a-zA-Z0-9@$%&().?:_\[\]]+)(?=[ *+-\]]|$)', rename_if_possible, assembly)
-        assembly = re.sub(r'(?<!\w)([a-zA-Z@$%&().?:_\[\]][a-zA-Z0-9@$%&().?:_\[]+)(?=[ *+-\]]|$)', rename_if_possible, assembly)
+        # assembly = re.sub(r'(?<!\w)([a-zA-Z@$%&().?:_][a-zA-Z0-9@$%&().?:_\[]+)(?=[ *+\r\-\]]|$)', rename_if_possible, assembly)
+        assembly = re.sub(r'(?<!\w)([a-zA-Z@$%&().?:_][a-zA-Z0-9@$%&().?:_\[]+)(?=[-+*\]\n])', rename_if_possible, assembly)
         return assembly
 
-    _mnem = list(assembly.partition(' '))
-    if not _mnem[1]:
-        return assembly
-    _operands = [x for x in _mnem[2].partition(', ') if x and x != ', ']
-    # _operands = [_resolve(x) for x in _operands]
-    _mnem[2] = ", ".join(_operands)
-    return "".join(_mnem)
+    return _resolve(assembly)
 
-
-def nassemble(ea, string = None, apply=None, quiet=False):
+def nassemble(ea, string = None, apply=None, comment=None, quiet=False, put=False):
     """ assemble with nasm
 
     :param ea: target address
@@ -959,7 +981,7 @@ def nassemble(ea, string = None, apply=None, quiet=False):
             _was_code = IsCode_(ea)
             if _was_code:
                 _code_len = MyGetInstructionLength(ea)
-            PatchBytes(ea, r)
+            PatchBytes(ea, r, comment=comment, put=put)
             if _was_code and _code_len > length:
                 print("PatchNops({:x}, {})".format(next, _code_len - length))
                 PatchNops(next, _code_len - length)
@@ -987,6 +1009,7 @@ def qassemble(ea, string = None, apply=False):
         if ea == BADADDR:
             ea = 0
 
+    string = re.sub(r'0x([0-9a-fA-F]+)', r'\1h', string)
     result = idautils.Assemble(ea, string)
     if result[0]:
         if apply:
@@ -2029,3 +2052,13 @@ def truncateThunks():
                 Commenter(ea).add("was sub")
         #  print("0x%0x: %s (%i%%)" % (ea, fnName, percent))
 
+
+def patch_register_native_namespace():
+    for ea in _.uniq([x for x in r2 if x != 0x1415c051c]):
+        length = EaseCode(ea) - ea
+        print("length: {}".format(length))
+        MyMakeUnknown(ea, length, DELIT_DELNAMES)
+        unpatch(ea, length)
+        ida_bytes.put_bytes(ea, bytes([0] * length))
+        idc.set_cmt(ea, "register_native_namespace ({} bytes)".format(length), 0)
+        idc.SetType(ea, "_BYTE[{}]".format(length))

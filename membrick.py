@@ -200,7 +200,7 @@ def ensure_decl(name, decl, size=None):
     if not has_decl(name, size)[0]:
         idc.parse_decls(decl, idc.PT_SILENT)
 
-def find_checksummers():
+def find_checksummers1():
     strucText = """
         typedef unsigned char uint8_t;
         typedef int int32_t;
@@ -239,7 +239,7 @@ def find_checksummers():
 
     # pattern = '38 48 8d 05 ?? ?? ?? ?? 48 89 45 18 48 8b 05 ?? ?? ?? ?? 48 f7 d8 48 03'
     pattern = '48 8d 05 ?? ?? ?? ?? 48 89 45 18 48 8b 05 ?? ?? ?? ?? 48 f7 d8'
-    return [e for e in FindInSegments(pattern, 'any', None, predicate_checksummers)]
+    return [e for e in FindInSegments(pattern, 'any', None, predicate=predicate_checksummers)]
 
 def find_checksummers2():
 
@@ -260,7 +260,7 @@ def find_checksummers2():
         return False
 
     pattern = '48 8b 05 ?? ?? ?? ?? 48 f7 d8 48 8d 15 ?? ?? ?? ?? 48 8d 04 02'
-    return [e for e in FindInSegments(pattern, 'any', None, predicate_checksummers)]
+    return [e for e in FindInSegments(pattern, 'any', None, predicate=predicate_checksummers)]
 
 def find_checksummers3():
 
@@ -282,7 +282,7 @@ def find_checksummers3():
 
     pattern = '48 8D 05 ?? ?? ?? ?? 48 89 45 ?? 48 8B 05 ?? ?? ?? ?? 48 F7 D8'
 
-    return [e for e in FindInSegments(pattern, 'any', None, predicate_checksummers)]
+    return [e for e in FindInSegments(pattern, 'any', None, predicate=predicate_checksummers)]
 
 
 def find_checksummers6():
@@ -342,7 +342,7 @@ def find_checksummers6():
 
     pattern = '48 8b 05 ?? ?? ?? ?? 48 89 45 ?? 48 8d 05 ?? ?? ?? ?? 48 89 45'
 
-    return [e for e in FindInSegments(pattern, 'any', None, predicate_checksummers)]
+    return [e for e in FindInSegments(pattern, 'any', None, predicate=predicate_checksummers)]
 
 
 def find_trace_hooks():
@@ -407,7 +407,7 @@ def find_checksummers5():
     pattern = "48 8d 05 ?? ?? ?? ?? 48 89 45 ?? 48 8b 05 ?? ?? ?? ?? 48 f7 d8"
     # which is the same as checksummer original, with a few bytes trimmed on either side.
 
-    return [e for e in FindInSegments(pattern, 'any', None, predicate_checksummers)]
+    return [e for e in FindInSegments(pattern, 'any', None, predicate=predicate_checksummers)]
 
 def find_set_return_addresses():
     patterns = ['55 48 83 ec 30 48 8d 6c 24 20 48 89 4d 20 48 89 55 28 8b 05']
@@ -470,6 +470,7 @@ def find_lame_memcpys():
     return results
 
 def find_checksum_workers():
+    # does bad things
     patterns = [[
             # start sigs
             '55 48 83 ec 40 48 8d 6c 24 20 48 89 4d 30 48 89 55 38 33 c0 89 45 08 89',
@@ -706,8 +707,7 @@ def find_checksummers_from_balances():
                     results.append(eax(target))
                     if not HasUserName(eax(target)):
                         LabelAddressPlus(eax(target), "ArxanCheck_{}".format(long_to_words(eax(target) - ida_ida.cvar.inf.min_ea)))
-                    if GetFuncName(ea):
-                        LabelAddressPlus(GetChunkStart(ea), "Balance_{}".format(long_to_words(eax(target) - ida_ida.cvar.inf.min_ea)), force=1)
+                    # LabelAddressPlus(GetChunkStart(ea), "Balance_{}".format(long_to_words(eax(target) - ida_ida.cvar.inf.min_ea)), force=1)
             except AdvanceFailure:
                 pass
     return results
@@ -756,7 +756,7 @@ def find_stack_align_adjust():
     for ea in results:
         # print(hex(ea), idc.generate_disasm_line(ea, idc.GENDSM_FORCE_CODE))
         #  if HasUserName(ea): LabelAddressPlus(ea, '')
-        print("find_stack_align_adjust: 0x{:x}".format(ea))
+        if debug: print("find_stack_align_adjust: 0x{:x}".format(ea))
         fnStart = destart(ea, 0xa8)
         if fnStart is None:
             print("[find_stack_align_adjust] couldn't trace back from {:x}".format(ea))
@@ -814,7 +814,7 @@ def find_imagebase_offsets():
 
 def find_all_checksummers():
     cs = find_checksummers0()
-    cs.extend( find_checksummers() )
+    cs.extend( find_checksummers1() )
     cs.extend( find_checksummers1() )
     cs.extend( find_checksummers2() )
     cs.extend( find_checksummers4() )
@@ -837,7 +837,7 @@ def find_shifty_stuff():
     print("cs0")
     cs0 = find_checksummers_from_balances(); print("checksummers_0: {}".format(hex(cs0)))
     print("cs1")
-    cs1 = find_checksummers(); print("checksummers: {}".format(hex(cs1)))
+    cs1 = find_checksummers1(); print("checksummers: {}".format(hex(cs1)))
     print("cs2")
     cs2 = find_checksummers2(); print("checksummers2: {}".format(hex(cs2)))
     print("cs4")
@@ -856,7 +856,7 @@ def find_shifty_stuff():
     print("{}".format("lame_memcpys"))
     results['memcpy'] = find_lame_memcpys()
     # retrace_list(r)
-    results['csworkers'] = find_checksum_workers()
+    # results['csworkers'] = find_checksum_workers()
     # retrace_list(r)
     #  print("{}".format("decrypted_loadlibs"))
     #  find_decrypted_loadlibs()

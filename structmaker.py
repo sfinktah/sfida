@@ -1217,7 +1217,8 @@ def VirtualClass(name):
     defn = re.sub(r'^  ([a-zA-Z0-9_:]+) \*[_VFTvftable]+ .*', VirtualVtable, defn, 0, re.MULTILINE)
     return defn
 
-def StackInfo(ea, pack = False, parent_offset = 0, rename = False, renameRel = True, parent_tif = None, parents = [], verbose = False):
+def StackInfo(ea, pack = False, parent_offset = 0, rename = False, renameRel = True, parent_tif = None, parents=None, verbose = False):
+    parents = A(parents)
 
     def getOffset(offset, relative = True):
         if relative:
@@ -1390,7 +1391,8 @@ def StackInfo(ea, pack = False, parent_offset = 0, rename = False, renameRel = T
     print(r)
     return names, packString
 # for debug purposes
-def StrucInfo(name, pack = False, parent_offset = 0, rename = False, renameRel = True, parent_tif = None, parents = [], verbose = False, header=False, export=None, reclass=False):
+def StrucInfo(name, pack = False, parent_offset = 0, rename = False, renameRel = True, parent_tif = None, parents=None, verbose = False, header=False, export=None, reclass=False):
+    parents = A(parents)
 
     output = []
     def oprint(s):
@@ -1743,7 +1745,8 @@ def StrucInfo(name, pack = False, parent_offset = 0, rename = False, renameRel =
     # idc.GetLocalType(ida_struct.get_struc(idc.get_struc_id("netSyncTree")).ordinal, PRTYPE_TYPE | PRTYPE_MULTI)
 
 
-def StrucClassCommenter(name, pack = False, parent_offset = 0, rename = False, renameRel = True, parent_tif = None, parents = [], verbose = False, header=False):
+def StrucClassCommenter(name, pack = False, parent_offset = 0, rename = False, renameRel = True, parent_tif = None, parents=None, verbose = False, header=False):
+    parents = A(parents)
 
     ####
     #  |  get_numbered_type(self, *args) -> 'bool'
@@ -2703,6 +2706,43 @@ def rage_vector(name, T):
     print(s)
     return idc.parse_decls(s)
 
+def does_struc_exist(name):
+    if idc.get_struc_id(name) == BADADDR and get_struc_ordinal(name) == BADADDR:
+        return False
+    return True
+
+def is_struc_unsynced(name):
+    return does_struc_exist(name) and idc.get_struc_id(name) == BADADDR
+
+def sync_struc(name):
+    """
+    Will sync a local structure
+
+    Note: requires that _GUID be defined, 0x10 bytes, and synced
+    """
+    if does_struc_exist(name) and is_struc_unsynced(name):
+        # id = idc.add_struc(-1, "autosync1", 0);
+        id = idc.get_struc_id("autosync")
+        if id == BADADDR:
+            id = idc.add_struc(-1, "autosync1", 0);
+        else:
+            idc.del_struc_member(id, 0)
+        # mid = idc.add_struc_member(id, "pad", 0, 0, -1, 592);
+        flag = FF_STRUCT | FF_DATA
+        mid = idc.add_struc_member(id, "sync", 0, flag, idc.get_struc_id("GUID"), 0x10)
+        struc = ida_struct.get_struc(id)
+        pph(struc)
+        ida_struct.set_member_tinfo(struc, ida_struct.get_member(struc, 0), 0, get_tinfo_by_parse(name), ida_struct.SET_MEMTI_MAY_DESTROY)
+
+def remove_known_types(l):
+    result = []
+    for name in l:
+        if does_struc_exist(name):
+            if is_struc_unsynced(name):
+                sync_struc(name)
+        else:
+            result.append(name)
+    return result
 
 def add_enum_upper(enum, value, name):
     return my_add_enum(enum, value, name, toupper=True)

@@ -137,8 +137,8 @@ class FuncTailsNoFunc(FuncTailsError):
 class AdvanceInsnList(object):
     """Docstring for AdvanceInsnList """
 
-    def __init__(self, ea, insns=[], insn_count=None, byte_count=None, results=[], refs_from={}, refs_to={},
-                 flow_refs_from={}, flow_refs_to={}, start_ea=None, end_ea=None):
+    def __init__(self, ea, insns=None, insn_count=None, byte_count=None, results=None, refs_from=None, refs_to=None,
+                 flow_refs_from=None, flow_refs_to=None, start_ea=None, end_ea=None):
         """@todo: to be defined
             ea
             insns
@@ -152,6 +152,12 @@ class AdvanceInsnList(object):
             start_ea
             end_ea
         """
+        insns = A(insns)
+        results = A(results)
+        if refs_from is None: refs_from = {}
+        if refs_to is None: refs_to = {}
+        if flow_refs_from is None: flow_refs_from = {}
+        if flow_refs_to is None: flow_refs_to = {}
         if isinstance(ea, GenericRange) or isinstance(ea, tuple) and len(ea) == 2:
             _s, _e = ea[0], ea[-1]
             #  print("AdvanceInsnList: {:x} - {:x}".format(_s, _e))
@@ -282,7 +288,7 @@ class AdvanceInsnList(object):
 
     @property
     def targets(self):
-        return list(filter(lambda v, *a: v != idc.BADADDR, [GetTarget(i.ea) for i in self._list_insns]))
+        return list(filter(lambda v, *a: IsValidEA(v), [GetTarget(i.ea) for i in self._list_insns]))
 
     @property
     def bytes(self):
@@ -306,35 +312,60 @@ class AdvanceInsnList(object):
 
         return result
 
-    def join(self, visited=set()):
+    def join(self, visited=None):
+        if visited is None: visited = set()
+        def unvisited(ea):
+            if not isinstance(ea, int):
+                ea = ea.ea
+            if ea not in visited:
+                if debug: print("adding chunk {:#x} to queue".format(ea))
+                visited.add(ea)
+                return True
+            else:
+                if debug: print("not adding chunk {:#x} to queue".format(ea))
+            return False
+
         x = self
         # yield "loc_{:X}:".format(x.ea)
         #  print('yielding initial insns')
         for i in x.insns:
-            if i.ea not in visited:
-                visited.add(i.ea)
+            if unvisited(i):
                 yield i
 
-        if isinstance(x.next, set):
-            _queue = list(x.next)
+        if True:
+            _queue = [child for child in x.getChildren() if unvisited(child)]
             while _queue:
                 item = _queue.pop(0)
                 for i in item.insns:
-                    if i.ea not in visited:
-                        visited.add(i.ea)
+                    if True or i.ea not in visited:
+                        if debug: print("adding insn {:#x} to queue".format(i.ea))
+                        # visited.add(i.ea)
                         yield i
-                if item.next:
-                    #  print('join: appending {}'.format(item.next))
-                    for x in item.next:
-                        _queue.append(x)
+                    else:
+                        if debug: print("not adding insn {:#x} to queue".format(i.ea))
+                _queue = [child for child in item.getChildren() if unvisited(child)] + _queue
 
         else:
-            while x.next:
-                for i in x.next.insns:
-                    if i.ea not in visited:
-                        visited.add(i.ea)
-                        yield i
-                x = x.next
+            if isinstance(x.next, set):
+                _queue = list(x.next)
+                while _queue:
+                    item = _queue.pop(0)
+                    for i in item.insns:
+                        if True or i.ea not in visited:
+                            # visited.add(i.ea)
+                            yield i
+                    if item.next:
+                        #  print('join: appending {}'.format(item.next))
+                        for x in item.next:
+                            _queue.append(x)
+
+            else:
+                while x.next:
+                    for i in x.next.insns:
+                        if i.ea not in visited:
+                            visited.add(i.ea)
+                            yield i
+                    x = x.next
 
 
     #  def errors(self): return self._list_errors
@@ -498,8 +529,11 @@ class FuncTailsInsn(object):
         self._insn_target = None
 
 
+        # self._insn_target = GetTarget(ea, failnone=True)
         if (isAnyJmpOrCall(ea)):
             self._insn_target = GetTarget(ea)
+        if insn_match(ea, idaapi.NN_mov, idc.o_reg, idc.o_imm):
+            self._insn_target = GetTarget(ea, failnone=True)
 
     def __str__(self):
         return self._insn_text
@@ -748,28 +782,33 @@ class FuncTailsInsn(object):
 
     @property
     def force_labeled_value(self):
+        _label = None
         if self._insn_labels:
             _label = self._insn_labels[0]
-        else:
-            _label = "loc_{:X}".format(self._insn_ea)
+        if not _label:
+            _label = ean(self._insn_ea)
+        if not _label:
+            _label = "lab_{:X}".format(self._insn_ea)
         return "{}: {}".format(_label, self._insn_insn)
     @property
     def labeled_value(self):
         if len(self._insn_refs_to) or len(self._insn_labels):
+            _label = None
             if self._insn_labels:
                 _label = self._insn_labels[0]
-            else:
-                _label = "loc_{:X}".format(self._insn_ea)
+            if not _label:
+                _label = ean(self._insn_ea)
             return "{}: {}".format(_label, self._insn_insn)
         return "{}".format(self._insn_insn)
 
     @property
     def labeled_indented(self):
         if len(self._insn_refs_to) or len(self._insn_labels):
+            _label = None
             if self._insn_labels:
                 _label = self._insn_labels[0]
-            else:
-                _label = "loc_{:X}".format(self._insn_ea)
+            if not _label:
+                _label = ean(self._insn_ea)
             return "{}: {}".format(_label, self._insn_insn)
         return "    {}".format(self._insn_insn)
 
@@ -793,10 +832,11 @@ class FuncTailsInsn(object):
 
 
 def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
-               code=True, patches=None, dead=False, showEa=False, showUnused=False, showNops=False, output=None,
+               code=True, patches=None, dead=False, showEa=False, 
+               showUnused=False, ignoreInt=False, showNops=False, output=None,
                quiet=False, removeLabels=True, disasm=False, externalTargets=None,
                returnAddrs=False, returnFormat=None, fmt=None, fmtLabel=None,
-               showComments=True, extra_args=dict()):
+               showComments=True, **kwargs):
     """
     func_tails
 
@@ -935,7 +975,7 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
         blockcache[key] = Block(x, _chunkheads)
         return blockcache[key]
 
-    class Block(object):
+    class Block(object):# {{{
 
         """Docstring for Block. """
 
@@ -952,7 +992,8 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
             #  self.successors = [get_cached(x, _chunkheads) for x in [chunkheads_perm[y] for y in chunkrefs_from[self.id]]]
             #  self.predecessors = [get_cached(x, _chunkheads) for x in [chunkheads_perm[y] for y in chunkrefs_to[self.id]]]
 
-        def succs(self, found_bbs=[]):
+        def succs(self, found_bbs=None):
+            found_bbs = A(found_bbs)
 
             try:
                 l = _.uniq([chunkheads_perm[y] for y in chunkrefs_to[self.id] if y in chunkheads_perm])
@@ -998,7 +1039,8 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
             if bb.start_ea == funcea:
                 return bb
 
-    def dfs_bbs(start_bb, found_bbs=[]):
+    def dfs_bbs(start_bb, found_bbs=None):
+        found_bbs = A(found_bbs)
         if start_bb.id in found_bbs:
             return found_bbs
         found_bbs.append(start_bb.id)
@@ -1051,19 +1093,19 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
         return found_bbs
 
     def format_bb(bb):
-        return "start_ea: 0x{:x}  end_ea: 0x{:x}  last_insn: {}".format(bb.start_ea, bb.end_ea, GetDisasm(bb.end_ea))
+        return "start_ea: 0x{:x}  end_ea: 0x{:x}  last_insn: {}".format(bb.start_ea, bb.end_ea, GetDisasm(bb.end_ea))# }}}
 
     # The first chunk will be the start of the function, from there -- they're sorted in 
     # order of location, not order of execution.
     #
     # Lets gather them all up first, then untangle them
-    _chunks = list(split_chunks(idautils.Chunks(funcea)))
+    _chunks = list(split_chunks(idautils.Chunks(funcea), ignoreInt=ignoreInt))
     start = funcea
     q = [start]
     for (startea, endea) in _chunks:
         # EaseCode(startea)
         if disasm:
-            [GetDisasm(startea)]
+            GetDisasm(startea)
         if code:
             try:
                 if not CreateInsns(startea, endea - startea)[0]:
@@ -1119,7 +1161,7 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
                 badtails.append("    ; [warn] chunkhead {:x} is entirely nopped".format(startea))
                 errorObjects.append(FuncTailsNoppedChunk(startea))
 
-            if isInterrupt(tail) and not extra_args.get('ignoreInt', None):
+            if False and isInterrupt(tail) and not ignoreInt:
                 badtails.append(
                     '    ; [error] badtail {} {} {}'.format(_node_format(startea), diida(tail), _node_format(target)))
                 chunkheads_badtails[startea] = True
@@ -1243,7 +1285,7 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
                         if debug: printi("{:x} appending {} {:x}".format(head, mnem, ctarget))
                         #  badjumps.append([head, ctarget])
 
-                else:
+                elif not (Commenter(target, 'line').exists("[DENY JMP]") or isPdata(target)):
                     _externalTargets.append(SkipJumps(head))
                     if not ejmp:
                         if conditional:
@@ -1416,8 +1458,9 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
                 else:
                     break
 
-    if chunkheads:
-        chunkheads = _.filter(chunkheads, lambda x, *a: not isInterrupt(x))
+    #  if chunkheads:
+        #  if not kwargs.get('ignoreInt', None):
+            #  chunkheads = _.filter(chunkheads, lambda x, *a: not isInterrupt(x))
 
     if chunkheads:
         errors.append(
@@ -1426,7 +1469,7 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
         errorObjects.extend([FuncTailsUnusedChunk(x) for x in chunkheads])
         if showUnused:
             for head in chunkheads:
-                for insn in AdvanceToMnemEx(head):
+                for insn in AdvanceToMnemEx(head, ignoreInt=ignoreInt):
                     print("{}".format(insn.labeled_indented))
     if nonheadtargets:
         errors.append(
@@ -1470,7 +1513,7 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
     return errorObjects if returnErrorObjects else errors
 
 
-def AdvanceToMnemEx(ea, term='retn', iteratee=None, **kwargs):
+def AdvanceToMnemEx(ea, term='retn', iteratee=None, ignoreInt=False, **kwargs):
     start_ea = ea
     insn_count = 1
     byte_count = 0
@@ -1499,7 +1542,11 @@ def AdvanceToMnemEx(ea, term='retn', iteratee=None, **kwargs):
         if getattr(opt, 'ease', 0):
             if debug: print('ease option, calling easecode')
             EaseCode(ea, forceStart=1, noExcept=1)
-        while ea not in visited and IsCode_(ea) and (IsFlow(ea) or ignore_flow):
+        while ea not in visited and IsCode_(ea) and (
+                IsFlow(ea) or ignore_flow or (
+                    ignoreInt and isInterrupt(idc.prev_not_tail(ea))
+                    )
+                ):
             label = ''
             visited.add(ea)
             insn = diida(ea)

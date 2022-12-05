@@ -107,7 +107,7 @@ class idarest_plugin_t(IdaRestConfiguration, IdaRestLog, ida_idaapi.plugin_t):
                 if e.errno != errno.EADDRINUSE:
                     if idarest_plugin_t.config['api_debug']: idc.msg(e)
                 else:
-                    if idarest_plugin_t.config['api_debug']: idc.msg("[idarest_plugin_t::test_bind_port] port in use: {}\n".format(port))
+                    if idarest_plugin_t.config['api_debug']: idc.msg("[idarest port-in-use]: {} ".format(port))
                 return False
         return True
 
@@ -1373,11 +1373,13 @@ class Timer(threading.Thread):
         return self._stop_event.is_set()
 
 # This has been redesigned **not** to require running as a plugin, but if you
-# really insist on trying it does work.  To dynamically add routes if loaded
+# really insist on trying, it does work.  To dynamically add routes if loaded
 # as a plugin, you will have to do something like this:
 #
 # >>> ir = sys.modules['__plugins__idarest'].instance
 # >>> ir.add_route(...)
+#
+# Or the startup.py script should create an instance of `ir`
 def PLUGIN_ENTRY():
     globals()['instance'] = idarest_main() # idarest_plugin_t()
     return globals()['instance']
@@ -1410,6 +1412,14 @@ def idarest_main(*args):
             m['names'].append([self._hex(n[0]), n[1]])
         return m
 
+    def functions(self, args):
+        """return all extant names and addresses"""
+        m = {'functions' : []}
+        for n in idautils.Functions():
+            m['functions'].append([n, idc.get_name(n)])
+        return m
+
+
     def sleeping_generator_test(self, args):
         for r in range(5):
             if idarest_plugin_t.config['api_debug']: idc.msg("[sleeping_generator_test] {}".format(r))
@@ -1439,21 +1449,23 @@ def idarest_main(*args):
         else:
             pass
             # return IDARequestHandler.error('stdout is already tapped')
-
-
         return tap.q
 
 
     ir.add_route('sleep', sleeping_generator_test)
     ir.add_route('name_generator', name_generator)
     ir.add_route('names', names)
-    ir.add_route('ea', lambda o, *a: idc.here())
+    ir.add_route('functions', functions)
+    ir.add_route('ea', lambda o, a: idc.here())
     ir.add_route('echo', lambda o, a: {'args': a})
     ir.add_route('name', lambda o, a: idc.get_name(eax(a['ea'])))
     ir.add_route('q', queue_test)
     ir.add_route('q2', sleeping_queue_test)
     ir.add_route('tap', tap)
-    ### end example route
+    ir.add_route('make_patch', lambda o, a: "\n".join(make_native_patchfile(a['ea'])))
+    ir.add_route('getglobal', lambda o, a: getglobal(a['name'], None))
+    ir.add_route('setglobal', lambda o, a: setglobal(a['name'], a['value']))
+    ### end example routes
 
 
     ### some stuff I use that won't work for you

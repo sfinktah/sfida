@@ -20,18 +20,31 @@
 # [EaseCode(x, forceStart=1) for x in t if not IsCode_(x.ea)]
 # EaseCode([x.ea for x in t if len(x)==0], forceStart=1, noExcept=1)
 
-def find_joins(t, joined=[], unjoined=[]):
+import os
+from exectools import make_refresh
+refresh_nttest = make_refresh(os.path.abspath(__file__))
+
+
+def find_joins(t, joined=None, unjoined=None):
+    joined = A(joined)
+    unjoined = A(unjoined)
     for x in t:
         x.next = set()
         x.prev = set()
-    lut = _.mapObject(t, lambda v, *a: (v.ea, v))
+    # lut = _.mapObject(t, lambda v, *a: (v.ea, v))
+    lut = {}
+    for v in t:
+        if v.range():
+            for ea in range(v.range().start, v.range().stop):
+                lut[ea] = v
+    # t[0].range().start
 
     def prepend_to(after, before):
         joined.append(before.ea)
         joined.append(after.ea)
         before.next.add(after)
         after.prev.add(before)
-        # pph(before.addChild(after)._list_parents)
+        before.addChild(after)
 
         if after in unjoined:
             unjoined.remove(after)
@@ -42,24 +55,26 @@ def find_joins(t, joined=[], unjoined=[]):
     failed = []
     for chunk in t:
         if chunk._list_insns:
-            target = chunk.target
-            if target in lut:
-                prepend_to(lut[target], chunk)
-            else:
-                print("chunk {:x} target not in lut: {:x}".format(chunk.ea or 0, target or 0 ))
-                failed.append(chunk)
-            #  targets = chunk.targets
-            #  print("len(targets) for {:x}: {}".format(chunk.ea, len(targets)))
-            #  for target in targets:
-                #  if target in lut:
-                    #  print("prepend_to({:x}, {:x})".format(lut[target].ea, chunk.ea))
-                    #  prepend_to(lut[target], chunk)
-                    #  break
+            #  target = chunk.target
+            for target in chunk.targets:
+                if target in lut:
+                    prepend_to(lut[target], chunk)
+                elif target and target != BADADDR:
+                    print("chunk {:x} target not in lut: {:#x} {}".format(chunk.ea or 0, target or 0, ean(target) ))
+                    failed.append(chunk)
+                #  targets = chunk.targets
+                #  print("len(targets) for {:x}: {}".format(chunk.ea, len(targets)))
+                #  for target in targets:
+                    #  if target in lut:
+                        #  print("prepend_to({:x}, {:x})".format(lut[target].ea, chunk.ea))
+                        #  prepend_to(lut[target], chunk)
+                        #  break
 
-    return [x for x in t if not getattr(x, 'prev', None) and getattr(x, 'next', None)] # + failed
+    # return [x for x in t if not getattr(x, 'prev', None) and getattr(x, 'next', None)] # + failed
     return [x for x in t if not x.getParents() and x.getChildren()]
 
-def assemble_joined(l, visited=set()):
+def assemble_joined(l, visited=None):
+    if visited is None: visited = set()
     out = []
     for x in l:
         out.append(asList(x.join(visited)))
@@ -71,32 +86,66 @@ def assemble_joined(l, visited=set()):
 #  chunks = GenericRanger([GenericRange(x[0], trend=x[1])           for x in _chunks],            sort = 1)
 #  s = chunks
 def emujoin(r):
+    _conditional_allins = list(range(ida_allins.NN_ja, ida_allins.NN_jz + 1))
+    _jump_allins = _conditional_allins + [ida_allins.NN_jmp]
     _ease = 1
-    s = _.map(r, lambda v, *a: GenericRange(v[0], length=v[1][1]))
+    _nofuncs = 1
+    f = _.filter(r, lambda v, *a: v[1][1])
+    s = _.map(f, lambda v, *a: GenericRange(v[0], length=v[1][1]))
+    m = _.mapObject(f, lambda v, *a: (GenericRange(v[0], length=v[1][1]), v[1][2]))
     if _ease: 
         print("easecode #1")
-        [EaseCode(x.start, x.trend, forceStart=1, noExcept=1, verbose=0) for x in _.sortBy(s, lambda v, *a: v.start)];
-        print("coloring #1")
-        [idc.set_color(x.start, idc.CIC_ITEM, 0x280128) for x in _.sortBy(s, lambda v, *a: v.start)];
+        if _nofuncs:
+            [EaseCode(x.start, x.trend, forceStart=1, noExcept=1, verbose=0) for x in _.sortBy(s, lambda v, *a: v.start) if not IsFunc_(x)];
+        else:
+            [EaseCode(x.start, x.trend, forceStart=1, noExcept=1, verbose=0) for x in _.sortBy(s, lambda v, *a: v.start)];
     print("finding micro-chunks")
-    s2 = [list(split_chunks(x[0], x[-1])) for x in s if len(x)]
-    s3 = []
-    for x in s2: s3.extend(x)
+    p = ProgressBar(len(s))
+    p.always_print = False
+    s2 = []
+    # s2 = _.uniq([list(split_chunks(x[0], x[-1])) for x in s if len(x)])
+    for i, x in enumerate(s):
+        p.update(i)
+        if len(x):
+            # print("big chunk: {} {:#x} - {:#x}".format(len(x), x[0], x[-1]))
+            s2.extend(list(split_chunks(x[0], x[-1])))
+    print("sorting micro-chunks")
+    s2.sort()
+    print("uniqing micro-chunks")
+    s3 = _.uniq(s2, 1)
     s4 = _.map(s3, lambda v, *a: GenericRange(v[0], trend=v[1])) 
     if _ease:
         print("easecode #2")
-        [EaseCode(x.start, x.trend, forceStart=1, noExcept=1, verbose=0) for x in _.sortBy(s4, lambda v, *a: v.start)];
+        if _nofuncs:
+            [EaseCode(x.start, x.trend, forceStart=1, noExcept=1, verbose=0) for x in _.sortBy(s4, lambda v, *a: v.start) if not IsFunc_(x)];
+        else:
+            [EaseCode(x.start, x.trend, forceStart=1, noExcept=1, verbose=0) for x in _.sortBy(s4, lambda v, *a: v.start)];
         c = [(a.start, a.trend) for a in _.sortBy(s4, lambda v, *a: v.start)]
+        print("coloring #1")
+        for x in s:
+            for y in idautils.Heads(x.start, x.trend):
+                idc.set_color(y, idc.CIC_ITEM, 0x280128)
         print("coloring #2")
-        for a, b in c:
-            for ea in idautils.Heads(a, b):
-                idc.set_color(ea, idc.CIC_ITEM, 0x1F1D00)
+        for start, tu in r:
+            if tu[2]:
+                for ea in idautils.Heads(start, start + tu[1]):
+                    idc.set_color(ea, idc.CIC_ITEM, 0x1F1D00)
+
+        #  for a, b in c:
+            #  for ea in idautils.Heads(a, b):
+                #  for x, y in m.items():
+                    #  if ea in x:
+                        #  if y:
+                            #  idc.set_color(ea, idc.CIC_ITEM, 0x1F1D00)
+                        #  break
         #  [idc.set_color(x.start, idc.CIC_ITEM, 0x1F1D00) for x in _.sortBy(s4, lambda v, *a: v.start)];
     print("advance insn list")
     t = [AdvanceInsnList(x) for x in s4]
     print("finding joins")
     joined = []
     j = find_joins(t, joined)
+    setglobal('j', j)
+    setglobal('t', t)
     print("assembling joins")
     visited = set()
     k = assemble_joined(j, visited)
@@ -116,6 +165,9 @@ def emujoin(r):
             # dprint("[emujoin] x.ea, _pdata")
             #  print("[emujoin] x.ea:{}, _pdata:{}".format(hex(x.ea), _pdata))
             
+            if IsValidEA(GetTarget(x.ea)):
+                add_xrefs(x.ea)
+
             if not i:
                 c.append(x.force_labeled_value.replace(': ', _pdata + ':\n    '))
             else:
@@ -142,6 +194,7 @@ def emujoin(r):
     #  clear(); print("\n----\n".join(b))
     # clear(); 
     print("\n".join(c))
+    return [x[0] for x in f if IsCode_(x[0])]
 
 def chunkjoin():
     global t
@@ -206,3 +259,38 @@ def chunkjoin():
         #  c.append("---")
 
     clear(); print("\n".join(c))
+
+def nreg1(ea):
+    return insn_mmatch(ea, [(idaapi.NN_lea, (idc.o_reg, 2), (idc.o_mem, 5)), (idaapi.NN_mov, (idc.o_reg, 1), (idc.o_imm, 0)), (idaapi.NN_jmp, (idc.o_near, 0))])
+
+def nreg2(ea):
+    return insn_mmatch(ea, [(idaapi.NN_call, (idc.o_near, 0)), (idaapi.NN_nop, (idc.o_void, 0), (idc.o_void, 0)), (idaapi.NN_jmp, (idc.o_near, 0))]) or \
+            insn_mmatch(ea, [(idaapi.NN_mov, (idc.o_displ, 4), (idc.o_reg, 5)), (idaapi.NN_lea, (idc.o_reg, 4), (idc.o_displ, 4)), (idaapi.NN_lea, (idc.o_reg, 5), (idc.o_mem, 5)), (idaapi.NN_jmp, (idc.o_near, 0))]) or \
+            insn_mmatch(ea, [(idaapi.NN_mov, (idc.o_phrase, 4), (idc.o_reg, 5)), (idaapi.NN_lea, (idc.o_reg, 5), (idc.o_mem, 5)), (idaapi.NN_xchg, (idc.o_reg, 5), (idc.o_phrase, 4)), (idaapi.NN_jmp, (idc.o_near, 0))])
+
+def nreg_start(ea):
+    return insn_mmatch(ea, [(idaapi.NN_sub, (idc.o_reg, 4), (idc.o_imm, 0)), (idaapi.NN_lea, (idc.o_reg, 2), (idc.o_mem, 5)), (idaapi.NN_mov, (idc.o_reg, 1), (idc.o_imm, 0)), (idaapi.NN_jmp, (idc.o_near, 0))])
+
+def nreg_jmp(ea):
+    return insn_mmatch(ea, [(idaapi.NN_jmp, (idc.o_near, 0))])
+
+def nreg_tail1(ea):
+    return insn_mmatch(ea, [(idaapi.NN_lea, (idc.o_reg, 2), (idc.o_mem, 5)), (idaapi.NN_mov, (idc.o_reg, 1), (idc.o_imm, 0)), (idaapi.NN_add, (idc.o_reg, 4), (idc.o_imm, 0))]) or \
+            insn_mmatch(ea, [(idaapi.NN_lea, (idc.o_reg, 4), (idc.o_displ, 4)), (idaapi.NN_lea, (idc.o_reg, 5), (idc.o_mem, 5)), (idaapi.NN_xchg, (idc.o_reg, 5), (idc.o_phrase, 4)), (idaapi.NN_lea, (idc.o_reg, 4), (idc.o_displ, 4)), (idaapi.NN_jmp, (idc.o_near, 0))]) or \
+            insn_mmatch(ea, [(idaapi.NN_lea, (idc.o_reg, 5), (idc.o_mem, 5)), (idaapi.NN_xchg, (idc.o_reg, 5), (idc.o_phrase, 4)), (idaapi.NN_lea, (idc.o_reg, 4), (idc.o_displ, 4)), (idaapi.NN_jmpni, (idc.o_displ, 4))]) or\
+            insn_mmatch(ea, [(idaapi.NN_mov, (idc.o_reg, 1), (idc.o_imm, 0)), (idaapi.NN_add, (idc.o_reg, 4), (idc.o_imm, 0))])
+
+
+#  insn_match(ea, idaapi.NN_mov, (idc.o_reg, 14), (idc.o_mem, 5), comment='mov r14, [rel qword_14278B698]')
+#  insn_match(ea, idaapi.NN_mov, (idc.o_reg, 5), (idc.o_imm, 0), comment='mov rbp, loc_14389EB8B')
+#  insn_match(ea, idaapi.NN_mov, (idc.o_reg, 1), (idc.o_mem, 5), comment='mov ecx, [rel dword_141E4CCD8]')
+#  insn_match(ea, idaapi.NN_mov, (idc.o_reg, 1), (idc.o_mem, 5), comment='mov ecx, [rel dword_141E4CCD8]')
+#  insn_match(ea, idaapi.NN_mov, (idc.o_reg, 1), (idc.o_mem, 5), comment='mov ecx, [rel dword_141E4CCD8]')
+#  insn_match(ea, idaapi.NN_mov, (idc.o_reg, 5), (idc.o_imm, 0), comment='mov rbp, loc_1433ACD6D')
+#  insn_match(ea, idaapi.NN_mov, (idc.o_reg, 3), (idc.o_imm, 0), comment='mov rbx, loc_14106883D')
+#  insn_match(ea, idaapi.NN_mov, (idc.o_reg, 1), (idc.o_imm, 0), comment='mov rcx, loc_141067FBF')
+#  insn_match(ea, idaapi.NN_mov, (idc.o_reg, 5), (idc.o_imm, 0), comment='mov rbp, loc_141067FCF')
+#  insn_match(ea, idaapi.NN_mov, (idc.o_reg, 3), (idc.o_imm, 0), comment='mov rbx, loc_141068853')
+#  insn_match(ea, idaapi.NN_mov, (idc.o_reg, 5), (idc.o_imm, 0), comment='mov rbp, loc_141068CF2')
+#  insn_match(ea, idaapi.NN_mov, (idc.o_reg, 0), (idc.o_imm, 0), comment='mov rax, loc_1413BA246')
+#  insn_match(ea, idaapi.NN_mov, (idc.o_reg, 0), (idc.o_mem, 5), comment='mov eax, [rel dword_142D1F7B8]')

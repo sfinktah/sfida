@@ -243,17 +243,24 @@ def MakeFuncs(ea, until=None, unpatch=False):
                     UnpatchUntilChunk(x)
             else:
                 UnpatchUntilChunk(x)
-        if not IsFuncHead(x):
+        if isObfuJmp(x):
+            obfu._patch(x)
+        if IsFuncHead(x) or (isNop(idc.prev_not_tail(x)) and IsFuncHead(idc.prev_not_tail(x))):
+            pass
+        else:
             if not ida_funcs.add_func(x):
                 ForceFunction(x)
-        if until is not None:
-            if not idc.SetType(x, "void native_handler(native args);"):
-                print("couldn't set type at 0x{:x}".format(ea))
 
+        end = EaseCode(x, forceStart=1)
+        if IsFunc_(x) and not IsChunk(x):
+            if GetFuncEnd(x) != end:
+                SetFuncEnd(x, end)
+        if not idc.SetType(GetFuncStart(x), "void native_handler(native args);"):
+            print("couldn't set type at 0x{:x}".format(ea))
 
-    return SkipJumps(ea, until=until, iteratee=helper)
+    return SkipJumps(ea, until=until, includeStart=True, includeEnd=True, iteratee=helper, skipObfu=1, skipNops=1)
 
-def check_pdata(label=None, func=None, color=None, tails=None, tailsTerm=None, old_hash=None, spd=None, args=None, unpatch=False):
+def check_pdata(label=None, func=None, color=None, tails=None, tailsTerm=None, names=None, old_hash=None, spd=None, args=None, unpatch=False):
     global natives;
     _source = ''
     _build = ''
@@ -274,7 +281,7 @@ def check_pdata(label=None, func=None, color=None, tails=None, tailsTerm=None, o
             for _bucket in '0123456789abcdef':
                 _tails_path = "e:\\git\\ida\\natives\\tails\\{}\\{}\\{}\\{:016x}.asm".format(_build, _type, _bucket, old_hash)
                 split_path = file_split_path(_tails_path)
-                print("split_path: {}".format(split_path))
+                # print("split_path: {}".format(split_path))
                 for i, p in enumerate(split_path):
                     if i == 0: continue
                     if i == len(split_path) - 1: break
@@ -288,7 +295,49 @@ def check_pdata(label=None, func=None, color=None, tails=None, tailsTerm=None, o
 
                 
 
-    def check_tails(ea, r, output=[]):
+    name_table = {}
+    if names:
+        if not file_exists(names):
+            print("using default names file, since file provided in names argument cannot be found")
+            names = 'e:/ida/gtasc-2699/native-names-2699.txt'
+            # raise RuntimeError('!file_exists({})'.format(names))
+        for line in get_stripped_lines(names):
+            _hash, _func = line.split(' ', 1)
+            #  0x3a8253262437ba02 AUDIO PROC PRELOAD_SCRIPT_CONVERSATION(BOOL DisplaySubtitles, BOOL addToBriefScreen = TRUE, BOOL cloneConversation = FALSE, BOOL Interruptible = TRUE)
+            #  0xd973aa641a1cf78a AUDIO FUNC BOOL GET_IS_PRELOADED_CONVERSATION_READY()
+
+            native_args = []
+            _args = string_between('(', ')', _func)
+            if _args:
+                for _arg in _args.split(', '):
+                    _default, _arg = string_between_splice(' = ', '', _arg, inclusive=1, repl='')
+                    _vtype, _vname = _arg.split(' ', 1)
+                    _array, _vname = string_between_splice('[', ']', _vname, inclusive=1, repl='')
+                    _ref, _vtype = string_between_splice('&', '', _vtype, inclusive=1, repl='')
+                    native_args.append(SimpleAttrDict({
+                        'type': _vtype,
+                        'ref': _ref,
+                        'name': _vname,
+                        'array': _array,
+                        'default': _default
+                    }))
+
+            name_table[parseHex(_hash)] = SimpleAttrDict({ 
+                    'name': "NATIVE::{}::{}".format(
+                        string_between('', ' ', _func),
+                        string_between(' ', '(', _func, rightmost=True)
+                        ),
+                    'rtype': string_between('FUNC ', ' ', _func),
+                    'args': native_args,
+                    'raw': _func,
+                    'hash': _hash
+            })
+
+        setglobal('name_table', name_table)
+
+
+    def check_tails(ea, r, output=None):
+        output = A(output)
         bad = []
         if len(r):
             print("{:x} tail_errors: {}".format(ea, "; ".join(r)))
@@ -314,8 +363,12 @@ def check_pdata(label=None, func=None, color=None, tails=None, tailsTerm=None, o
 
             #  file_put_contents("e:\\git\\ida\\natives\\build\\
 
-    def lblfunc(impl_or_handler, oname, parent, x):
-        LabelAddressPlus(x, "native_{}_{}_{:x}".format(impl_or_handler, oname, parent), flags=SN_LOCAL)
+    def lblfunc(impl_or_handler, oname, handler_address, x, until):
+        # LabelAddressPlus(x, "native_{}_{}_{:x}".format(impl_or_handler, oname, parent), flags=SN_LOCAL)
+        # SkipJumps(x, until=until, includeStart=1, includeEnd=0, skipObfu=1, skipNops=1, iteratee=lambda v, *a: LabelAddressPlus(GetFuncStart(x) if IsFunc_(x) else x, "", flags=SN_LOCAL))
+        end = SkipJumps(x, until=until, includeStart=1, includeEnd=0, skipObfu=1, skipNops=1, iteratee=lambda v, *a: LabelAddressPlus(x, oname, force=x==handler_address))
+        LabelAddressPlus(end, f"{oname}_ACTUAL", force=1)
+        return end
         #  if not LabelAddressPlus(x, "{}_{}".format(oname, count), force=1):
             #  if impl_address:
                 #  SkipJumps(impl_address, iteratee=lambda x, *a: ForceFunction(x) == 123)
@@ -360,13 +413,13 @@ def check_pdata(label=None, func=None, color=None, tails=None, tailsTerm=None, o
             handler_address = 0
             if impl_offset and impl_offset != 0xffffffff and impl_offset != handler_offset:
                 impl_address = impl_offset + ida_ida.cvar.inf.min_ea
-                impl_actual = SkipJumps(impl_address)
+                impl_actual = SkipJumps(impl_address, skipObfu=1, skipNops=1)
             else:
                 impl_address = impl_actual = impl_offset = 0
 
             if handler_offset and handler_offset != 0xffffffff:
                 handler_address = handler_offset + ida_ida.cvar.inf.min_ea
-                handler_actual = SkipJumps(handler_address)
+                handler_actual = SkipJumps(handler_address, skipObfu=1, skipNops=1)
             else:
                 handler_address = handler_actual = handler_offset = 0
 
@@ -383,29 +436,44 @@ def check_pdata(label=None, func=None, color=None, tails=None, tailsTerm=None, o
                 MakeFuncs(handler_address, until=impl_address, unpatch=unpatch)
             if color:
                 retrace_list(start_addresses, recolor=1, func=func)
+
+            ninfo = None
+            if name_table:
+                if new_hash in name_table:
+                    ninfo = name_table[new_hash]
+                    oname = ninfo.name
+                else:
+                    print("Missing name for hash: {:#x}".format(new_hash))
+
+
             if label:
                 until = 0;
                 if impl_actual and impl_offset and impl_offset != 0xffffffff and impl_offset != handler_offset:
                     until = impl_address
                     count = 0
-                    lblfunc('impl', oname_impl, impl_address, impl_address)
-                    SkipJumps(impl_address, until=until, iteratee=lambda x, *a: lblfunc('impl', oname_impl, impl_address, x))
-                    if not LabelAddressPlus(impl_address, oname_impl, force=1, throw=0):
-                        if impl_address:
-                            SkipJumps(impl_address, iteratee=lambda x, *a: ForceFunction(x) == 123)
-                        SkipJumps(handler_address, until=impl_address, iteratee=lambda x, *a: ForceFunction(x) == 123)
-                    LabelAddressPlus(SkipJumps(impl_address), oname_impl + "_actual", force=1, throw=1)
+                    lblfunc('impl', oname_impl, impl_address, impl_address, until)
                 if handler_offset and handler_offset != 0xffffffff:
                     #  print("addr: {:x}".format(handler_address))
                     count = 0
-                    lblfunc('handler', oname, handler_address, handler_address)
-                    SkipJumps(handler_address, until=until, iteratee=lambda x, *a: lblfunc('handler', oname, handler_address, x))
-                    LabelAddressPlus(handler_address, oname, force=1, throw=1)
-                    LabelAddressPlus(SkipJumps(handler_address), oname + "_ACTUAL", force=1, throw=1)
+                    lblfunc('handler', oname, handler_address, handler_address, until)
                 #  print("Labelled {}".format(oname))
             if args:
+                if ninfo and not ninfo.rtype and not ninfo.args:
+                    _settype = "void __fastcall func()"
+                else:
+                    _settype = "void __fastcall func(native args)"
                 until = impl_address
-                SkipJumps(handler_address, until=until, iteratee=lambda x, *a: idc.SetType(x, "void __fastcall func(scrNativeCallContext *args)") == 23)
+                end = SkipJumps(handler_address, until=until, includeStart=True, includeEnd=True, skipObfu=1, skipNops=1, iteratee=lambda x, *a: idc.SetType(GetFuncStart(x), _settype))
+                if ninfo and IsValidEA(end):
+                    # cmt = "[NATIVE-ARGS] {} {}({})".format(ninfo.rtype or 'void', string_between('::', '', oname, rightmost=1, retn_all_on_fail=1), ", ".join([' '.join(_.filter(x.values())) for x in t.args]))
+                    cmt = "[NATIVE-ARGS] {} {}".format(ninfo.hash, ninfo.raw)
+                    Commenter(end, "func").remove_matching(cmt.replace('[', '\\['))
+                    Commenter(end, "func").add(cmt)
+                    Commenter(handler_address, "func", True).remove_matching(r'^\[NATIVE-ARGS]')
+                    # Commenter(handler_address, "func", True).add(cmt)
+                    Commenter(handler_address, "func").remove_matching(cmt.replace('[', '\\['))
+                    Commenter(handler_address, "func").add(cmt)
+
 
             if spd:
                 if handler_actual:
@@ -427,7 +495,7 @@ def check_pdata(label=None, func=None, color=None, tails=None, tailsTerm=None, o
 
                 globals()['bad_tails'] = bad
 
-            if color or label or tails or spd or func:
+            if color or label or tails or spd or func or args:
                 continue
 
             # dprint("[debug] oname, new_hash, handler_offset, impl_offset")

@@ -6,7 +6,7 @@ import collections
 import json
 import os
 import idc
-import circularlist
+# import circularlist
 from static_vars import *
 from attrdict1 import SimpleAttrDict
 
@@ -31,8 +31,20 @@ def helpers():
     prev() trace forwards one instruction
     """)
     
+def _A(o):
+    if o is None:
+        return []
+    if isinstance(o, list):
+        return o
+    if isflattenable(o) and len(list(o)) > 1:
+        return list(o)
+    if isflattenable(o):
+        return genAsList(o)
+    # list(o) will break up strings
+    return [o]
 
-EA_circular = circularlist.CircularList(64)
+
+EA_circular = CircularList(64)
 def EA():
     ea = idc.get_screen_ea()
     EA_circular.append(ea)
@@ -122,7 +134,7 @@ def myassert(condition, message):
 
 def PrevGap(ea=None):
     ea = eax(ea)
-    gap = ea - PrevHead(ea) + InsnLen(PrevHead(ea))
+    gap = ea - idc.prev_head(ea) #  + InsnLen(idc.prev_head(ea))
     if gap > 256:
         return 256
     return gap
@@ -625,20 +637,20 @@ def __unpatch_worker(ea):
     ida_bytes.revert_byte(ea)
     return 0
 
-def UnPatch(start, end = None):
+def unpatch(start, end = None):
     if end is None:
         if is_sequence(start):
             try:
                 end = start[1]
                 if end is not None:
-                    return UnPatch(start[0], end)
+                    return unpatch(start[0], end)
             except TypeError:
                 return 0
             except ValueError:
                 return 0
         end = InsnLen(start) + start
 
-    if end < start and end < 65536:
+    if end < start and end < ida_ida.cvar.inf.min_ea:
         end = start + end
 
     count = 0
@@ -658,6 +670,8 @@ def UnPatch(start, end = None):
         #  ida_bytes.visit_patched_bytes(start, end, lambda ea, fpos, org_val, patch_val:
                 #  #  print("ida_bytes.visit_patched_bytes: {}, {}, {}, {}".format(ea, fpos, org_val, patch_val))
                 #  __unpatch_worker(ea))
+
+unpatch = unpatch
 
 def UnpatchFunc(funcea=None):
     """
@@ -679,7 +693,7 @@ def UnpatchFunc(funcea=None):
             if n: print("Unpatched {} bytes".format(n))
             idc.auto_wait()
             EaseCode(ea1, unpatch=1, noExcept=1)
-            n = UnPatch(ea1, ea2)
+            n = unpatch(ea1, ea2)
             if n: print("Unpatched {} bytes".format(n))
             n = UnpatchUntilChunk(ea1)
             if n: print("Unpatched {} bytes".format(n))
@@ -738,24 +752,78 @@ def color_patches():
         
 patchedBytes=[]
 
-def get_patch_byte(ea, fpos, org_val, patch_val):
-    # print("%x, %x, %x, %x" % (ea, fpos, org_val, patch_val))
-    patchedBytes.append([ea, org_val])
-    #  idaapi.patch_byte(ea, org_value)
-
-def UnPatchAll1():
+def FindPatchedBy():
     patchedBytes=[]
+
+    def get_patch_byte(ea, fpos, org_val, patch_val):
+        patchedBytes.append([ea, org_val])
+
     idaapi.visit_patched_bytes(0, idaapi.BADADDR, get_patch_byte)
-    Wait()
+    idc.auto_wait()
 
-def UnPatchAll2():
+    pbs = set()
+    for ea, x in patchedBytes:
+        cmt = idc.get_cmt(ea, False)
+        if isinstance(cmt, str):
+            c = Commenter(ea, "line").matches('Patched by: ')
+            if c:
+                pb = [string_between('Patched by: ', '', x) for x in c]
+                for x in pb:
+                    if x not in pbs:
+                        print(x)
+                        pbs.add(x)
+
+    return pbs
+
+def unpatch_all():
+    patchedBytes=[]
+
+    def get_patch_byte(ea, fpos, org_val, patch_val):
+        patchedBytes.append([ea, patch_val])
+
+    idaapi.visit_patched_bytes(0, idaapi.BADADDR, get_patch_byte)
+    idc.auto_wait()
+    patchedBytes.sort()
+    count = 0
+
     for x, y in patchedBytes: 
-        if x < 0x146000000:
-            idaapi.patch_byte(x, y)
+        #  if idc.get_segm_name(x) == '.text2':
+            #  break
+        if IsValidEA(x):
+            count += 1
+            ida_bytes.revert_byte(x)
+            # idaapi.patch_byte(x, y)
+    return patchedBytes
 
-def UnPatchAll():
-    UnPatchAll1()
-    UnPatchAll2()
+def GetFuncPatches(funcea=None):
+    """
+    GetFuncPatches
+
+    @param funcea: any address in the function
+    """
+    patchedBytes=[]
+
+    def get_patch_byte(ea, fpos, org_val, patch_val):
+        patchedBytes.append([ea, org_val])
+
+    if isinstance(funcea, list):
+        return [GetFuncPatches(x) for x in funcea]
+
+    funcea = eax(funcea)
+    func = ida_funcs.get_func(funcea)
+
+    if not func:
+        return 0
+    else:
+        funcea = func.start_ea
+
+    for start, end in idautils.Chunks(funcea):
+        idaapi.visit_patched_bytes(start, end, get_patch_byte)
+
+    return patchedBytes
+
+
+    
 
 @static_vars(patched=[])
 def UnpatchPredicate(predicate):
@@ -867,7 +935,7 @@ def unpatch_func(ea):
             z = x
             end = y
             while ida_bytes.get_original_qword(z) != Qword(z) or z < end:
-                UnPatch(z, z + 4)
+                unpatch(z, z + 4)
                 _unpatch_count += 1
                 z += 4
         cend = dict()
@@ -898,14 +966,14 @@ def unpatch_func(ea):
     #  ida_auto.auto_wait()
     if debug: printi("unpatched {} bytes".format(_unpatch_count))
 
-def unpatch_func2(funcea=None, unpatch=True):
+def unpatch_func2(funcea=None):
     """
     unpatch_func2
 
     @param funcea: any address in the function
     """
     if isinstance(funcea, list):
-        return [unpatch_funcs2(x, unpatch=unpatch) for x in funcea]
+        return [unpatch_funcs2(x) for x in funcea]
     funcea = eax(funcea)
     func = ida_funcs.get_func(funcea)
 
@@ -923,11 +991,12 @@ def unpatch_func2(funcea=None, unpatch=True):
     RemoveAllChunks(ea)
     idc.del_func(ea)
     for start, end in chunks:
+        while not IsFunc_(idc.next_not_tail(end)):
+            end = idc.next_not_tail(end)
+        if isNop(idc.next_not_tail(end)):
+            printi("Possibly NOP overflow at {:#x}".format(idc.next_not_tail(end)))
         ida_auto.revert_ida_decisions(start, end)
-        if unpatch:
-            while not IsFunc_(end + 1):
-                end += 1
-            _unpatch_count += UnPatch(start, end)
+        _unpatch_count += unpatch(start, end)
 
     #  EaseCode(ea)
     idc.add_func(ea)
@@ -937,7 +1006,8 @@ def unpatch_func2(funcea=None, unpatch=True):
             end = EaseCode(start, forceStart=1, noExcept=1)
             if isinstance(end, AdvanceFailure):
                 msg = "EaseCode failed from {:x}".format(start)
-                raise AdvanceFailure(msg)
+                print(msg)
+                # raise AdvanceFailure(msg)
             ida_auto.plan_and_wait(start, end)
             #  ida_auto.plan_range(start, end)  #
             # dprint("[debug] start, end")
@@ -1632,132 +1702,134 @@ def graph_results(results, links):
     import subprocess
     subprocess.getstatusoutput('start pprev.svg')
 
-class prevpath(object):
-    """Pathing for `pprev`"""
 
-    def __init__(self, addr, depth=0, paths=[], visited=set(), prev=None, links=[], data=False, extra=None):
-        self.start_depth = depth
-        self.start_ea = addr
-        self.data = data
-        self.depth = depth
-        self.paths = paths
-        self.visited = visited
-        self.links = links
-        self.prev = prev
-        self.terminated = 0
-        self.history = [addr]
-        self.extra = extra
-        self.addr = addr
-        self.insn_history = []
-        self.add_history()
-
-    @property
-    def viable(self):
-        """ is this path still viable? """
-        return not self.terminated
-
-    @property
-    def ea(self):
-        """ returns current address """
-        return self.addr
-
-    @ea.setter
-    def ea(self, value):
-        """ set new addr and do housekeeping """
-        
-        self.addr = value
-        self.visited.add(value)
-        self.history.append(value)
-        self.add_history()
-        self.depth += 1
-        return self.addr
-
-    def add_history(self):
-        ea = self.addr
-        if idc.get_segm_name(ea) == '.pdata':
-            value = '.pdata'
-        elif idc.get_segm_name(ea) == '.rdata':
-            if IsOff0(ea): value = idc.get_name(idc.get_qword(ea))
-            else:
-                value = '.rdata'
-        else:
-            value = diida(ea)
-        self.insn_history.append(value)
-
-    def advance(self):
-        """ returns next address or None """
-        try:
-            self._next()
-            return self.addr 
-        except StopIteration:
-            return None
-    
-    def __len__(self):
-        return self.depth - self.start_depth 
-
-    def __iter__(self):
-        """Iterator interface. (Untested)."""
-        return self
-
-    def __next__(self):
-        return self._next().ea
-
-    def _next(self):
-        """Returns the next xref
-
-        If there's more than one, add the others to `paths`"""
-        
-        xrefs = [x for x in xrefs_to_ex(self.ea, flow=1) if x.frm not in self.visited]
-        #  xrefs = [x for x in idautils.CodeRefsTo( self.addr , 1) if x not in self.visited]
-        if not self.data:
-            xrefs = [x for x in xrefs if not x.type.startswith('dr_')]
-            #  xrefs.extend([x for x in idautils.DataRefsTo(self.addr) if x not in self.visited])
-        #  print("xrefs: {}".format(hex(xrefs)))
-        if not xrefs:
-            #  print("terminated: {:x}".format(self.ea))
-            self.terminated = 'deadend'
-            #  self.links.append([self.start_ea, self.addr])
-            raise StopIteration
-        # this should be the flow ref (if such exists)
-        if len(xrefs) == 1:
-            n = xrefs.pop()
-            self.prev = self.ea
-            self.ea = n.frm
-            self.extra = n
-            return self
-
-            #  [debug] self.start_ea:143f8e2e2, self.addr:143b53c80, x.frm:143d29d6f, x.to:143b53c80
-            #  [debug] self.start_ea:143f8e2e2, self.addr:143b53c80, x.frm:140cb2f00, x.to:143b53c80
-            #  [debug] self.start_ea:140cb2f00, self.addr:140cb2f00, x.frm:143b0f718, x.to:140cb2f00
-            #  [debug] self.start_ea:140cb2f00, self.addr:140cb2f00, x.frm:143bd5512, x.to:140cb2f00
-            #  [debug] self.start_ea:140cb2f00, self.addr:140cb2f00, x.frm:143b0f718, x.to:140cb2f00
-            #  [debug] self.start_ea:140cb2f00, self.addr:140cb2f00, x.frm:143bd5512, x.to:140cb2f00
-            #  [debug] self.start_ea:143d29d6f, self.addr:143ccd547, x.frm:143dd9d0a, x.to:143ccd547
-            #  [debug] self.start_ea:143d29d6f, self.addr:143ccd547, x.frm:143dd9cb5, x.to:143ccd547
-            #  [debug] self.start_ea:143b0f718, self.addr:142ed9b1c, x.frm:14178b38f, x.to:142ed9b1c
-            #  [debug] self.start_ea:143b0f718, self.addr:142ed9b1c, x.frm:142fd3803, x.to:142ed9b1c
-            #  [debug] self.start_ea:14178b38f, self.addr:14178b388, x.frm:143d0f12c, x.to:14178b388
-            #  [debug] self.start_ea:14178b38f, self.addr:14178b388, x.frm:143c42d3a, x.to:14178b388
-            #  [debug] self.start_ea:143c42d3a, self.addr:143d93d46, x.frm:140a33807, x.to:143d93d46
-            #  [debug] self.start_ea:143c42d3a, self.addr:143d93d46, x.frm:1417a5445, x.to:143d93d46
-
-        #  self.links.append([self.start_ea, self.addr])
-        self.terminated = 'branch'
-        for x in xrefs:
-            # dprint("[debug] self.addr, x.from, x.to")
-            #  print("[debug] self.start_ea:{:x}, self.addr:{:x}, x.frm:{:x}, x.to:{:x}".format(self.start_ea, self.addr, x.frm, x.to))
-            
-            self.links.append([x.frm, x.to])
-            self.paths.extend([self.__class__(x.frm, self.depth, self.paths, self.visited, self, self.links, self.data, x) for x in xrefs])
-        raise StopIteration
-
-
-
-def pprev(ea=None, data=0, stop=None, depth=0, show=0):
+def pprev(ea=None, data=0, stop=None, depth=0, show=0, quiet=0):
     results = []
     if not getattr(pprev, 'history', None):
         pprev.history = []
     pprev.history.append(ea)
+    pprev.branch_count = 0
+
+    class prevpath(object):
+        """Pathing for `pprev`"""
+
+        def __init__(self, addr, depth=0, paths=None, visited=None, prev=None, links=None, data=False, extra=None, branch=''):
+            self.start_depth = depth
+            self.start_ea = addr
+            self.addr = addr
+            self.data = data
+            self.depth = depth
+            self.paths = _A(paths)
+            self.visited = set() if visited is None else visited
+            self.links = _A(links)
+            self.prev = prev
+            self.terminated = 0
+            self.history = [addr]
+            self.extra = extra or dict()
+            self.insn_history = []
+            self.branch = branch
+            self.add_history()
+
+        @property
+        def viable(self):
+            """ is this path still viable? """
+            return not self.terminated
+
+        @property
+        def ea(self):
+            """ returns current address """
+            return self.addr
+
+        @ea.setter
+        def ea(self, value):
+            """ set new addr and do housekeeping """
+            
+            self.addr = value
+            self.visited.add(value)
+            self.history.append(value)
+            self.add_history()
+            self.depth += 1
+            return self.addr
+
+        def add_history(self):
+            ea = self.addr
+            if idc.get_segm_name(ea) == '.pdata':
+                value = '.pdata'
+            elif idc.get_segm_name(ea) == '.rdata':
+                if IsOff0(ea): value = idc.get_name(idc.get_qword(ea))
+                else:
+                    value = '.rdata'
+            else:
+                value = diida(ea)
+            self.insn_history.append(value)
+
+        def advance(self):
+            """ returns next address or None """
+            try:
+                self._next()
+                return self.addr 
+            except StopIteration:
+                return None
+        
+        def __len__(self):
+            return self.depth - self.start_depth 
+
+        def __iter__(self):
+            """Iterator interface. (Untested)."""
+            return self
+
+        def __next__(self):
+            return self._next().ea
+
+        def _next(self):
+            """Returns the next xref
+
+            If there's more than one, add the others to `paths`"""
+            xrefs = [x for x in xrefs_to_ex(self.ea, flow=1)] #  if x.frm not in self.visited]
+            for x in xrefs:
+                self.links.append([x.frm, x.to])
+
+            if not self.data:
+                xrefs = [x for x in xrefs if not x.type.startswith('dr_')]
+
+            r = {False: [], True: []}
+            _.extend(r,  _.groupBy(xrefs, lambda x, *a: x.frm in self.visited))
+            _visited = r[True]
+            xrefs = r[False]
+            #  xrefs = [x for x in idautils.CodeRefsTo( self.addr , 1) if x not in self.visited]
+
+            self.extra['xrefs'] = xrefs
+
+                #  xrefs.extend([x for x in idautils.DataRefsTo(self.addr) if x not in self.visited])
+            #  print("xrefs: {}".format(hex(xrefs)))
+            if not xrefs:
+                #  print("terminated: {:x}".format(self.ea))
+                self.terminated = 'visited' if _visited else 'deadend'
+                #  self.links.append([self.start_ea, self.addr])
+                raise StopIteration
+            # this should be the flow ref (if such exists)
+            # TODO: why? it could be a jmp ref.. silly me
+            if len(xrefs) == 1:
+                _xref = xrefs.pop()
+                self.prev = self.ea
+                self.ea = _xref.frm
+                if _xref.type == 'fl_CN' and isCall(_xref.frm):
+                    self.terminated = 'call'
+                    raise StopIteration
+                return self
+
+            #  self.links.append([self.start_ea, self.addr])
+            self.terminated = 'branch'
+            for i, x in enumerate(xrefs):
+                # dprint("[debug] self.addr, x.from, x.to")
+                #  print("[debug] self.start_ea:{:x}, self.addr:{:x}, x.frm:{:x}, x.to:{:x}".format(self.start_ea, self.addr, x.frm, x.to))
+                
+                # paths.append(prevpath(ea,              depth,      paths,      visited,       None,      links,      data=data))
+                # def __init__( addr,                    depth=0,    paths=[],   visited=set(), prev=None, links=[],   data=False, extra=None):
+                self.paths.extend([self.__class__(x.frm, self.depth, self.paths, self.visited,  self.ea,   self.links, self.data,  x, branch=f'{self.branch}{i}') for x in xrefs if x.type != 'fl_CN'])
+            raise StopIteration
+
+
 
     def get_unwind_info(offset):
         record = [0, 0, '']
@@ -1799,67 +1871,100 @@ def pprev(ea=None, data=0, stop=None, depth=0, show=0):
         
         return history
         # return _.flatten(history)
+
+    def diida_cmts(ea):
+        _diida = diida(ea)
+        _comments = idc.get_cmt(ea, 0)
+        if _comments:
+            _diida += " " + str(_comments).replace("\n", "; ")
+        return _diida
+
     
     start_ea = ea = eax(ea)
     visited = set([ea])
     links = []
     paths = []
+    terminated = None
     paths.append(prevpath(ea, depth, paths, visited, None, links, data=data))
     deadpaths = []
 
-    print("start: {:3} {:32} {:x} {}".format(
-        0, GetFuncName(ea), ea, diida(ea)))
+    if not quiet: print("start: {:3} {:32} {:x} {}".format(0, GetFuncName(ea), ea, diida_cmts(ea)))
 
     while len(paths):
-        #  print("viable {}/dead {}".format(len(paths), len(deadpaths)))
+        # print("viable {}/dead {}".format(len(paths), len(deadpaths)))
         # for path in paths:
         path = paths.pop(0)
         if path.viable:
+            path_ea = path.ea
             ea = path.advance()
+            # dprint("[pprev] path_ea, ea")
+            if not quiet: print("[pprev]{:3} path_ea: {}, ea: {} sub: {}".format(path.depth, hex(path_ea), hex(ea), ean(GetFuncStart(ea)) if IsFunc_(ea) else ''))
+            if CallRefsTo(path_ea):
+                caller = _.first(A(CallRefsTo(path_ea)))
+                _diida = diida_cmts(caller)
+                if not quiet: print("call:  {:3} {:32} {:x} {}".format(path.depth, GetFuncName(caller)[0:32], caller, _diida))
+                if not show:
+                    return path_ea
+            
+            if ea is None:
+                ea = path_ea
+            else:
+                path_ea = ea
+            _diida = diida_cmts(path_ea)
             if ea is None:
                 deadpaths.append(path)
                 #  paths.remove(path)
-            elif is_pdata(ea) or stop and callable(stop) and stop(ea):
-                print("pdata! {:3} {:32} {:x} {}".format(path.depth, GetFuncName(path.ea), path.ea, diida(path.ea)))
+            elif is_pdata(ea) or callable(stop) and stop(ea):
+                if not quiet: print("pdata! {:3} {:32} {:x} {}".format(path.depth, GetFuncName(path_ea), path_ea, _diida))
                 if show:
                     results.append(history(path))
-                    graph_results(results)
+                    # graph_results(results, links)
                     #  print("path: {}".format(hex(history(path))))
-                return ea
+                else:
+                    return ea
+                    break
             if ea:
-                _diida = diida(path.ea)
                 if idc.print_insn_mnem(ea) == 'call' and GetTarget(ea) in visited:
-                    tfn = GetFuncName(GetTarget(path.ea))
-                    tgt = hex(GetTarget(path.ea))[2:]
+                    tfn = GetFuncName(GetTarget(path_ea))
+                    tgt = hex(GetTarget(path_ea))[2:]
                     if tgt in _diida.lower():
                         tgt = '' 
                     else: tgt = f' {tgt}'
                     if tfn in _diida:
                         tfn = ''
                     else: tfn = f' {tfn}'
-                    print("call:  {:3} {:32} {:x} {}{}{}".format(path.depth, GetFuncName(path.ea)[0:32], path.ea, _diida, tgt, tfn))
+                    if not quiet: print("call:  {:3} {:32} {:x} {}{}{}".format(path.depth, GetFuncName(path_ea)[0:32], path_ea, _diida, tgt, tfn))
                 if isSegmentInXrefsTo(ea, '.pdata') and get_pdata_fnStart(ea) == ea:
-                    print("pdata: {:3} {:32} {:x} {}".format(path.depth, GetFuncName(path.ea)[0:32], path.ea, _diida))
+                    if not quiet: print("pdata: {:3} {:32} {:x} {}".format(path.depth, GetFuncName(path_ea)[0:32], path_ea, _diida))
                 paths.append(path)
 
+    visited = set()
     for path in deadpaths:
         # if not ida_funcs.is_same_func(path.ea, start_ea):
-        print("{:<8}: {:3} {:24} {:x} {}".format(
-            path.terminated,
-            path.depth, 
+        if path.ea in visited:
+            continue
+        visited.add(path.ea)
+
+        if not quiet: print("{:<5}: {:3} {:32} {:x} {}".format(
+            path.terminated[0:5],
+            path.depth,
             GetFuncName(path.ea), 
+            # path.prev, 
             path.ea, 
-            diida(path.ea), 
+            diida_cmts(path.ea), 
             #  diida(GetTarget(path.ea)),
             # diida(path.prev),
             # get_name_or_hex(path.history[1]) if len(path.history) > 1 else ''
         ))
-        if path.terminated == 'branch':
-            print("depth   : {:3} {:24} {:x} {}".format(
+        if path.terminated == 'deadend':
+            results.append(history(path))
+            terminated = path.start_ea
+        elif path.terminated == 'branch':
+            if not quiet: print("brnch: {:3} {:32} {:x} {}".format(
                 path.depth, 
                 GetFuncName(path.start_ea), 
                 path.start_ea, 
-                diida(path.start_ea), 
+                diida_cmts(path.start_ea), 
                 #  diida(GetTarget(path.start_ea)),
                 # diida(path.prev),
                 # get_name_or_hex(path.history[1]) if len(path.history) > 1 else ''
@@ -1873,7 +1978,7 @@ def pprev(ea=None, data=0, stop=None, depth=0, show=0):
     if show:
         graph_results(results, links)
     else:
-        return results
+        return results or terminated
 
 if 'HELPER_HOTKEYS' in globals():
     for hotkey in HELPER_HOTKEYS: HELPER_HOTKEYS._remove(hotkey)
@@ -1886,7 +1991,7 @@ for i in range(10):
     HELPER_HOTKEYS.append(MyHotkey("Shift-{}".format(i), make_store_bookmark_fn(i)))
     HELPER_HOTKEYS.append(MyHotkey("{}".format(i), make_goto_bookmark_fn(i)))
 HELPER_HOTKEYS.append(MyHotkey("Alt-R", fake_cli_factory("retrace(adjustStack=1)")))
-HELPER_HOTKEYS.append(MyHotkey("Alt-C", fake_cli_factory("check_emu()")))
+HELPER_HOTKEYS.append(MyHotkey("Alt-C", lambda: check_emu()))
 HELPER_HOTKEYS.append(MyHotkey("Alt-Z", lambda: ZeroFunction(GetFuncStart(here()))))
 HELPER_HOTKEYS.append(MyHotkey("Ctrl-Alt-C", chunk_adder))
 HELPER_HOTKEYS.append(MyHotkey("Ctrl-Alt-D", sig_maker_data))

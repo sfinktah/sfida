@@ -149,7 +149,7 @@ def differences(a, b):
         raise ValueError("Lists of different length.")
     return sum(i != j for i, j in zip(a, b))
 
-def read_emu_glob(fn, subdir='*', path=None, dryRun=False):
+def read_emu_glob(fn, subdir='*', path=None, **kwargs):
     if path is None and match_emu._path is None:
         guess = os.path.abspath(os.path.dirname(get_idb_path()))
         print("Guessing database path as {}".format(guess))
@@ -160,7 +160,7 @@ def read_emu_glob(fn, subdir='*', path=None, dryRun=False):
         emu_path(path)
 
     if isinstance(fn, list):
-        return [read_emu_glob(x, subdir=subdir, dryRun=dryRun) for x in fn]
+        return [read_emu_glob(x, subdir=subdir, **kwargs) for x in fn]
 
     if not match_emu._path:
         print("No path set")
@@ -179,8 +179,8 @@ def read_emu_glob(fn, subdir='*', path=None, dryRun=False):
         print("{}: {}: {}".format(e.__class__.__name__, str(e), str([match_emu._path, subdir, '*', '*', fn])))
         raise
     globbed = list(glob(fns))
-    print('globbing... {} - {} files. {}'.format(fns, len(globbed), str(globbed)[0:64]))
-    return read_emu(globbed, dryRun=dryRun)
+    print('globbed {} files. kwargs: {}'.format(len(globbed), kwargs))
+    return read_emu(globbed, **kwargs)
 
 def make_native_patchfile(ea=None, outFilename=None, noImport=False, width=76):
     import base64
@@ -193,21 +193,60 @@ def make_native_patchfile(ea=None, outFilename=None, noImport=False, width=76):
     if not noImport:
         result = [
                 "def base64_patch_tmp():",
-                "    import idc, ida_ida",
-                "    from base64 import b64decode", 
-                "    from ida_bytes import put_bytes",
+                "    import idc, ida_ida, idautils, idaapi",
+                "    from base64 import b64decode",
+                "    from ida_bytes import put_bytes, patch_bytes",
                 "    from lzma import decompress",
-                "    def nativ(ea, lbl):",
-                "        return",
-                "        if not ((idc.get_full_flags(ea) & ",
-                "                 idc.FF_ANYNAME) == idc.FF_NAME):",
-                "            idc.set_name(unbase(ea), lbl, idc.SN_AUTO | idc.SN_NOWARN)",
+                "    chunks = []",
+                "    def expand_chunklist(c):",
+                "        l = iter(c); x = unbase(next(l)); yield (x[0], x[0] + x[1]); j, k = x",
+                "        for x in [unbase(x) for x in l]:",
+                "            x = (x[0] + j, x[0] + j + x[1])",
+                "            j, k = x; yield x",
+                "    def nativ(ea, lbl, c):",
+                "        ea = unbase(ea); lbl = re.sub(r'\s+', '_', lbl)",
+                "        base64_patch_tmp.ea = ea",
+                "        print(\"{:#x} {}\".format(ea, lbl))",
+                "        chunks.clear(); chunks.extend(list(expand_chunklist(c)))",
+                "        for cs, ce in chunks:",
+                "            for head in idautils.Heads(cs, ce):",
+                "                if cs != ea: idc.remove_fchunk(head, head)",
+                "            idaapi.del_items(cs, 1, ce - cs)",
+                "        idc.del_func(ea)",
+                "        idc.set_name(ea, lbl, idc.SN_NOWARN)",
+                "    def fspd(l):",
+                "        def fsc(l):",
+                "            l.sort()",
+                "            for i, x in enumerate(l):",
+                "                csp, asp, ad = x[1], idc.get_spd(",
+                "                        x[0]), idc.get_sp_delta(x[0])",
+                "                if asp is None or ad is None: return",
+                "                adj = csp - asp; nd = adj + ad",
+                "                if asp != csp:",
+                "                    print(\"{:4} -- {:x} adjspd {:6x} to {:6x}     \"",
+                "                            \"({:>6x})\".format(i, x[0], ad, nd, csp))",
+                "                    idc.add_user_stkpnt(x[0], nd)",
+                "                    idc.auto_wait(); return True",
+                "        ea = l[0][0]; [idc.create_insn(x) for x, y in l]; idc.add_func(ea)",
+                "        [idc.append_func_tail(ea, cs, ce) for cs, ce in chunks[1:]]",
+                "        for r in range(1000):",
+                "            if not fsc(l): break",
+                "    def expand_spdlist(c):",
+                "        l = iter(c)",
+                "        x = next(l)",
+                "        yield tuple(unbase(x))",
+                "        j, k = unbase(x)",
+                "        for x in [unbase(x) for x in l]: x = (x[0] + j, x[1] + k); j, k = x; yield x",
+                "    def spds(l): fspd(list(expand_spdlist(l)))",
                 "    min_ea = ida_ida.cvar.inf.min_ea & ~0xffff",
                 "    max_ea = (ida_ida.cvar.inf.max_ea + 1) & ~0xffff",
-                "    unbase = lambda ea: ea - ida_ida.cvar.inf.min_ea + min_ea",
-                "    put64  = lambda ea, b64: put_bytes(unbase(ea), b64decode(b64))",
-                "    lzp64  = lambda ea, b64: put_bytes(unbase(ea), decompress(b64decode(b64)))",
-                ""
+                "    def unbase(a):",
+                "        if isinstance(a, int): a = [a]",
+                "        if len(a) > 1: return [ea - {:#x} + min_ea for ea in a]".format(ida_ida.cvar.inf.min_ea),
+                "        else: return a[0] - {:#x} + min_ea".format(ida_ida.cvar.inf.min_ea),
+                "    put64  = lambda ea, b64: patch_bytes(unbase(ea), b64decode(b64))",
+                "    lzp64  = lambda ea, b64: patch_bytes(unbase(ea), decompress(b64decode(b64)))",
+                "",
                 ]
     else:
         result = []
@@ -225,13 +264,16 @@ def make_native_patchfile(ea=None, outFilename=None, noImport=False, width=76):
             return file_put_contents(outFilename, "\n".join(result))
         return result
 
-    result.append('    nativ(0x{:x}, "{}")'.format(ea, idc.get_name(ea, 0)))
+    bout = ('    nativ(0x{:x}, """{}""", {})'.format(ea, idc.get_name(ea, 0).replace('_', ' '), re.sub(r'\d\d+', lambda m: hex(m[0]) if len(hex(m[0])) <= (1 + len(m[0])) else m[0], str(list(compact_chunklist(idautils.Chunks(ea))))).replace("'", '').replace("'", "")))
+    result.extend(indent(8, bout, width=width, joinWith=None, skipFirst=False, firstIndent=0))
     for base, end in idautils.Chunks(ea):
         b = ida_bytes.get_bytes(base, end - base)
         cmd = 'put64'
-        if len(b) > 128:
-            b = lzma.compress(b)
-            cmd = 'lzp64'
+        if len(b) > 96:
+            c = lzma.compress(b)
+            if len(c) < len(b):
+                b = c
+                cmd = 'lzp64'
         if b:
             b64 = base64.b64encode(b).decode('raw_unicode_escape')
             if len(b64) < (width - 22 - 4):
@@ -247,6 +289,8 @@ def make_native_patchfile(ea=None, outFilename=None, noImport=False, width=76):
                     result.append('        """)')
             #  result.append('')
 
+            bout = '    spds({})'.format(re.sub(r'\d\d+', lambda m: hex(m[0]) if len(hex(m[0])) <= (1 + len(m[0])) else m[0], str(list(compact_spdlist(GetAllSpds(ea, address=1)))).replace("'", "")))
+    result.extend(indent(8, bout, width=width, joinWith=None, skipFirst=False, firstIndent=0))
     return result 
 
 def make_emu_patchfile(fn=None, outFilename=None, noImport=False, width=76):
@@ -319,8 +363,33 @@ def read_emu_walk(path):
                 print(_fnb)
                 read_emu(_fnb)
 
+def compare_bytes(ea, buf):
+    """
+    Return the specified number of bytes that differ from the buffer
+
+    @param ea: linear address
+
+    @param buf: (C++: const void *) buffer with new values of bytes
+
+    @return: count of differing bytes
+    """
+    if isinstance(ea, list):
+        return [compare_bytes(x) for x in ea]
+
+    ea = eax(ea)
+    b = idc.get_bytes(ea, len(buf))
+    count = 0
+    for i in range(len(buf)):
+        if b[i] != buf[i]:
+            count += 1
+
+    return count
+    
+
+
+
 @static_vars(_nulls=set())
-def read_emu(fn=None, dryRun=False):
+def read_emu(fn=None, dryRun=False, skipFuncs=False, put=False):
     """ 
     read_emu: read a file / list of files into patches
     eg: read_emu(glob('r:/data/memcpy/*_PackerFunction_140000000.bin'))
@@ -329,13 +398,22 @@ def read_emu(fn=None, dryRun=False):
 
     """
     if isinstance(fn, list):
-        print(fn)
-        return [(parseHex(string_between('_', '_', os.path.basename(x))), read_emu(x, dryRun=dryRun)) for x in fn]
+        # print(fn)
+        return [(parseHex(string_between('_', '_', os.path.basename(x))), read_emu(x, dryRun=dryRun, skipFuncs=skipFuncs, put=put)) for x in fn]
     base = parseHex(string_between('_', '_', os.path.basename(fn)))
+
+    bn = os.path.basename(fn)
+    _prefix       = string_between('', '_', bn)
+    _addr,  bn    = string_between_splice('_',   '_', bn, repl='')
+    _size, bn     = string_between_splice('__',  '_', bn, repl='')
+    _packer, bn   = string_between_splice('___', '.', bn, repl='', greedy=1)
+    _packer_addr  = string_between('_', '', _packer)
+    _packer_words = long_to_words(-ida_ida.cvar.inf.min_ea + int(_packer_addr, 16))
     if ida_ida.cvar.inf.min_ea <= base < ida_ida.cvar.inf.max_ea:
         b = file_get_contents_bin_spread(fn)
         if b and len(b) > 3 and _.all(b, lambda v, *a: v == 0):
             print("skipping {} x null".format(len(b)))
+            Commenter(base, 'line').add("skipped {} null bytes from {} {}".format(len(b), _packer_words, ean(_packer_addr)))
             read_emu._nulls.add((base, len(b)))
             return '', 0, 0
         if b:
@@ -348,10 +426,26 @@ def read_emu(fn=None, dryRun=False):
             #  diffs = differences(o, b)
             #  if diffs:
             #  _was_code = IsCode_(base)
+            Commenter(base, 'line').add("{}: {:#x}-{:#x}".format(_packer_words, base, base + len(b)))
+            differ = compare_bytes(base, b)
             if dryRun:
-                iccode(b, base)
+                pass
+                # iccode(b, base)
             else:
-                ida_bytes.patch_bytes(base, b)
+                if skipFuncs and IsFunc_(base):
+                    if debug: print("skipping func at {:#x}".format(base))
+                else:
+                    if debug: 
+                        if skipFuncs:
+                            print("not func at {:#x}".format(base))
+                        else:
+                            print("nobody asked us to skip")
+                    if put or differ:
+                        if put:
+                            print("putting {} bytes at {:#x}".format(len(b), base))
+                            ida_bytes.put_bytes(base, b)
+                        else:
+                            ida_bytes.patch_bytes(base, b)
             #  if idc.get_segm_name(base) == '.text' and not _was_code:
                 #  EaseCode(base, forceStart=1, noExcept=1)
             #  for ea in range(base, base + len(b)):
@@ -364,7 +458,7 @@ def read_emu(fn=None, dryRun=False):
                 #  except AdvanceFailure:
                     #  pass
 
-            return fn.split('_', 3)[3], len(b), len(b) # diffs
+            return fn.split('_', 3)[3], len(b), differ # diffs
 
     return fn.split('_', 3)[3], base, -2
 
@@ -424,7 +518,7 @@ def match_emu(ea=None, size=None, path=None, retnAll=False):
             _pickle_time = os.stat(os.path.abspath(pickle_fn)).st_mtime
             match_emu._files = pickle.loads(file_get_contents_bin(pickle_fn))
             for _subdir in match_emu._subdirs:
-                print("{}...".format(_subdir))
+                idc.msg("{}... ".format(_subdir))
                 _jfn = "{}/{}/files.json".format(path.rstrip('/'), _subdir)
                 if file_exists(_jfn):
                     _jfn_time = os.stat(os.path.abspath(_jfn)).st_mtime

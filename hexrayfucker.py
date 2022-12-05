@@ -1236,7 +1236,8 @@ def clangformat(source_code):
     #  if not clang_paths:
     clang_path = find_in_path("clang-format.exe")
     if not clang_path:
-        clang_paths = glob.glob(r"C:\Program Files (x86)\Microsoft Visual Studio\20*\*\Common7\IDE\VC\vcpackages\clang-format.exe")
+        clang_paths = glob.glob(r"C:\Program Files (x86)\Microsoft Visual Studio\20*\*\Common7\IDE\VC\vcpackages\clang-format.exe") + \
+                glob.glob(r"C:\Program Files\Microsoft Visual Studio\*\Community\VC\Tools\Llvm\x64\bin\clang-format.exe")
         if clang_paths:
             if len(clang_paths) > 1:
                 print("{} possible locations for clang-format found:".format(len(clang_paths)))
@@ -1372,7 +1373,8 @@ def decompile_hashes_regex(ea=None, regex=None):
 
 
 
-def decompile_function_for_subs(ea, recurse = 0, parents = []):
+def decompile_function_for_subs(ea, recurse = 0, parents=None):
+    parents = A(parents)
     if recurse < 0:
         return
 
@@ -1486,12 +1488,13 @@ def wrap_compile(pattern, flags=0):
 
 
     
-def decompile_function_for_common_renames(funcea=None, recurse=0, parents=[]):
+def decompile_function_for_common_renames(funcea=None, recurse=0, parents=None):
     """
     decompile_function_for_common_renames
 
     @param funcea: any address in the function
     """
+    parents = A(parents)
     funcea = eax(funcea)
     func = ida_funcs.get_func(funcea)
 

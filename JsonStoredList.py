@@ -23,6 +23,17 @@ from exectools import make_refresh
 refresh_JsonStoredList = make_refresh(os.path.abspath(__file__))
 refresh = make_refresh(os.path.abspath(__file__))
 
+class SetEncoder(json.JSONEncoder):
+    """
+    json.dumps(set([1,2,3,4,5]), cls=SetEncoder)
+    see: https://stackoverflow.com/a/8230505/912236
+    """
+    def default(self, obj):
+        if isinstance(obj, set):
+            return list(obj)
+        return json.JSONEncoder.default(self, obj)
+
+
 
 def json_load(_fn, default=None):
     if _fn.startswith("http"):
@@ -42,7 +53,7 @@ def json_save_safe(dst, json_object):
     dirname, basename = os.path.split(dst)
     try:
         with tempfile.NamedTemporaryFile(prefix=basename, mode='w', dir=dirname, delete=False) as filename:
-                filename.file.write(json.dumps(json_object))
+                filename.file.write(json.dumps(json_object, cls=SetEncoder))
                 filename.file.close()
                 # print("replace({}, {})".format(filename.name, dst))
                 # print("file_exists", os.path.exists(filename.name))

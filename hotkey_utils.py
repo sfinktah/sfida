@@ -1,7 +1,3 @@
-__version_hash__ = "e6a6dae41110c950aac4fd13a6a748c3"
-__version_info__ = (0, 0, 22)
-__version__ = ",".join(map(lambda x: str(x), __version_info__))
-
 # hotkey_utils.py - bNull
 #
 # Some useful shortcuts for binding to hotkeys. Current output/hotkeys:
@@ -13,7 +9,6 @@ __version__ = ",".join(map(lambda x: str(x), __version_info__))
 # &
 # &.update_file(__file__, __version_hash__, __version_info__)
 from binascii import unhexlify
-
 import ida_idaapi
 from idautils import Heads, Chunks
 import idaapi
@@ -35,7 +30,7 @@ if not idc:
     # from classmaker import sanitizedName, make_vfunc_struct_sig
     from commenter import Commenter
     # from di import *
-    # from helpers import UnPatch
+    # from helpers import unpatch
     from is_flags import HasUserName, IsCode_
     from membrick import FindInSegments
     from obfu_helpers import MakeSigned, PatchNops
@@ -73,10 +68,10 @@ class MyHotkey(object):
 class MyHotkeys(object):
     """Collection of MyHotkey instances"""
 
-    def __init__(self, items=[]):
+    def __init__(self, items=None):
         """@todo: to be defined """
         self.hotkeys = []
-        for hotkey in items:
+        for hotkey in A(items):
             self.append(hotkey)
 
     def __len__(self):
@@ -348,7 +343,8 @@ def get_bytes_chunked(start=0, end=0, maxlen=65535):
     return [bytes_as_hex(x) for x in byteList]
 
 
-def get_data_ref(frm, var, _globals=[]):
+def get_data_ref(frm, var, _globals=None):
+    _globals = A(_globals)
     from JsonStoredList import JsonStoredDict
     with JsonStoredDict('datarefs.json') as __data_ref_cache:
         fullvar = idaapi.get_name(GetFuncStart(frm)) + "." + var
@@ -372,7 +368,8 @@ def get_data_ref(frm, var, _globals=[]):
                     print(" %% couldn't get unique pattern for function")
 
 
-def get_instructions_chunked(start=0, end=0, addresses=None, maxlen=65535, _globals=[]):
+def get_instructions_chunked(start=0, end=0, addresses=None, maxlen=65535, _globals=None):
+    _globals = A(_globals)
     byteList = list()
     if isinstance(addresses, list):
         for ea, count in addresses:
@@ -1515,9 +1512,9 @@ def hotkey_edit_nasm():
 def hotkey_unpatch():
     chunkStart, chunkEnd = get_selection_or_ea()
     if GetFuncStart(chunkStart) == chunkStart and chunkEnd == idc.next_head(chunkStart):
-        unpatch_func2(chunkStart, unpatch=1)
+        unpatch_func2(chunkStart)
     if chunkEnd > chunkStart and chunkEnd < BADADDR and chunkEnd - chunkStart < 8192:
-        UnPatch(chunkStart, chunkEnd)
+        unpatch(chunkStart, chunkEnd)
         # ida_auto.plan_range(chunkStart, chunkEnd)
         try:
             EaseCode(chunkStart, chunkEnd, forceStart=1)

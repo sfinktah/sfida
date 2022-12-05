@@ -16,11 +16,12 @@ refresh = make_refresh(os.path.abspath(__file__))
 class ft_char:
     """colored character"""
 
-    def __init__(self, char=' ', color=default_color, attributes={}, dirty=True):
+    def __init__(self, char=' ', color=default_color, attributes=None, dirty=True):
         self.char  = char
         self.color = default_color
         self.attributes = {}
-        _.extend(self.attributes, attributes)
+        if attributes is not None:
+            _.extend(self.attributes, attributes)
         self.dirty = not not dirty
 
 ft_screen = collections.defaultdict(dict)

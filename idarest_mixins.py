@@ -218,8 +218,8 @@ class BorrowStdOut:
         """
         Dummy file-like class that receives stout and stderr
         """
-        def __init__(self, buffer=[]):
-            self.buffer = buffer
+        def __init__(self, buffer=None):
+            self.buffer = buffer if buffer is not None else []
             #  self.buffer = ''
 
         def write(self, text):

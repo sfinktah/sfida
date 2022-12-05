@@ -28,7 +28,7 @@ false = False
 true = True
 
 _possible_lame = ["notte", "noted", "ally", "waist"] # not nor fees hans use used uses seas sieze bath bathe
-_possible_replacements = ["titan", "bull", "tub", "io", "on", "to", "at", "in", "fuji", "xerox", "dwarf", "pluto", "venus", "xena", "eros", "ida", ]
+_possible_replacements = ["titan", "david", "pit", "bull", "tub", "io", "on", "to", "at", "in", "fuji", "xerox", "dwarf", "pluto", "venus", "xena", "eros", "ida", ]
 _changes = {
         'ally': 'alley',
         'acres': 'acre',
@@ -47,6 +47,8 @@ _changes = {
         'boar':  'bore', # alternative
         'penis': 'piece', # alternative
         'hay':   'hey', # alternative 
+        # TODO:
+        # been moore might(mite) 
 }
 _dictWords = [
     "able", "about", "above", "ache", "acid", "acre", "act", "actor", "adapt", "add", "admit", "adopt", "after", "again", "age", "agent", "ago", "agree", "ahead", "aids", "aim", "air", "orgy", "alert", "alfa", "alike", "alive", "alan", "allow", "alley",

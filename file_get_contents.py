@@ -96,3 +96,29 @@ def file_put_contents_bin(fn, data):
         f.write(data)
     return os.path.abspath(fn)
 
+class file_put_context(object):
+    """Docstring for file_put_context """
+
+    def __init__(self, file, mode='w', buffering=-1, encoding=None, *args, **kwargs):
+        """
+        opens a file in a context
+        """
+        self._file = smart_path(file)
+        self._mode = mode
+        self._buffering = buffering
+        self._encoding = encoding
+        self._args = args
+        self._kwargs = kwargs
+        self._filehandle = None
+
+    def __enter__(self):
+        self._filehandle = open(os.path.normpath(self._file), mode=self._mode, buffering=self._buffering,
+                encoding=self._encoding, *self._args, **self._kwargs)
+        return self._filehandle
+    
+    def __exit__(self, exc_type, exc_value, traceback):
+        self._filehandle.close()
+
+        
+
+

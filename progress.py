@@ -5,14 +5,18 @@
 """
 
 import ida_kernwin
+from static_vars import static_vars
 #  from exectools import _import, _from
 #  _from('slowtrace_helpers import make_transpose_fn')
 #  _from('hex import asList')
 
+@static_vars(last_width=getglobal('_progress_console_width', None))
 def _get_console_width():
     output_window_title = "Output window"
     tw = ida_kernwin.find_widget(output_window_title)
     if not tw:
+        if _get_console_width.last_width:
+            return _get_console_width.last_width
         raise Exception("Couldn't find widget '%s'" % output_window_title)
 
     # convert from a SWiG 'TWidget*' facade,
@@ -20,8 +24,11 @@ def _get_console_width():
     if hasattr(ida_kernwin.PluginForm, 'TWidgetToPyQtWidget'):
         w = ida_kernwin.PluginForm.TWidgetToPyQtWidget(tw)
         scrollable = w.childAt(0, 0)
+        _get_console_width.last_width = scrollable.width()
+        setglobal('_progress_console_width', _get_console_width.last_width)
         return scrollable.width()
     else:
+        print('[progress] return default width of 100')
         return 100
 
 
@@ -42,18 +49,22 @@ class ProgressBar:
                 _max = v
             self.transpose_fns.append( make_transpose_fn( (_min, _max), (0.0, 100.0) ) )
 
-        self.console_width = int(_get_console_width() * 0.10)
+        self.console_width = int(_get_console_width() * 0.12)
         self.blocks = [0] * self.count
         self.value = [None] * self.count
+        self.raw_value = [0] * self.count
         self.always_print = 0
+        self.show_percentage = True
         self.last_blocks = [0] * self.count
         self.timer = timeit.default_timer
         self.start_time = self.timer()
+        self.onPrePrint = None
 
     def update(self, *values):
         _should_print = 0
         for i, value in enumerate(values):
             if value is not None:
+                self.raw_value[i] = value
                 self.value[i] = self.transpose_fns[i](value)
                 self.blocks[i] = self.calc_blocks(self.value[i])
                 if self.blocks[i] != self.last_blocks[i]:
@@ -97,7 +108,11 @@ class ProgressBar:
             blocks[i] = s
         empty = self.console_width - drawn
         if six.PY3:
-            print("[{}{}] {}%".format(''.join(blocks), ' ' * empty, int(sum(self.value) / (len(self.value) if not self.compound else 1))))
+            if self.show_percentage:
+                pct = "{}%".format(int(sum(self.value) / (len(self.value) if not self.compound else 1)))
+            else:
+                pct = ' '.join([str(x) for x in self.raw_value])
+            print("[{}{}] {}".format(''.join(blocks), ' ' * empty, pct))
             #  print("[{}{}{}{}{}] {}%".format("\u2591" * self.blocks_bad, "\u2593"* self.blocks_good, "\u2588" * done, decimal, "\u2505" * remain, 100 * self.value // self.maxval))
         else:
             print("{}%".format(int(sum(self.value) / (len(self.value) if not self.compound else 1))))

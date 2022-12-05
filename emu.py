@@ -820,7 +820,7 @@ def set_checkd_col(ea):
         return idc.set_color(ea, idc.CIC_ITEM, 0x010128)
     return idc.set_color(ea, idc.CIC_ITEM, 0x140128)
 
-def emu_sub(fn, steps=100, single=None, regs=None, args={}):
+def emu_sub(fn, steps=100, single=None, regs=None, args=None):
     global abort
     global called_functions
     global count
@@ -837,6 +837,9 @@ def emu_sub(fn, steps=100, single=None, regs=None, args={}):
     global transposition
     global visited
     global deadcode
+
+    if args is None:
+        args = {}
 
     if single is not None:
         single_step = single

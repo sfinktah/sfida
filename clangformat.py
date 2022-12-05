@@ -1,8 +1,8 @@
 def clangformat(source_code):
     #  idc.batch(0)
     import glob
-    clang_paths = glob.glob(
-        r"C:\Program Files (x86)\Microsoft Visual Studio\20*\*\Common7\IDE\VC\vcpackages\clang-format.exe")
+    clang_paths = glob.glob(r"C:\Program Files (x86)\Microsoft Visual Studio\20*\*\Common7\IDE\VC\vcpackages\clang-format.exe") + \
+            glob.glob(r"C:\Program Files\Microsoft Visual Studio\*\Community\VC\Tools\Llvm\x64\bin\clang-format.exe")
     if clang_paths:
         if len(clang_paths) > 1:
             print("{} possible locations for clang-format found:".format(len(clang_paths)))

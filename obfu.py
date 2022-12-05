@@ -2,14 +2,12 @@ import os, sys
 from idc import *
 import idaapi
 import idautils
-from exectools import _import
-_import("from exectools import execfile")
+from exectools import _import, execfile
+# _import("from exectools import execfile")
 
 _cwd = os.path.dirname(os.path.realpath(os.curdir))
 _ourname = sys.argv[0]
 _basename = os.path.dirname(os.path.realpath(_ourname))
-
-print("obfu.py...")
 
 # scriptDir = "e:/git/ida"
 scriptDir = os.path.dirname(__file__)
@@ -31,7 +29,6 @@ for fn in [
 ]:
     fnfull = os.path.join(home, fn)
     if os.path.isfile(fnfull):
-        print("obfu-load: {}...".format(fnfull))
         execfile(fnfull, globals())
     else:
         raise Exception("No such file: %s" % fnfull)

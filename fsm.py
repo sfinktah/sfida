@@ -97,31 +97,35 @@ def FindStackMutators(ea=None, skipRetrace=False, path=None, **kwargs):
         
         _ori_location = idc.get_qword(location)
         if not _ori_location:
-            raise Exception("Invalid location (0) at {:#x}".format(location))
-        location = SkipJumps(_ori_location)
-        if False and not skipRetrace:
-            args = kwargs.copy()
-            depth = args.get('depth', 0)
-            args['depth'] = depth + 1
-            printi("[fsm] calling retrace(0x{:x}, {})".format(location, ", ".join(args)))
-            _r = retrace(location, **args)
-            printi("[fsm] returned from retrace(0x{:x}, {}) with {}".format(location, ", ".join(args), _r), depth=depth)
+            # dprint("[FindStackMutators] align, offset, location, arg")
+            print("[FindStackMutators] align:{:#x}, offset:{:#x}, location:{:#x}, arg:{:#x}".format(align, offset, location, arg))
+            raise RuntimeError("FSM: Invalid location (0) at {:#x} (check another copy)".format(location))
             
-        # dprint("[debug] location")
-        #  printi("[debug] location:{:x}".format(location))
-        
-        if (Qword(location) << 8 | Byte(location + 8)) == 0x2464ff0824648d48f8:
-            PatchBytes(location, [0xc3] + MakeNops(8))
+        else:
+            location = SkipJumps(_ori_location)
+            if False and not skipRetrace:
+                args = kwargs.copy()
+                depth = args.get('depth', 0)
+                args['depth'] = depth + 1
+                printi("[fsm] calling retrace(0x{:x}, {})".format(location, ", ".join(args)))
+                _r = retrace(location, **args)
+                printi("[fsm] returned from retrace(0x{:x}, {}) with {}".format(location, ", ".join(args), _r), depth=depth)
+                
+            # dprint("[debug] location")
+            #  printi("[debug] location:{:x}".format(location))
+            
+            if (Qword(location) << 8 | Byte(location + 8)) == 0x2464ff0824648d48f8:
+                PatchBytes(location, [0xc3] + MakeNops(8))
 
-        _insn = idc.generate_disasm_line(location, 1)[0:32]
-        _insn = ' '.join(builtins.map(str.strip, _insn.split(' ', 1)))
-        if _insn == 'lea rsp, [rsp+8]' and GetManyBytes(location, 9) == b'H\x8dd$\x08\xffd$\xf8':
-            idc.patch_byte(location, 0xc3)
-            ForceFunction(location)
-            _insn = 'retn'
-        _vals = [align, idc.get_qword(offset), location, arg, idc.print_insn_mnem(location), _insn, _ori_location]
-        row = _.zipObject(['align', 'offset', 'location', 'arg', 'mnem', 'insn', 'ori_location'], _vals)
-        results.append( row )
+            _insn = idc.generate_disasm_line(location, 1)[0:32]
+            _insn = ' '.join(builtins.map(str.strip, _insn.split(' ', 1)))
+            if _insn == 'lea rsp, [rsp+8]' and idc.get_bytes(location, 9) == b'H\x8dd$\x08\xffd$\xf8':
+                idc.patch_byte(location, 0xc3)
+                ForceFunction(location)
+                _insn = 'retn'
+            _vals = [align, idc.get_qword(offset), location, arg, idc.print_insn_mnem(location), _insn, _ori_location]
+            row = _.zipObject(['align', 'offset', 'location', 'arg', 'mnem', 'insn', 'ori_location'], _vals)
+            results.append( row )
         #  c.addRow(row)
         b = b[e:]
         i = i[e:]
@@ -317,7 +321,7 @@ def FindStackMutators(ea=None, skipRetrace=False, path=None, **kwargs):
             #  printi("obj_vals: {}".format(obj_vals))
             _mnem     = idc.print_insn_mnem(obj_vals.location)
             _insn     = diida((obj_vals.location))
-            if _insn == 'lea rsp, [rsp+8]' and GetManyBytes(obj_vals.location, 9) == b'H\x8dd$\x08\xffd$\xf8':
+            if _insn == 'lea rsp, [rsp+8]' and idc.get_bytes(obj_vals.location, 9) == b'H\x8dd$\x08\xffd$\xf8':
                 ZeroFunction(obj_vals.location, 1)
                 PatchBytes(obj_vals.location, [0xc3])
                 #  ZeroFunction(obj_vals.location, 1)
@@ -328,6 +332,14 @@ def FindStackMutators(ea=None, skipRetrace=False, path=None, **kwargs):
                 _insn = 'retn'
                 _mnem = 'retn'
             obj_vals["ori_location"] = obj_vals["location"]
+            if not IsValidEA(obj_vals["ori_location"]):
+                pph(vals)
+                pph(obj_vals)
+                # raise ValueError("Invalid location")
+                b = b[mend:]
+                i = i[mend:]
+                match = re.search(regex, b)
+                continue
             obj_vals["location"] = SkipJumps(obj_vals["location"])
 
             _mnem     = GetMnemDi(obj_vals.location)

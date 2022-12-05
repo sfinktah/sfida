@@ -33,7 +33,7 @@ def _isIterable(o):
     return hasattr(o, '__iter__') and not hasattr(o, 'ljust')
 
 def _string_find(S, sub, start=0, end=None):
-    if isinstance(sub, string_type):
+    if isinstance(sub, string_types):
         return len(sub), S.find(sub, start, end)
     if _isre(sub):
         for m in re.finditer(sub, S):
@@ -43,7 +43,7 @@ def _string_find(S, sub, start=0, end=None):
         return -1, -1
 
 def _string_rfind(S, sub, start=0, end=None):
-    if isinstance(sub, str):
+    if isinstance(sub, string_types):
         return len(sub), S.rfind(sub, start, end)
     # if isinstance(sub, Pattern):
     if _isre(sub):
@@ -212,7 +212,7 @@ def string_between(left, right, subject, *args, **kwargs):
     if not ~r or r < l + llen:
         if v.repl is not None or v.retn_all_on_fail: return result.ret(subject, l, r)
         return result.ret('', l, r)
-    if v.inclusive and r:
+    if v.inclusive: #  and r:
         r += rlen
     else:
         l += llen

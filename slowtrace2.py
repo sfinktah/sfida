@@ -11,7 +11,7 @@ import textwrap
 from static_vars import static_vars
 from superglobals import *
 from attrdict1 import SimpleAttrDict
-_import("progress")
+# _import("progress")
 # _import("from rle import RunLengthList")
 from rle import RunLengthList
 
@@ -64,6 +64,7 @@ get_byte = idc.get_wide_byte
     #  compile(f.read().replace('__BASE__', os.path.basename(__file__).replace('.py', '')).replace('__FILE__', __file__),
             #  __file__, 'exec'))
 
+
 from exectools import execfile, make_refresh
 _refresh_slowtrace2 = make_refresh(os.path.abspath(__file__))
 _refresh_slowtrace_helpers = make_refresh(os.path.abspath(__file__.replace('2', '_helpers')))
@@ -71,6 +72,28 @@ def refresh_slowtrace2():
     _refresh_slowtrace_helpers()
     _refresh_slowtrace2()
     refresh_func_tails()
+    refresh_circular()
+
+if False:
+    if not hasglobal('_called_fix_jmp_loc_ret'):
+        refresh_slowtrace_helpers()
+        FixJmpLocRet()
+        setglobal('_called_fix_jmp_loc_ret', True)
+if False:
+    if not hasglobal('_called_fix_common_obfu_5'):
+        debug=0
+        l = [x for x in FunctionsPdata() if not IsNiceFunc(x)]
+        UnpatchUnused()
+        # for ea in FindInSegments('55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24'):
+        # for ea in FindInSegments('55 48 8d 2d ?? ?? ?? ?? 48'):
+        for ea in FindInSegments('55 48 8d 2d'):
+            if IsCode_(ea):
+                EaseCode(ea, forceStart=1)
+                count = 10
+                while obfu._patch(ea) and count > 0:
+                    count -= 1
+
+        setglobal('_called_fix_common_obfu_5', True)
 
 check_for_update_1 = make_auto_refresh(os.path.abspath(__file__.replace('2', '_helpers')))
 check_for_update_2 = make_auto_refresh(os.path.abspath(__file__))
@@ -101,8 +124,11 @@ class SlowtraceSingleStep(Exception):
 
 sprint = print
 
-def indent(n, s, skipEmpty=True, splitWith='\n', joinWith='\n', n2plus=None, skipFirst=False, stripLeft=False, width=70, indentString=' '):
-    
+def indent(n, s, skipEmpty=True, splitWith='\n', joinWith='\n', n2plus=None, skipFirst=False, stripLeft=False, width=70, indentString=' ', firstIndent=None):
+
+    if firstIndent is None:
+        firstIndent = n
+
     if isString(s):
         s = s.replace('\r', '').split(splitWith)
 
@@ -125,11 +151,14 @@ def indent(n, s, skipEmpty=True, splitWith='\n', joinWith='\n', n2plus=None, ski
         if isinstance(line, list):
             print("[indent] line: {}".format(line))
             continue
-        
+
         if stripLeft:
             line = line.lstrip()
         if skipFirst and not i:
             result.append(line)
+            continue
+        if firstIndent is not None and not i:
+            result.append(indentString * firstIndent + line)
             continue
         if not skipEmpty or line.rstrip():
             if isinstance(n, str):
@@ -144,7 +173,7 @@ def indent(n, s, skipEmpty=True, splitWith='\n', joinWith='\n', n2plus=None, ski
 def getglobal(key, default=None):
     """
     getglobal(key[, default]) -> value
-    
+
     Return the value for key if key is in the global dictionary, else default.
     """
     return globals().get(key, default)
@@ -163,7 +192,7 @@ def IsStackOperand(ea, ignoreLeaDisplacement=0):
         insn = ida_ua.insn_t()
         inslen = ida_ua.decode_insn(insn, get_ea_by_any(ea))
         if inslen == 0:
-            return None 
+            return None
 
         # lea     rsp, [rbp+80h]
         if ignoreLeaDisplacement:
@@ -172,19 +201,22 @@ def IsStackOperand(ea, ignoreLeaDisplacement=0):
                    insn.ops[1].type == ida_ua.o_displ:
                        return False
 
+
+
         # if insn.itype in itypes(r'(push|pop)'): return True
-        if insn.itype in [0x86, 0x87, 0x88, 0x89, 0x8a, 0x8b, 0x8c, 0x8d, 0x8e, 0x8f, 0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0x2c2]: 
+        if insn.itype in [0x86, 0x87, 0x88, 0x89, 0x8a, 0x8b, 0x8c, 0x8d, 0x8e, 0x8f, 0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0x2c2]:
             # printi(hex(ea), 'insn.itype', get_itype_string(insn.itype))
             return True
 
-        # rsp is operand 1
-        if insn.ops[0].type == ida_ua.o_reg and insn.ops[0].reg == 4 \
-                and insn.ops[1].type != ida_ua.o_reg: 
-                    if insn.itype in [ida_allins.NN_test]:
-                        Commenter(ea).add("Warning: stack-alignment obfu")
-                        return False
+        # xxx rsp, x
+        if insn.ops[0].type == ida_ua.o_reg and insn.ops[0].reg == 4:
+            if insn.ops[1].type == ida_ua.o_imm and insn.itype in [ida_allins.NN_test]:
+                Commenter(ea).add("Warning: stack-alignment obfu")
+                return False
 
-                    return True
+            return True
+
+
         return False
 
 def vimlike(ea=None, **kwargs):
@@ -243,7 +275,7 @@ def reloc(address=0, live=False, force=False, color="#224"):
         printi("[warn] reloc: couldn't force function at {:x}".format(address))
         return
     ea = address
-    count = -1 
+    count = -1
     while True:
         try:
             count += 1
@@ -282,24 +314,27 @@ def follow_call_thunks(ea = 0):
 def stopped():
     return os.path.exists('e:/git/ida/stop')
 
+@static_vars(history=[])
 def retrace_list(address, pre=None, post=None, recolor=0, func=0, color="#280c01", spd=0, tails=0, dual=0, jump=0, zero=0, unpatch=0, chunk=False, *args, **kwargs):
     global later
-    if address == later:
-        for ea in [x for x in later if isJmp(x)]: later.remove(ea)
+    #  if address == later:
+        #  for ea in [x for x in later if isJmp(x)]: later.remove(ea)
     if address is None:
         return
     if stopped():
         printi("*** STOP ***")
         return
     skipped = list()
+    retrace_list.history = []
 
+    TraceDepth._depth = 0
     def fail(ea, post):
         if post:
             post = list(post)
             for _post in post:
                 if callable(_post):
                     _post(ea)
-                    
+
     def success(ea, post):
         return fail(ea, post)
 
@@ -327,22 +362,28 @@ def retrace_list(address, pre=None, post=None, recolor=0, func=0, color="#280c01
                 LabelAddressPlus(addr, label)
 
     def skip(x):
+        if not IsValidEA(x):
+            return
         l = ''
         if HasUserName(x):
             l = GetTrueName(x)
         skipped.append((x, l))
         if 0:
-            if not recolor: 
+            if not recolor:
                 ZeroFunction(x, 1)
 
     # retrace_list_thunk_colors = gradient("#280c01", "#662222", 6)
-    if not recolor: 
+    if not recolor:
         p = ProgressBar(len(address), len(address))
-        p.always_print = True
+        p.always_print = False
     good = 0
     bad = 0
     for i, ea in enumerate([x for x in list(address) if IsValidEA(x)]):
-    # for ea in address[0:]:
+        if len(retrace_list.history) <= i:
+            retrace_list.history.append(ea)
+        else:
+            retrace_list.history[i] = ea
+
         rv = None
         pre_tried = []
         if pre is not None:
@@ -359,12 +400,12 @@ def retrace_list(address, pre=None, post=None, recolor=0, func=0, color="#280c01
                         else:
                             _unchanged_hash_count = 0
                     _last_hash = _new_hash
-                    try: 
+                    try:
                         printi("*****")
                         printi("** pre: [{}] {}-{} for {}".format(_pre.__name__, _unchanged_hash_count, hex(_last_hash), idc.get_name(ea, ida_name.GN_VISIBLE)))
                         _pre(ea)
                         printi("*****")
-                        try: 
+                        try:
                             rv = retrace(SkipJumps(ea), chunk=chunk, **kwargs)
                             _new_hash = GetFuncHash(ea)
                             if rv == 0:
@@ -404,8 +445,9 @@ def retrace_list(address, pre=None, post=None, recolor=0, func=0, color="#280c01
             #  p.update_bad(bad)
             #  p.update(i)
         try:
-            sk = SkipJumps(ea, skipShort=0, iteratee=lambda x, *a: skip(x))
-            ValidateEA(sk)
+            # sk = SkipJumps(ea, skipShort=0, skipCalls=0, iteratee=lambda x, *a: skip(x))
+            # ValidateEA(sk)
+            sk = ea
         except AdvanceFailure as e:
             printi("AdvanceFailure: {}".format(str(e)))
             raise
@@ -429,8 +471,8 @@ def retrace_list(address, pre=None, post=None, recolor=0, func=0, color="#280c01
                 MyMakeFunction(sk)
             if not recolor:
                 rv = retrace(sk, chunk=chunk, **kwargs)
-                msg = ("retrace returned {} for {:x}".format(hex(rv), sk))
-                printi(msg)
+                # msg = ("retrace returned {} for {:x}".format(hex(rv), sk))
+                # printi(msg)
                 #  if chunk:
                     #  yield msg
 
@@ -440,7 +482,8 @@ def retrace_list(address, pre=None, post=None, recolor=0, func=0, color="#280c01
                 success(ea, post)
             if recolor or rv == 0:
                 # printi("*** GOOD *** {:x}".format(sk))
-                address.remove(ea)
+                if ea in address:
+                    address.remove(ea)
                 good += 1
                 if recolor and skipped:
                     skipped.reverse()
@@ -459,6 +502,9 @@ def retrace_list(address, pre=None, post=None, recolor=0, func=0, color="#280c01
                         #  for addr in Chunks(sk):
                             #  fix_dualowned_chunk(addr[0])
                         #  ZeroFunction(ea)
+        except RelocationDupeError:
+            continue
+
         except RelocationStackError as e:
             if ~str(e).find('incorrect SpDiff 0x0'):
                 for addr in Chunks(sk):
@@ -493,7 +539,7 @@ def iter_retrace_list(address, recolor=0, func=0, color="#280c01", spd=0, tails=
             l = GetTrueName(x)
         skipped.append((x, l))
         if 0:
-            if not recolor: 
+            if not recolor:
                 ZeroFunction(x, 1)
 
     # retrace_list_thunk_colors = gradient("#280c01", "#662222", 6)
@@ -544,26 +590,6 @@ def iter_retrace_list(address, recolor=0, func=0, color="#280c01", spd=0, tails=
             pass
 
         bad += 1
-def unpatch(funcea=None):
-    """
-    unpatch
-
-    @param funcea: any address in the function
-    """
-    funcea = eax(funcea)
-    func = ida_funcs.get_func(funcea)
-
-    if not func:
-        return 0
-    else:
-        funcea = func.start_ea
-
-    for r in range(10):
-        UnpatchFunc(funcea)
-        slowtrace2(ea, removeFuncs=1, noObfu=1, silent=1, vim=-1, modify=0, ignoreStack=1, ignoreExtraStack=1, fatalStack=0)
-        ZeroFunction(funcea)
-        slowtrace2(ea, removeFuncs=1, noObfu=1, silent=1, vim=-1, modify=0, ignoreStack=1, ignoreExtraStack=1, fatalStack=0)
-
 
 def RecreateFunctionThunks(ea=None):
     """
@@ -603,14 +629,13 @@ def retrace_skip_jumps(ea=None, **kwargs):
     return retrace_list(ea, removeFuncs=1, noObfu=1, modify=0, adjustStack=1, applySkipJumps=1, once=1, **kwargs)
 
 def retrace_unpatch(address, **kwargs):
-    clear(); 
-    # refresh_slowtrace2(); 
-    retrace_list(address, applySkipJumps=0, forceRemoveChunks=0, once=1, pre=[GetFuncName, unpatch_func2, unpatch_func, ZeroFunction, unpatch_func2, unpatch_func, ZeroFunction, unpatch_func2, unpatch_func, ZeroFunction], **kwargs)
+    clear();
+    # refresh_slowtrace2();
+    retrace_list(address, applySkipJumps=0, forceRemoveChunks=0, once=1, pre=[GetFuncName, unpatch_func2, unpatch_func, ida_retrace, ZeroFunction, unpatch_func2, unpatch_func, ZeroFunction, unpatch_func2, unpatch_func, ZeroFunction], **kwargs)
 
-def retrace(address=None, color="#280c01", no_hash=False, no_func_tails=False,  retails=False, redux=False, unpatchFirst=False, unpatch=False, once=False, recreate=False, chunk=False, noFixChunks=False, **kwargs):
+def retrace(address=None, color="#280c01", no_hash=False, _ida_retrace=False, no_func_tails=False,  retails=False, redux=False, unpatchFirst=False, unpatch=False, once=False, recreate=False, chunk=False, noFixChunks=False, **kwargs):
     if isinstance(address, list):
         return [retrace(x, **kwargs) for x in address]
-
 
     externalTargets = defaultglobal('externalTargets', set())
     global warn
@@ -618,23 +643,29 @@ def retrace(address=None, color="#280c01", no_hash=False, no_func_tails=False,  
     if idc.batch(0):
         printi("*** Batch Was enabled ***")
 
+    if debug: printi("retrace called for {}".format(ahex(address)))
+
     # TODO: check calling stack, and reset depth if we were called from the command "line"
     address = eax(address)
+    start_address = address
     with TraceDepth() as _depth:
 
     # printi("[retrace] args:{}, kwargs:{}".format(args, kwargs))
-    
+
 
         funcea = GetFuncStart(address)
         # dprint("[retrace] funcea")
-        if debug: print("[retrace] funcea:{}".format(funcea))
-        
+        if debug: print("[retrace] funcea: {:#x}".format(funcea))
+
         if funcea != idc.BADADDR:
             address = funcea
         # dprint("[retrace] address")
-        if debug: print("[retrace] address:{}".format(address))
-        
-        address = SkipJumps(address, includeStart=True, includeEnd=False, iteratee=lambda ea, i, *a: MakeThunk(ea))
+        if debug: print("[retrace] address: {:#x}".format(address))
+
+        applySkipJumps = kwargs.get('applySkipJumps', False)
+        skipJumps = kwargs.get('skipJumps', True)
+        if skipJumps:
+            address = SkipJumps(address, skipNops=1, skipObfu=1, skipCalls=False, includeStart=True, includeEnd=False, apply=applySkipJumps, iteratee=lambda ea, i, *a: MakeThunk(ea))
             #  elif ea + IdaGetInsnLen(ea) < GetFuncEnd(ea):
                 #  mnem = idc.print_insn_mnem(ea)
                 #  if mnem and mnem.startswith('jmp'):
@@ -651,30 +682,34 @@ def retrace(address=None, color="#280c01", no_hash=False, no_func_tails=False,  
         #  else:
             #  globals()['last_retrace'].insert(0, indent(_depth, ' ', hex(address)))
         if not IsFuncHead(address) and not ForceFunction(address) and not IsFuncHead(address):
-            printi("[retrace] [warn] couldn't force function at {:x}".format(address))
-            
-            return
+            printi("[retrace] return [warn] couldn't force function at {:x}".format(address))
+            return -1
 
+        if _ida_retrace:
+            ida_retrace(address, **kwargs)
+            if IsNiceFunc(address) and not func_tails(address, quiet=1, returnErrorObjects=1, **(_.pick(kwargs, 'ignoreInt'))):
+                # insn_match(ea, idaapi.NN_xchg, (idc.o_reg, 5), (idc.o_phrase, 4), comment='xchg [rsp], rbp')
+                return 0
         if recreate:
             RecreateFunction(funcea)
 
         rv = None
         funcea_ori = funcea
         if retails or redux:
-            funcea = SkipJumps(funcea)
+            funcea = SkipJumps(funcea, skipCalls=False)
         if retails:
             output = None
-            ft = func_tails(funcea, quiet=1, output=output, externalTargets=externalTargets, extra_args=kwargs)
+            ft = func_tails(funcea, quiet=1, output=output, externalTargets=externalTargets, extra_args=kwargs, **(_.pick(kwargs, 'ignoreInt')))
             if ft:
                 printi('\n'.join(ft))
                 RecreateFunction(funcea)
-                ft = func_tails(funcea, quiet=1, output=output, externalTargets=externalTargets, extra_args=kwargs)
+                ft = func_tails(funcea, quiet=1, output=output, externalTargets=externalTargets, extra_args=kwargs, **(_.pick(kwargs, 'ignoreInt')))
                 if ft:
                     printi('\n'.join(ft))
             if not ft:
                 if not redux:
                     rv = _fix_spd_auto(funcea)
-                    
+
                     return rv
         if redux:
             try:
@@ -683,22 +718,22 @@ def retrace(address=None, color="#280c01", no_hash=False, no_func_tails=False,  
                     _fix_spd_auto(funcea)
                     if IsFuncSpdBalanced:
                         printi("{:x} SpdBalanced: {}".format(funcea, 'ok'))
-                        ft = func_tails(funcea, quiet=1, externalTargets=externalTargets, extra_args=kwargs)
+                        ft = func_tails(funcea, quiet=1, externalTargets=externalTargets, extra_args=kwargs, **(_.pick(kwargs, 'ignoreInt')))
                         if ft:
                             printi("{:x} func_tails: {}".format(funcea, "\n".join(ft)))
                         else:
                             printi("{:x} func_tails: {}".format(funcea, 'clean'))
-                            
+
                             return 0
             except AdvanceFailure as e:
                 printi("{:x} AdvanceFailure: {}".format(funcea, e))
 
-            locs = SkipJumps(start_address, returnJumps=1)
+            locs = SkipJumps(start_address, returnJumps=1, skipCalls=False)
             locs.append(SkipJumps(start_address))
             for ea in locs:
                 idc.del_func(ea)
             UnpatchUn()
-            SkipJumps(start_address, iteratee=lambda x, *a: idc.add_func(x, EaseCode(x)))
+            SkipJumps(start_address, skipCalls=False, iteratee=lambda x, *a: idc.add_func(x, EaseCode(x)))
 
         if unpatchFirst:
             unpatch_func2(funcea, unpatch=1)
@@ -711,7 +746,7 @@ def retrace(address=None, color="#280c01", no_hash=False, no_func_tails=False,  
         ea = address
         count = -1
         rv = 0
-        count_limit = 3
+        count_limit = 8
         last_hash = None
         _hash = None
         patchResults = []
@@ -719,23 +754,27 @@ def retrace(address=None, color="#280c01", no_hash=False, no_func_tails=False,  
         extra_args = dict()
         extra_args.update(kwargs)
         while count < count_limit:
+            address = SkipJumps(address, skipCalls=False, includeStart=True, includeEnd=False, apply=applySkipJumps, iteratee=lambda ea, *a: MakeThunk(ea))
+            num_chunks = GetNumChunks(address)
+            if num_chunks > 100:
+                kwargs['noResume'] = True
             if patchResults: # patches or rv != last_rv:
                 if count_limit < 50:
                     if (count_limit - count) < 3:
-                        count_limit = count + 3 
+                        count_limit = count + 3
                 patchResults = []
             count += 1
             try:
                 if os.path.exists('e:/git/ida/stop'):
                     printi("*** STOP ***")
-                    
+
                     return
                 last_rv = rv
                 last_hash = _hash
                 if not noFixChunks:
-                    if debug: print("calling FixChunks #1")
+                    if debug: print("calling FixChunks #1 at {:#x}".format(ea))
                     FixChunks(ea, leave=ea)
-                
+
                 warn = 0
                 traceOutput = []
                 patches = 0
@@ -747,18 +786,68 @@ def retrace(address=None, color="#280c01", no_hash=False, no_func_tails=False,  
                 setglobal('spdList', spdList)
                 try:
                     #  print("count #{}/{}".format(count, count_limit))
+                    spdList = []
+                    setglobal('spdList', spdList)
                     rv = slowtrace2(ea, color=color, returnPatches=patchResults, returnOutput=traceOutput, spdList=spdList, **kwargs)
                 except AdvanceReverse as e:
+                    raise
+                    spdList = []
+                    setglobal('spdList', spdList)
                     rv = slowtrace2(e.args[0], color=color, returnPatches=patchResults, returnOutput=traceOutput, spdList=spdList, **kwargs)
                 _new_hash = GetFuncHash(ea)
                 if not no_hash and _old_hash == _new_hash:
-                    printi("hash stayed at {:x}".format(_new_hash))
+                    # printi("hash stayed at {:x}".format(_new_hash))
+                    if not patchResults:
+                        #  printi("no patches")
+                        if rv == 0:
+                            if spdList:
+                                #  spd = _fix_spd_auto(SkipJumps(ea)) != 0
+                                addresses = set()
+                                last_addresses = set()
+                                for r in range(1000):
+                                    if r > 9 and r % 10 == 0:
+                                        if len(last_addresses) and len(last_addresses.union(addresses)) == len(last_addresses.intersection(addresses)):
+                                            printi("_fix_spd might be in an endless loop")
+                                            break
+                                        last_addresses = addresses.copy()
+                                        printi("_fix_spd(spdList) attempt {}".format(r))
+                                    if not _fix_spd(spdList, addresses):
+                                        # printi("_fix_spd(spdList) failed")
+                                        break
+                                if not HasUserName(ea):
+                                    LabelAddressPlus(ea, "_{}".format(ean(ea)))
+                        if rv:
+                            try:
+                                #  print("count #{}/{}".format(count, count_limit))
+                                if kwargs.get('noSti', None) or kwargs.get('noObfu', None):
+                                    printi("trying without noSti/noObfu")
+                                    spdList = []
+                                    setglobal('spdList', spdList)
+                                    rv = slowtrace2(ea, color=color, returnPatches=patchResults, returnOutput=traceOutput, spdList=spdList, **(_.omit(extra_args, 'noSti', 'noObfu')))
+                            except AdvanceReverse as e:
+                                pass
+                        return rv
                 if once:
                     if rv != 0 and unpatch:
                         UnpatchFunc(ea)
-                        
+
                         return retrace(ea, once=once, **kwargs)
-                    
+
+                    if rv == 0:
+                        if spdList:
+                            #  spd = _fix_spd_auto(SkipJumps(ea)) != 0
+                            addresses = set()
+                            last_addresses = set()
+                            for r in range(1000):
+                                if r > 9 and r % 10 == 0:
+                                    if len(last_addresses) and len(last_addresses.union(addresses)) == len(last_addresses.intersection(addresses)):
+                                        printi("_fix_spd might be in an endless loop")
+                                        break
+                                    last_addresses = addresses.copy()
+                                    printi("_fix_spd(spdList) attempt {}".format(r))
+                                if not _fix_spd(spdList, addresses):
+                                    break
+
                     return rv
                 for r in patchResults:
                         #  pp(r)
@@ -767,25 +856,26 @@ def retrace(address=None, color="#280c01", no_hash=False, no_func_tails=False,  
                     if re.match(r""".*(slvars.rsp_diff|couldn't create instruction|\[warn]|unexpected stack change)""", r):
                         #  pp(r)
                         patches += 1
-                printi("slowtrace returned 0x{:x}".format(rv))
+                if rv != 0: printi("slowtrace returned 0x{:x}".format(rv))
                 ft_patches = 0
                 if not no_func_tails:
-                    ft = func_tails(funcea, returnErrorObjects=1, quiet=1, externalTargets=externalTargets, extra_args=extra_args)
-                    printi("func_tails returned {}".format(len(ft)))
+                    ft = func_tails(funcea, returnErrorObjects=1, quiet=1, externalTargets=externalTargets, **(_.pick(extra_args, 'ignoreInt')))
+                    if ft: printi("func_tails returned {}".format(len(ft)))
                     if ft:
                         # ft = func_tails(ft)
-                        printi("fix_func_tails({}, {})".format(pph(_.pluck(ft, '__str__')), extra_args))
+                        printi("fix_func_tails({}, {})".format(pph(_.pluck(ft, '__str__')), _.pick(extra_args, 'ignoreInt')))
                         fft_ret = fix_func_tails(ft, extra_args)
                         if isinstance(fft_ret, int):
                             ft_patches += fft_ret
                         printi("fix_func_tails returned: {}".format(fft_ret))
                         if fft_ret == "int":
+                            printi("[retrace] return fix_func_tails return 'int'")
                             return rv
                 if (no_hash or _old_hash == _new_hash) and rv != 0:
                     if rv != 0 and unpatch:
                         UnpatchFunc(ea)
-                    printi("Finishing as hash stayed at {:x}".format(_new_hash))
-                    
+                    printi("[retrace] return finishing as hash stayed at {:x}".format(_new_hash))
+
                     return rv
 
                 if ft_patches:
@@ -795,36 +885,43 @@ def retrace(address=None, color="#280c01", no_hash=False, no_func_tails=False,  
                 if ft_patches or patches:
                     count += 1
                     continue
-                if rv == 0:
-                    if last_rv == 0:
-                        if warn:
-                            if count < count_limit - 1:
-                                printi("***** RERUNNING DUE TO WARNING MESSAGES *****")
-                                count = count_limit - 1
-                                continue
-                    # ft = func_tails(funcea, returnErrorObjects=1, quiet=1, externalTargets=externalTargets)
-                    if not no_func_tails and ft:
-                        if not IsFunc_(funcea):
-                            printi("0x{:x} is no longer a function, switching to 0x{:x}".format(funcea, address))
-                            funcea = address
-                        ft = func_tails(funcea, returnErrorObjects=0, quiet=1, externalTargets=externalTargets, extra_args=extra_args)
-                    if not no_func_tails and ft:
-                        printi('\n'.join([str(x) for x in ft]))
-                        
-                        return -1
-                    elif spdList:
+                if rv == 0 and (no_hash or _old_hash == _new_hash):
+                    #  if last_rv == 0:
+                        #  if warn:
+                            #  if count < count_limit - 1:
+                                #  printi("***** RERUNNING DUE TO WARNING MESSAGES *****")
+                                #  count = count_limit - 1
+                                #  continue
+                    #  # ft = func_tails(funcea, returnErrorObjects=1, quiet=1, externalTargets=externalTargets)
+                    #  if not no_func_tails and ft:
+                        #  if not IsFunc_(funcea):
+                            #  printi("0x{:x} is no longer a function, switching to 0x{:x}".format(funcea, address))
+                            #  funcea = address
+                        #  ft = func_tails(funcea, returnErrorObjects=0, quiet=1, externalTargets=externalTargets, extra_args=extra_args)
+                    #  if not no_func_tails and ft:
+                        #  printi('\n'.join([str(x) for x in ft]))
+                        #  printi('returning -1')
+                        #  return -1
+                    if spdList:
                         #  spd = _fix_spd_auto(SkipJumps(ea)) != 0
+                        addresses = set()
+                        last_addresses = set()
                         for r in range(1000):
                             if r > 9 and r % 10 == 0:
+                                if len(last_addresses) and len(last_addresses.union(addresses)) == len(last_addresses.intersection(addresses)):
+                                    printi("_fix_spd might be in an endless loop")
+                                    break
+                                last_addresses = addresses.copy()
                                 printi("_fix_spd(spdList) attempt {}".format(r))
-                            if not _fix_spd(spdList):
+                            if not _fix_spd(spdList, addresses):
                                 break
-                    
+
+                    printi("[retrace] return hash eq")
                     return rv
             except RelocationUnpatchRequest as e:
-                printi("slowtrace threw {} {}".format(e.__class__.__name__, str(e)))
+                printi("[retrace] return slowtrace threw {} {}".format(e.__class__.__name__, str(e)))
                 #  UnpatchFunc(ea)
-                
+
                 return -1
                 pass
 
@@ -849,9 +946,9 @@ def retrace(address=None, color="#280c01", no_hash=False, no_func_tails=False,  
                     raise
 
                 tb = traceback.format_exc()
-                printi(tb)
+                printi("traceback: {}".format(tb))
                 if type(last_error) == type(e):
-                    
+                    printi("returning -2")
                     return -2
                     unpatch_func2(ea, unpatch=1)
                     UnpatchUn()
@@ -879,13 +976,13 @@ def retrace(address=None, color="#280c01", no_hash=False, no_func_tails=False,  
                 #  printi(tb)
                 pass
             except RelocationInvalidStackError as e:
-                printi("[retrace] slowtrace threw {}: {}".format(e.__class__.__name__, str(e)))
-                
+                printi("[retrace] return slowtrace threw {}: {}".format(e.__class__.__name__, str(e)))
+
                 return -1
             except RelocationTerminalError as e:
                 printi("[retrace] slowtrace threw {}: {}".format(e.__class__.__name__, str(e)))
                 tb = traceback.format_exc()
-                printi(tb)
+                printi("traceback: {}".format(tb))
                 if debug: print("calling FixChunks #2")
                 FixChunks(ea, leave=ea)
                 #  ZeroFunction(ea)
@@ -893,13 +990,13 @@ def retrace(address=None, color="#280c01", no_hash=False, no_func_tails=False,  
             except RelocationPatchedError as e:
                 printi("[retrace] slowtrace threw {}: {}".format(e.__class__.__name__, str(e)))
                 tb = traceback.format_exc()
-                printi(tb)
+                printi("traceback: {}".format(tb))
                 count_limit = min(10, count_limit + 1)
                 pass
             except ChunkFailure as e:
                 printi("[retrace] slowtrace threw {}: {}".format(e.__class__.__name__, str(e)))
                 tb = traceback.format_exc()
-                printi(tb)
+                printi("traceback: {}".format(tb))
                 if debug: print("calling FixChunks #3")
                 FixChunks(ea, leave=ea)
                 pass
@@ -915,11 +1012,12 @@ def retrace(address=None, color="#280c01", no_hash=False, no_func_tails=False,  
                 #  ea = addr
             #  except RelocationInvalidStackError:
                 #  pass
-    #  
+    #
             except KeyboardInterrupt as e:
                 printi("******* KEYTHINGY!! ********")
                 raise KeyboardInterrupt
         ida_auto.auto_wait()
+        printi("[retrace] return count: {}".format(count))
 
 
 # http://stackoverflow.com/questions/1112618/import-python-package-from-local-directory-into-interpreter
@@ -988,8 +1086,11 @@ class RelocationAssemblerError(ObfuError):
 
 later = globals().get('later', set())
 later2 = globals().get('later2', set())
+global_chunks = globals().get('global_chunks', defaultdict(set))
 if 'arxan_comments' not in globals():
     arxan_comments = dict()
+
+
 
 @auto_refresh(__file__)
 def slowtrace2(ea=None,
@@ -1001,7 +1102,7 @@ def slowtrace2(ea=None,
                adjustStackFake=False,
                anal=False,
                appendChunks=False,
-               codeRefsTo=set(),
+               codeRefsTo=None,
                color=None,
                count=None,
                cursor=False,
@@ -1036,6 +1137,7 @@ def slowtrace2(ea=None,
                noObfu=False,
                noPdata=False,
                noResume=False,
+               noSti=False,
                output=None,
                plan=False,
                process=None,
@@ -1051,10 +1153,10 @@ def slowtrace2(ea=None,
                showComments=False,
                silent=True,
                single=False,
-               skipJumps=True,
+               skipJumps=False,
                applySkipJumps=False,
                skipNops=False,
-               spdList=[],
+               spdList=None,
                stop=BADADDR,
                stopAtCall=False,
                stopAtJmp=False,
@@ -1069,15 +1171,25 @@ def slowtrace2(ea=None,
     check_for_update_1()
     check_for_update_2()
 
+    global global_chunks
+
+    spdList = A(spdList)
+    if codeRefsTo is None:
+        codeRefsTo = set()
+
+    if debug: printi("slowtrace2 called for {:#x}".format(ea))
+
     if vimlike:
         removeFuncs=1
         noObfu=1
+        noSti=1
         silent=1
         vim=-1
         modify=0
         ignoreStack=1
         ignoreExtraStack=1
         fatalStack=0
+
     def arg_check(arg_list, arg_name, arg_value, arg_default):
         if arg_value != arg_default:
             arg_list[arg_name] = arg_value
@@ -1098,22 +1210,31 @@ def slowtrace2(ea=None,
     global later
     global later2
     global arxan_comments
-    later_pending = set()
+    # later_pending = set()
     setglobal('g_output', output)
     slvars = SimpleAttrDict()
     slvars2 = SimpleAttrDict()
     slvars.addresses = set()
+    slvars.nops = set()
+    slvars.real = set()
+    slvars.jumps = set()
+    slvars.chunks = set()
+    slvars.ea = ea
+    prev_ea = ea
+    slvars.prev_ea = prev_ea
+    slvars2.chunks = set()
+
     global patchmarks
     patchmarks.clear()
 
     def sprint(*args):
         s = args[-1]
         if isinstance(s, Exception):
-            printi("0x{:09x}: 0x{:09x}: {} {:x} {!r} ({})".format(slvars.startLoc, ea, len(slvars.addresses), slvars.rsp, str(s), type(s)))
+            printi("0x{:09x}: 0x{:09x}: {:6} {:5x} {!r} ({})".format(slvars.startLoc, ea, len(slvars.addresses), slvars.rsp, str(s), type(s)))
             buf = "0x{:09x}: 0x{:09x}: {} {:x} {!s}".format(slvars.startLoc, ea, len(slvars.addresses), slvars.rsp, str(s))
             raise (type(s))(buf)
-            
-        buf = "0x{:09x}: 0x{:09x}: {} {:x} {}".format(slvars.startLoc, ea, len(slvars.addresses), slvars.rsp, str(s))
+
+        buf = "0x{:09x}: 0x{:09x}: {:6} {:5x} {}".format(slvars.startLoc, ea, len(slvars.addresses), slvars.rsp, str(s))
         if isinstance(args[0], tuple):
             if isinstance(debug, list):
                 for filter in debug:
@@ -1123,7 +1244,7 @@ def slowtrace2(ea=None,
         printi(buf)
         return s
 
-    printi("slowtrace2 ea=0x{:09x} {} {}".format(ea, idc.get_func_name(ea), pl))
+    printi("slowtrace2 ea=0x{:09x} {} ({} chunks) {}".format(ea, idc.get_func_name(ea), GetNumChunks(ea), pl))
     global st_limit
 
     st_limit = limit
@@ -1149,12 +1270,11 @@ def slowtrace2(ea=None,
         color_darkest = rgb_to_int(colorsys_rgb_to_rgb(colorsys.hsv_to_rgb(*hsv_color_darkest_list)))
 
 
-    slvars.addressesRemoved = 0
-    slvars.cbuffer = CircularList(16)
     slvars.chunkAdding = 0
     slvars.contig = 0
     slvars.currentChunk = GetFuncStart(ea)
-    slvars2.instructions = CircularList(200)
+    slvars2.instructions = CircularList(20)
+    slvars2.rspHelper = defaultdict(list)
     slvars2.helped = set()
     slvars.maxSp = 0
     slvars.minSp = 0
@@ -1174,6 +1294,7 @@ def slowtrace2(ea=None,
     slvars2.outputLines = []
     slvars2.previousHeads = CircularList(64)
 
+    # global_chunks[slvars.startLoc].update(idautils.Chunks(ea))
     # note: these two can apply to the whole function, or just a chunk (if a chunk is what we're working with)
     idc.auto_wait()
     if not IsFuncHead(ea) and not ForceFunction(ea):
@@ -1192,6 +1313,9 @@ def slowtrace2(ea=None,
     slvars.branchNumber = []
     slvars.rsp = 0
     slvars.indent = 0
+
+    if ea in later:
+        later.remove(ea)
 
     idc.add_func(ea)
     if idc.get_fchunk_attr(ea, FUNCATTR_START) == BADADDR:
@@ -1213,7 +1337,6 @@ def slowtrace2(ea=None,
         raise RelocationDupeError(msg)
 
     relocPrefix = []
-    patches = 0
     must_reverse = 0
     patched = []
     stateStack = []
@@ -1300,16 +1423,22 @@ def slowtrace2(ea=None,
         else:
             slvars2.outputLines.append(s)
 
-        if not silent:
+        if not silent and s:
             printi(s)
         if isinstance(returnOutput, list):
             returnOutput.append(s)
         return ''
 
-    def CheckChunkChange(new, old):
+    def CheckChunkChange(old, new):
         # TODO: should check if chunk can be extended, even if belonging to same func
-        
-        if GetChunkNumber(new) != GetChunkNumber(old) and new != slvars.startLoc:
+        if not IsFunc_(old):
+            raise AdvanceFailure('CheckChunkChange called with non-func old: {:#x}'.format(old))
+        if not IsSameChunk(old, new) and new != slvars.startLoc:
+
+            #  _chunk = (GetChunkStart(new), GetChunkEnd(new))
+            #  slvars.chunks.add(_chunk)
+            #  slvars2.chunks.add(_chunk)
+            #  global_chunks[slvars.startLoc].add((GetChunkStart(new), GetChunkEnd(new)))
             rv = SmartAddChunk(new, old)
             #
         #  if GetChunkNumber(new) != GetChunkNumber(old) and GetChunkNumber(new) != 0:
@@ -1324,109 +1453,112 @@ def slowtrace2(ea=None,
         if noAppendChunks or not modify and not appendChunks:
             return
 
-        if GetChunkStart(new) == slvars.startLoc:
+        cs, ce = GetChunkStart(new), GetChunkEnd(new)
+
+        if cs == slvars.startLoc:
+            # start of func
             return
+
         if GetChunkNumber(new, slvars.startLoc) == 0:
-            return
-        if IsSameFunc(new, old):
+            # start of func
             return
 
-        if IsChunk(new):
-            owners = GetChunkOwners(new, includeOwner=1)
-            if len(owners) > 0:
-                if len(owners) > 1:
-                    if debug: sprint("SmartAddChunk: {:x} has multiple owners".format(new))
-                    FixChunk(new)
-                    #  RemoveAllChunkOwners(new)
-                    #  raise ChunkFailure("SmartAddChunk: {:x} has multiple owners".format(new))
-                elif slvars.startLoc not in owners: 
-                    if not HasUserName(owners[0]):
-                        if debug: sprint("removing chunk from no-name func {:x} at {:x}".format(owners[0], new))
-                        idc.remove_fchunk(owners[0], new)
-                    else:
-                        msg = "SmartAddChunk: {} already owned by {} while attempting to add to {}".format(
-                                format_chunk_range(new), 
-                                describe_target(owners[0]), 
-                                describe_target(slvars.startLoc))
-                        retrace(owners[0], once=1, forceRemoveChunks=1)
-                        raise ChunkFailure(msg)
+        if IsSameFunc(new, old) or IsSameFunc(slvars.startLoc, new):
+            # chunk already added -- but should probably check extent
+            return
 
-            if GetChunkNumber(new, slvars.startLoc) != GetChunkNumber(old, slvars.startLoc):
-                cstart = GetChunkStart(new)
-                cend = GetChunkEnd(new)
-                if IsValidEA(cstart) and IsValidEA(cend):
-                    sh = set((Heads(cstart, cend)))
-                    snt = set((NotHeads(cstart, cend, lambda x: not IsTail(x), lambda x, *a: idc.next_not_tail(x))))
-                    if snt.difference(sh) or not isFlowEnd(idc.prev_head(cend)):
-                        try:
-                            end = EaseCode(cstart)
-                            if end > cend:
-                                printi("[SmartAddChunk] Setting chunk end from EaseCode: {:x} -> {:x}".format(cend, end))
-                                SetChunkEnd(cstart, end)
-                                ida_auto.plan_and_wait(cstart, end)
-                        except AdvanceFailure as e:
-                            printi("Connecting chunk {} to chunk {}".format(ahex(old), ahex(new)))
-                            printi("History: {}".format(hex([x.source for x in slvars2.previousHeads])))
-                            printi("slowtrace threw {}: {}".format(e.__class__.__name__, str(e)))
+        count = 0
+        while count < 5:
+            count += 1
+            cs, ce = GetChunkStart(new), GetChunkEnd(new)
+            if IsChunk(new):
+                # is chunk (excluding head of func)
+                owners = GetChunkOwners(new, includeOwner=1)
+                if len(owners) > 0:
+                    if len(owners) > 1:
+                        if debug: sprint("SmartAddChunk: {:x} has multiple owners".format(new))
+                        FixChunk(new)
+                        continue
+                        #  RemoveAllChunkOwners(new)
+                        #  raise ChunkFailure("SmartAddChunk: {:x} has multiple owners".format(new))
+                    elif slvars.startLoc not in owners:
+                        if not HasUserName(owners[0]):
+                            if debug: sprint("removing chunk from no-name func {:x} at {:x}".format(owners[0], new))
+                            idc.remove_fchunk(owners[0], new)
+                        else:
+                            msg = "SmartAddChunk: {} already owned by {} while attempting to add to {}".format(
+                                    format_chunk_range(new),
+                                    describe_target(owners[0]),
+                                    describe_target(slvars.startLoc))
+                            printi(msg)
+                            retrace(owners[0], once=1, forceRemoveChunks=1)
+                        continue
+
+                if GetChunkNumber(new, slvars.startLoc) != GetChunkNumber(old, slvars.startLoc):
+                    cstart, cend = cs, ce
+                    if IsValidEA(cstart) and IsValidEA(cend):
+                        sh = set((Heads(cstart, cend)))
+                        snt = set((NotHeads(cstart, cend, lambda x: not IsTail(x), lambda x, *a: idc.next_not_tail(x))))
+                        if snt.difference(sh) or not isFlowEnd(idc.prev_head(cend), ignoreInt=ignoreInt):
+                            try:
+                                end = EaseCode(cstart)
+                                if end > cend:
+                                    printi("[SmartAddChunk] Setting chunk end from EaseCode: {:x} -> {:x}".format(cend, end))
+                                    SetChunkEnd(cstart, end)
+                                    ida_auto.plan_and_wait(cstart, end)
+                            except AdvanceFailure as e:
+                                printi("Connecting chunk {} to chunk {}".format(ahex(old), ahex(new)))
+                                printi("History: {}".format(hex([x.source for x in slvars2.previousHeads])))
+                                printi("slowtrace threw {}: {}".format(e.__class__.__name__, str(e)))
+                                raise
+            else: 
+                # if not chunk
+                try:
+                    end = EaseCode(new, forceStart=1)
+                except AdvanceFailure as e:
+                    printi("History assessing new chick-size: {}".format(hex([x.source for x in slvars2.previousHeads])))
+                    printi("slowtrace threw {}: {}".format(e.__class__.__name__, str(e)))
+                    sb = string_between('advance past ', '', str(e))
+                    if sb:
+                        sbi = int(sb, 16)
+                        if idc.get_wide_dword(sbi) == 0:
+                            printi("reverting dword at 0x{:x}".format(sbi))
+                            for x in range(sbi, sbi+4):
+                                ida_bytes.revert_byte(x)
+                        else:
                             raise
-        else:
-            # end = EndOfContig(new)
-            try:
-                end = EaseCode(new, forceStart=1) 
-            except AdvanceFailure as e:
-                printi("History: {}".format(hex([x.source for x in slvars2.previousHeads])))
-                printi("slowtrace threw {}: {}".format(e.__class__.__name__, str(e)))
-                sb = string_between('advance past ', '', str(e))
-                if sb:
-                    sbi = int(sb, 16)
-                    if idc.get_wide_dword(sbi) == 0:
-                        printi("reverting dword at 0x{:x}".format(sbi))
-                        for x in range(sbi, sbi+4):
-                            ida_bytes.revert_byte(x)
                     else:
                         raise
-                else:
-                    raise
 
-            #  if isRet(end):
-                #  end += 1
-            if debug: printi("[SmartAddChunk] New Chunk: {:x}-{:x}".format(new, end))
-            if IsValidEA(end):
-                rv = ida_auto.plan_and_wait(new, end)
-                if not my_append_func_tail(slvars.startLoc, new, end):
-                    for ea in idautils.Heads(new, end): GetDisasm(ea)
-                    if not my_append_func_tail(slvars.startLoc, new, end):
-                        printi("couldn't append_func_tail(0x{:x}, 0x{:x}, 0x{:x})".format(slvars.startLoc, new, end))
+                #  if isRet(end):
+                    #  end += 1
+                if debug: printi("[SmartAddChunk] New Chunk: {:x}-{:x}".format(new, end))
+                if IsValidEA(end):
+                    rv = ida_auto.plan_and_wait(new, end)
+                    if not ShowAppendFchunk(slvars.startLoc, new, end, 0):
+                        for ea in idautils.Heads(new, end): GetDisasm(ea)
+
+                        if not ShowAppendFchunk(slvars.startLoc, new, end, 0):
+                            printi("couldn't append_func_tail(0x{:x}, 0x{:x}, 0x{:x})".format(slvars.startLoc, new, end))
+                        else:
+                            printi("succeeded after GetDisasm(EaseCode): append_func_tail(0x{:x}, 0x{:x}, 0x{:x})".format(slvars.startLoc, new, end))
                     else:
-                        printi("succeeded after GetDisasm(EaseCode): append_func_tail(0x{:x}, 0x{:x}, 0x{:x})".format(slvars.startLoc, new, end))
-                else:
-                    #  print("succeeded append_func_tail(0x{:x}, 0x{:x}, 0x{:x})".format(slvars.startLoc, new, end))
-                    if GetChunkNumber(new) == -1:
-                        printi("why is chunk# -1 after append_func_tail(0x{:x}, 0x{:x}, 0x{:x})".format(slvars.startLoc, new, end))
+                        #  print("succeeded append_func_tail(0x{:x}, 0x{:x}, 0x{:x})".format(slvars.startLoc, new, end))
+                        if GetChunkNumber(new) == -1:
+                            printi("why is chunk# -1 after append_func_tail(0x{:x}, 0x{:x}, 0x{:x})".format(slvars.startLoc, new, end))
+                        else:
+                            if debug: printi("[SmartAddChunk] Chunk Added: {:x}-{:x}".format(new, end))
 
-                idc.auto_wait()
-        # EaseCode(new)
+                    idc.auto_wait()
+                # EaseCode(new)
 
-        if IsSameFunc(slvars.startLoc, new):
-            return
-        if not end:
-            if 1:
-                #  func = ida_funcs.func_t(new)
-                cend = EndOfFlow(new, soft=ignoreInt)
-            else:
-                cend = new + IdaGetInsnLen(new)
-            #  res = ida_funcs.find_func_bounds(func, ida_funcs.FIND_FUNC_DEFINE | ida_funcs.FIND_FUNC_IGNOREFN)
-            #  if res == ida_funcs.FIND_FUNC_UNDEF:
-                #  # func passed flow to unexplored bytes
-                #  sprint("find_func_bounds: func passed flow to unexplored bytes")
-            #  elif res == ida_funcs.FIND_FUNC_OK:
-                #  cstart = func.start_ea
-                #  cend = func.end_ea
-            if debug: sprint("ShowAppendFchunk 48")
-            return ShowAppendFchunkReal(slvars.startLoc, new, cend, old)
-            #  idc.find_func_end
-            #  end = EndOfContig(new)
-                #  return SmartAddChunkImpl(slvars.startLoc, new, end)
+                    #  printi("returned where we didn't before")
+                    return
+
+        if not IsValidEA(end) or IsTail(end):
+            end = EaseCode(new, forceStart=1)
+            sprint("ShowAppendFchunk 48")
+            return ShowAppendFchunkReal(slvars.startLoc, new, end, old)
 
     slvars.notification_interval = 128
 
@@ -1435,17 +1567,18 @@ def slowtrace2(ea=None,
             # if debug: sprint("ShouldAddChunk: 0x{:x}, 0x{:x}".format(old, new))
             if new == old: return
             slvars.addresses.add(new)
-            if len(slvars.addresses) % slvars.notification_interval == 0:
-                #  slvars.addressesRemoved += len(slvars.addresses)
-                #  slvars.addresses.clear()
-                printi("{}k chunks... {:x}".format((slvars.addressesRemoved + len(slvars.addresses)) / 1024.0, old))
+            # if debug: sprint("[ShouldAddChunk] {:#x} -> {:#x}".format(old, new))
+
+            num_addresses = len(slvars.addresses)
+            if num_addresses > 500 and num_addresses % slvars.notification_interval == 0:
+                printi("{}k addresses... {} chunks... processing: {:#x}".format((len(slvars.addresses)) / 1024.0, len(slvars.chunks), old))
                 #  slvars.notification_interval *= 2
             if GetChunkNumber(old) != GetChunkNumber(new):
-                if applySkipJumps and isAnyJmp(ea):
-                    new = SkipJumps(ea, apply=1, skipNops=1)
-
+                #  XXX: shouldn't be `ea` it's checking for skipjumps
+                #  if applySkipJumps and isAnyJmp(ea):
+                    #  new = SkipJumps(ea, apply=1, skipNops=1)
                 #  fix_non_func(new, old)
-                CheckChunkChange(new, old)
+                CheckChunkChange(old, new)
                 slvars.currentChunk = new
                 slvars.contig = 1
 
@@ -1477,15 +1610,19 @@ def slowtrace2(ea=None,
         for k in _.keys(branch.state):
             v = getattr(slvars, k, None)
             b = branch.state[k]
-            if debug: printi("ReverseHead: {} := {}".format(k, hex(b) if isIterable(b) else b))
-            if k == 'ea':
-                pass
-            elif k == 'instructions':
+            if debug: printi("ReverseHead: {} := {}".format(k, len(b) if isIterable(b) else  hex(b)))
+            # vars
+            if k in ('ea', 'prev_ea', 'rsp'):
+                if debug: sprint("rewrote slvars.{} from {} to {}".format(k, ahex(slvars[k]), ahex(v)))
+                slvars[k] = v
+            # CircularBuffers
+            elif k in ('instructions',):
                 if debug: sprint("rewrote slvars2.instructions with {} entries".format(len(b)))
                 slvars2[k].clear()
                 slvars2[k].extend(b)
-            elif k == 'addresses':
-                if debug: sprint("rewrote slvars.addresses with {} entries".format(len(b)))
+            # lists
+            elif k in ('addresses', 'real', 'nops', 'jumps', 'chunks'):
+                if debug: sprint("rewrote {} slvars.{} with {} entries".format(len(slvars[k]), k, len(b)))
                 slvars[k].clear()
                 for x in b:
                     slvars[k].add(x)
@@ -1495,6 +1632,7 @@ def slowtrace2(ea=None,
                 v = None
             elif isinstance(v, list):
                 #  printi("copying2 {} {}".format(k, v))
+                if debug: sprint("automatically rewrote {} slvars.{} with {} entries".format(len(slvars[k]), k, len(b)))
                 v.clear()
                 v.extend(b)
             elif isinstance(v, set):
@@ -1504,19 +1642,22 @@ def slowtrace2(ea=None,
                     else:
                         b = b[0]
                 # printi("copying type {} {} as list {} to set {}".format(type(b), b, k, v))
+                if debug: sprint("automatically rewrote set {} slvars.{} with {} entries".format(len(slvars[k]), k, len(b)))
                 v.clear()
                 v.update(set(b))
                 # printi("copied to set {}: {}".format(k, v))
             elif callable_m(v, 'copy'):
                 #  printi("copying1 {} {}".format(k, v))
+                if debug: sprint("automatically rewrote set {} slvars.{} with {} entries".format(len(slvars[k]), k, len(b)))
                 setattr(slvars, k, v.copy())
                 #  v.clear()
                 #  v.extend(b)
             elif isinstance(v, integer_types):
+                if debug: sprint("rewrote slvars.{} from {} to {}".format(k, slvars[k], v))
                 slvars[k] = b
             elif isinstance(v, string_types):
+                if debug: sprint("rewrote slvars.{} from {} to {}".format(k, slvars[k], v))
                 slvars[k] = b
-
             else:
                 #  printi(f"Reversing {k} {ahex(v)} -> {ahex(b)}")
                 printi("Reversing: unhandled type: slvars[{}] (type:{}, expected:{})".format(k, type(b), type(v)))
@@ -1536,10 +1677,20 @@ def slowtrace2(ea=None,
         new_ea = branch.state.ea
         if debug: printi("ReverseHead {} {}".format(hex(current_ea), hex(new_ea)))
         if new_ea in slvars.justVisited:
+            if debug: sprint("new_ea was justVisited while restoring ReverseHead")
             slvars.justVisited.remove(new_ea)
         return new_ea
 
     def AdvanceHead(current_ea, new_ea = None):
+        if debug: sprint("[AdvanceHead] [spd:{:x}] {} -> {}".format(slvars.rsp_diff, ahex(current_ea), ahex(new_ea)))
+        if (insn_match(current_ea, idaapi.NN_nop, comment='nop') or
+                insn_match(current_ea, idaapi.NN_xchg, (idc.o_reg, 0), (idc.o_reg, 0), comment='nop')):
+            slvars.nops.add(current_ea)
+        elif insn_match(current_ea, idaapi.NN_jmp, (idc.o_near, 0), comment='jmp loc_143B3DC89'):
+            slvars.jumps.add(current_ea)
+        else:
+            slvars.real.add(current_ea)
+
         if helper and new_ea not in slvars2.helped:
             _start, _end = helper(new_ea)
             for _ea in range(_start, _end):
@@ -1553,18 +1704,19 @@ def slowtrace2(ea=None,
                 #  new_ea = idc.next_head(current_ea)
             #  else:
                 #  raise AdvanceFailure("AdvanceHead should be smarter: mnem: {}".format(idc.print_insn_mnem(current_ea)))
-        head_dict = SimpleAttrDict(
-            source=current_ea,
-            branchStack=slvars.branchStack[0:],
-            state=SimpleAttrDict(getState(advance_head = 1))
-        )
         #  slvars.cbuffer.append(current_ea)
 
         if modify and not noObfu:
+            head_dict = SimpleAttrDict(
+                source=current_ea,
+                branchStack=slvars.branchStack[0:],
+                state=SimpleAttrDict(getState(advance_head = 1))
+            )
             slvars2.previousHeads.append(head_dict)
+            setglobal('previousHeads', slvars2.previousHeads)
 
         if new_ea:
-            CheckChunkChange(new_ea, current_ea)
+            CheckChunkChange(current_ea, new_ea)
 
         #  return new_ea
 
@@ -1578,12 +1730,13 @@ def slowtrace2(ea=None,
                 if debug: sprint("[new_ea] new_ea:{:x}".format(new_ea))
                 # SmartAddChunk(new_ea, current_ea)
                 # ShowAppendFchunk(slvars.startLoc, new_ea, EndOfFlow(new_ea, soft=ignoreInt), current_ea)
-            #  if debug: sprint("AdvanceHead is returning {} (new_ea specified as argument)".format(hex(new_ea)))
+            if debug: sprint("AdvanceHead is returning {} (new_ea specified as argument)".format(hex(new_ea)))
             return new_ea
 
 
         _next_insn = current_ea + IdaGetInsnLen(current_ea)
         _next_head = idc.next_head(current_ea)
+        _next_not_tail = idc.next_not_tail(current_ea)
         _next_mnem = idc.print_insn_mnem(_next_insn)
         if isUnconditionalJmp(current_ea):
             raise RuntimeError("Should we be getting UnconditionalJmp's here?")
@@ -1593,17 +1746,17 @@ def slowtrace2(ea=None,
                     if idc.is_flow(ida_bytes.get_flags(_next_insn)):
                         if debug: sprint("adding new code")
                         new_ea = _next_insn
-                        CheckChunkChange(new_ea, current_ea)
-                        #  if debug: sprint("AdvanceHead is returning {} (created new code)".format(hex(new_ea)))
+                        CheckChunkChange(current_ea, new_ea)
+                        if debug: sprint("AdvanceHead is returning {} (created new code)".format(hex(new_ea)))
                         return new_ea
-                    else: 
+                    else:
                         msg = "(noflow at {:x} from {:x})".format(_next_insn, current_ea)
                         sprint(AdvanceFailure(msg))
                         return AdvanceFailure(msg)
-                else: 
+                else:
                     printi("else2 (couldn't make insn at {:x} from {:x})".format(_next_insn, current_ea))
                     MakeCodeAndWait(_next_insn, force=1)
-            else: 
+            else:
                 printi("else3 (couldn't read valid insn {:x} from {:x})".format(_next_insn, current_ea))
                 raise RelocationUnpatchRequest()
 
@@ -1660,14 +1813,14 @@ def slowtrace2(ea=None,
         fnEnd = EndOfFlow(current_ea)
         hitFnEnd = False
         while True:
-            slvars.cbuffer.append(current_ea)
             #  EaseCode(current_ea, noExcept=1)
             loop += 1
             _next_insn = current_ea + IdaGetInsnLen(ea)
             nextHead = idc.next_head(current_ea)
-            nextAny = NextNotTail(current_ea)
-            if debug: sprint("nextHead: {:x} nextAny: {:x} nextInsn: {:x}".format(nextHead, nextAny, _next_insn))
+            nextAny = idc.next_not_tail(current_ea)
+            # if debug: sprint("nextHead: {:x} nextAny: {:x} nextInsn: {:x}".format(nextHead, nextAny, _next_insn))
             if nextHead != nextAny or nextHead != _next_insn:
+                if debug: sprint("nextHead != nextAny or nextHead != _next_insn")
                 if IsCode(_next_insn):
                     if debug: sprint("_next_insn is code, good")
                     # dprint("[debug] _next_insn, nextHead, nextAny")
@@ -1677,7 +1830,7 @@ def slowtrace2(ea=None,
                     if r and r + current_ea == _next_insn:
                         nextHead = nextAny = _next_insn
                         break
-                    
+
                 else:
                     # The means that the next instruction is data, not good.
                     if debug: sprint("nextHead is data")
@@ -1724,6 +1877,8 @@ def slowtrace2(ea=None,
                 if not vim:
                     if GetChunkStart(fnEnd) == GetFuncStart(fnEnd):
                         if debug: printi("SetFuncEnd(0x{:x}, 0x{:x})".format(fnEnd - 1, NextNotTail(nextHead)))
+                        if not IsFunc_(current_ea):
+                            printi("stupid")
                         SetFuncEnd(current_ea, NextNotTail(nextHead))
                     else:
                         if IsChunked(ea):
@@ -1736,8 +1891,8 @@ def slowtrace2(ea=None,
             else:
                 # if debug: sprint("considering extending function.. nope")
                 pass
-            CheckChunkChange(nextHead, current_ea)
-            #  if debug: sprint("AdvanceHead is returning {}".format(hex(nextHead)))
+            CheckChunkChange(current_ea, nextHead)
+            if debug: sprint("AdvanceHead is returning {}".format(hex(nextHead)))
             return nextHead
         if debug: sprint("AdvanceHead is returning None")
 
@@ -1746,11 +1901,16 @@ def slowtrace2(ea=None,
             callStack = callStack,
             disasm = disasm,
             ea = ea,
+            prev_ea = prev_ea,
             addresses = list(slvars.addresses),
+            jumps = list(slvars.jumps),
+            nops = list(slvars.nops),
+            chunks = list(slvars.chunks),
+            real = list(slvars.real),
             instructions = slvars2.instructions.copy(),
             mnem = mnem,
-            mnemStack = mnemStack,
-            rspStack = rspStack,
+            mnemStack = mnemStack.copy(),
+            rspStack = rspStack.copy(),
             indent = slvars.indent,
             name = slvars.name,
             rsp = slvars.rsp,
@@ -1815,239 +1975,115 @@ def slowtrace2(ea=None,
             color = color[1:]
             idaapi.set_item_color(ea, color[0])
 
-    def skip_initial_jumps(ea):
-        while not noMakeFunction and slvars.startLoc == ea and skipJumps and isUnconditionalJmp(ea) and IdaGetInsnLen(ea) > 1:
-            if debug: sprint("0x%x: Mnem::%s" % (ea, idc.print_insn_mnem(ea)))
-            nextColor(color, ea)
-
-            fnDecl = GetType(ea)
-            funcEnd = GetFuncEnd(ea)
-            insnLen = IdaGetInsnLen(ea)
-
-            if thunk:
-                MakeThunk(ea)
-                return False
-            #  if (funcEnd - slvars.startLoc) > 5:
-            #  RemoveAllChunks(ea)
-
-            #  RemoveAllChunks(ea)
-            #  ZeroFunction(ea)
-
-            # target = Dword(ea + 1) + ea + 5
-            target = GetTarget(ea) # target = GetOperandValue(ea, 0)
-            if target not in later2 and not IsUnknown(target) and idc.get_func_attr(GetJumpTarget(ea), idc.FUNCATTR_FLAGS) & FUNC_LIB == 0:
-                later.add(GetJumpTarget(ea))
-                later2.add(GetJumpTarget(ea))
-
-            if reloc and not distorm and LocByName(reloc_name(target)) < BADADDR:
-                sprint("Function has already been relocated")
-                msg = reloc_name(slvars.startLoc)
-                if 'slvars' in globals(): sprint(RelocationDupeError(msg))
-                raise RelocationDupeError(msg)
-
-            if debug: sprint("0x%x: considering changing function start to 0x%x" % (ea, target))
-            if IsExtern(target):
-                # reference/offset/library ptr
-                printi("Reference: {:x}".format(target))
-                break
-            if not IsCode_(target):
-                if not EaseCode(target, forceStart=1, noExcept=1, origin=ea):
-                    raise AdvanceFailure("{:x} Couldn't skip through initial jumps".format(ea))
-
-            if not IsFuncHead(target):
-                if debug: sprint('MakeFunction456')
-                if IsSameFunc(ea, target):
-                    RemoveAllChunks(ea)
-                ida_auto.auto_wait()
-                if not ForceFunction(target):
-                    printi("{:x} couldn't forcefunction".format(ea))
-                ida_auto.auto_wait()
-
-            #  CheckChunkChange(target)
-            if idc.get_segm_name(target) != '.text':
-                printi("we're not in kansas (.text) anymore")
-                return -1
-
-            printi("{:x} skipping to {:x}".format(ea, target))
-            if type(fnDecl) is str:
-                SetType(target, fnDecl)
-                ida_auto.auto_wait()
-
-            # take care of previous function, now that it's safe (it won't attempt to chunk us)
-            if not MakeThunk(ea):
-                printi("{:x} Couldn't make thunk".format(ea))
-
-            if False and IsFunc_(ea) or MyMakeFunction(ea, ea + insnLen):
-                if GetFuncSize(ea) > insnLen and Byte(ea) in (0xe9, 0xeb):
-                    if IsSameFunc(ea, target) and GetChunkEnd(ea) == ea + insnLen:
-                        pass
-                    else:
-                        # dprint("[makethunk234] ea, insnLen, GetFuncSize(ea)")
-                        printi("[makethunk234] ea:{:x}, insnLen:{:x}, GetFuncSize(ea):{:x}".format(ea, insnLen, GetFuncSize(ea)))
-                        
-                        if debug: sprint('MAkeThunk234')
-                        if GetFuncEnd(ea) != ea + insnLen and not SetFunctionEnd(ea, ea + insnLen):
-                            printi("GetFunctionEnd({:x}): {:x}  insnLen: {}".format(ea, GetFuncEnd(ea), insnLen))
-                            printi("SetFunctionEnd({:x}, {:x})".format(ea, ea + insnLen))
-                            msg = "0x%x: %s @ 0x%x" % (target, "Not sure how to proceed, can't thunk this func", ea)
-                            if 'slvars' in globals(): sprint(AdvanceFailure(msg))
-                            raise AdvanceFailure(msg)
-                        ida_auto.auto_wait()
-                        if debug: sprint("0x%x: changing function start to 0x%x" % (target, target))
-
-            if GetFuncSize(ea) == insnLen:
-                ea = target
-                slvars.startLoc = target
-                slvars.currentChunk = target
-                slvars.startFnName = "%s_0" % slvars.startFnName
-            else:
-                break
-
-
-            # if reloc and LocByName(reloc_name(slvars.startLoc)) != BADADDR:
-            if reloc and 'slvars' in globals():
-                if LocByName(reloc_name(slvars.startLoc)) != BADADDR:
-                    sprint(RelocationDupeError(reloc_name(slvars.startLoc)))
-                    raise RelocationDupeError(reloc_name(slvars.startLoc))
-            if not IsFunc_(ea) or not IsHead(ea):
-                if not MyMakeFunction(ea) and not ForceFunction(ea):
-                    sprint("Couldn't make function at start: 0x{:x}".format(ea))
-                    msg = "Couldn't make function at new start"
-                    if 'slvars' in globals(): sprint(RelocationTerminalError(msg))
-                    raise RelocationTerminalError(msg)
-
-            if not LabelAddressPlus(ea, slvars.startFnName, force=1):
-                sprint("Couldn't label function at start: 0x{:x}".format(ea))
-                msg = "Couldn't label function at new start"
-                if 'slvars' in globals(): sprint(RelocationTerminalError(msg))
-                raise RelocationTerminalError(msg)
-
-
-                #  MakeCodeAndWait(ea)
-                #  if debug: sprint('MAkeFunction111')
-                #  MyMakeFunction(ea, noMakeFunction)
-                #  LabelAddressPlus(ea, slvars.startFnName, force=1)
-
-        slvars.name = Name(ea)
-        if isRet(ea): # idc.get_wide_byte(ea) == 0xc3:
-            if GetNumChunks(ea) > 1:
-                RemoveAllChunks(ea)
-            if GetFuncEnd(ea) != ea + IdaGetInsnLen(ea):
-                SetFuncEnd(ea, ea + IdaGetInsnLen(ea))
-            #  return 0
-
-        return ea
-
-    def is_real_func(ea, fnLoc):
+    def is_real_func(ea, funcea):
         reason = ["No reason"]
         def setIsRealFunc(_reason):
-            printi("[IsRealFunc] \"{}\" jumping from {:x} to {:x}".format(_reason, ea, fnLoc))
+            if debug: printi("[IsRealFunc] \"{}\" jumping from {:x} to {:x}".format(_reason, ea, funcea))
             reason[:] = [ _reason ]
             return True
 
-        if idc.get_segm_name(fnLoc) == '.idata' and idc.get_type(fnLoc):
+        if idc.get_segm_name(funcea) == '.idata' and idc.get_type(funcea):
             return setIsRealFunc("0x%x: (.idata with Type) jmp <0x%x>" % (ea, target))
 
         if debug: sprint((_file, 'is_real_func'), "0x%x: (removeFuncs) jmp <0x%x>" % (ea, target))
-        if IsExtern(fnLoc):
-            return setIsRealFunc("IsExtern(0x{:x})".format(fnLoc))
-        if not IsCode_(fnLoc): # idc.is_code(ida_bytes.get_flags(fnLoc)):
+        if IsExtern(funcea):
+            return setIsRealFunc("IsExtern(0x{:x})".format(funcea))
+        if not IsCode_(funcea): # idc.is_code(ida_bytes.get_flags(funcea)):
 
             try:
-                insLen = forceCode(fnLoc)
+                insLen = forceCode(funcea)
             except AdvanceFailure as e:
                 printi("History: {}".format(hex([x.source for x in slvars2.previousHeads])))
                 raise e
             if not insLen:
-                if debug: sprint((_file, 'is_real_func'), AdvanceFailure("Couldn't convert code at jmp fnLoc {:x}".format(fnLoc)))
-        target_flags = ida_bytes.get_flags(fnLoc)
+                if debug: sprint((_file, 'is_real_func'), AdvanceFailure("Couldn't convert code at jmp funcea {:x}".format(funcea)))
+        target_flags = ida_bytes.get_flags(funcea)
         codeRefs = list(
-            [x for x in list(idautils.CodeRefsTo(fnLoc, 0)) if idc.get_segm_name(x) == '.text'])
-        callRefs = list([x for x in list(CallRefsTo(fnLoc)) if idc.get_segm_name(x) == '.text' and IsFunc_(x) and not idc.get_func_name(x).startswith("do_") and IdaGetInsnLen(x) > 2])
-        jmpRefs = list([x for x in list(JmpRefsTo(fnLoc)) if idc.get_segm_name(x) == '.text' and IsFunc_(x) and GetFuncSize(x) > 5 and not isConditionalJmp(x)])
+            [x for x in list(idautils.CodeRefsTo(funcea, 0)) if idc.get_segm_name(x) == '.text'])
+        callRefs = list([x for x in list(CallRefsTo(funcea)) if idc.get_segm_name(x) == '.text' and IsFunc_(x) and not idc.get_func_name(x).startswith("do_") and IdaGetInsnLen(x) > 2])
+        jmpRefs = list([x for x in list(JmpRefsTo(funcea)) if idc.get_segm_name(x) == '.text' and IsFunc_(x) and not ida_funcs.is_same_func(slvars.startLoc, x) and not isConditionalJmp(x)])
         jmpRefs.sort()
         currentStackDiff = GetSpd(ea)
-        targetStackDiff = GetSpd(fnLoc)
+        targetStackDiff = GetSpd(funcea)
         if delsp:
-            idc.del_stkpnt(slvars.startLoc, fnLoc)
+            idc.del_stkpnt(slvars.startLoc, funcea)
             ida_auto.auto_wait()
         elif addsp and currentStackDiff != targetStackDiff:
-            SetSpd(fnLoc, currentStackDiff)
+            SetSpd(funcea, currentStackDiff)
             ida_auto.auto_wait()
 
 
         if not idc.is_code(target_flags):
-            if debug: sprint((_file, 'is_real_func'), "0x%x: Potential function !isCode: 0x%x" % (ea, fnLoc))
+            if debug: sprint((_file, 'is_real_func'), "0x%x: Potential function !isCode: 0x%x" % (ea, funcea))
             rspTmp = slvars.rsp
             if rspTmp is None:
                 rspTmp = -0x9999
             rspTmpStr = "0x%x" % rspTmp
             if rspTmp < 0:
                 rspTmpStr = "-0x%x" % (0 - rspTmp)
-            if debug: sprint((_file, 'is_real_func'), "0x%x: (removeFuncs) fnLoc flags & FF_CODE != 600: (rsp: %s) flags: %s" % (
+            if debug: sprint((_file, 'is_real_func'), "0x%x: (removeFuncs) funcea flags & FF_CODE != 600: (rsp: %s) flags: %s" % (
                 ea, rspTmpStr, str(list_fflags(target_flags))))
             if debug: sprint((_file, 'is_real_func'), "not code")
-            raise sprint(AdvanceFailure("couldn't get code for jump target {:x}".format(fnLoc)))
+            raise sprint(AdvanceFailure("couldn't get code for jump target {:x}".format(funcea)))
 
 
-        fnLoc = fnLoc
-        fnName = GetFunctionName(fnLoc)
+        funcea = funcea
+        fnName = GetFunctionName(funcea)
 
-        fnEnd = FindFuncEnd(fnLoc)
+        fnEnd = FindFuncEnd(funcea)
         fnEndMnem = idc.print_insn_mnem(idc.prev_head(fnEnd))
 
         if debug: sprint(
-            "0x%x: %s to (fnName: %s): %s" % (fnLoc, GetFunctionName(ea), fnName, GetDisasm(ea)))
+            "0x%x: %s to (fnName: %s): %s" % (funcea, GetFunctionName(ea), fnName, GetDisasm(ea)))
 
         tmpLimit = BADADDR
 
         if 0:
             if hasglobal('m') and isinstance(getglobal('m'), (list, set)):
-                if fnLoc in getglobal('m'):
-                    tmpLimit = fnLoc
-                if (~GetFuncName(fnLoc).find("___0x") or ~GetFuncName(fnLoc).find("::_0x")) and not ida_funcs.is_same_func(ea, fnLoc):
-                    tmpLimit = fnLoc
+                if funcea in getglobal('m'):
+                    tmpLimit = funcea
+                if (~GetFuncName(funcea).find("___0x") or ~GetFuncName(funcea).find("::_0x")) and not ida_funcs.is_same_func(ea, funcea):
+                    tmpLimit = funcea
 
         isRealFunc = None
         canInclude = False
-        isSameFunc = IsSameFunc(ea, fnLoc)
+        isSameFunc = IsSameFunc(ea, funcea)
 
         if debug: sprint((_file, 'is_real_func'),
-            "0x%0x: 0x%x: Potential Func: 0x%x / %s" % (slvars.startLoc, ea, fnLoc, fnName))
+            "0x%0x: 0x%x: Potential Func: 0x%x / %s" % (slvars.startLoc, ea, funcea, fnName))
         c = Commenter(ea, "line")
-        ct = Commenter(fnLoc, "line")
-        if c.exists("[ALLOW JMP]") or ct.exists("[ALLOW JMP]"): 
+        ct = Commenter(funcea, "line")
+        if c.exists("[ALLOW JMP]") or ct.exists("[ALLOW JMP]"):
             if debug: sprint((_file, 'is_real_func'), "allow jmp")
             isRealFunc = False
         elif not noDenyJmp and (c.exists("[DENY JMP]") or ct.exists("[DENY JMP]")):
             isRealFunc = setIsRealFunc("[DENY JMP]")
-        elif fnLoc == tmpLimit:
-            isRealFunc = setIsRealFunc("0x%x: legitimate function (is in limit): 0x%x: %s" % ( ea, fnLoc, fnName))
-        elif fnLoc == tmpLimit:
-            isRealFunc = setIsRealFunc("0x%x: legitimate function (impl_addresses): 0x%x: %s" % ( ea, fnLoc, fnName))
+        elif funcea == tmpLimit:
+            isRealFunc = setIsRealFunc("0x%x: legitimate function (is in limit): 0x%x: %s" % ( ea, funcea, fnName))
+        elif funcea == tmpLimit:
+            isRealFunc = setIsRealFunc("0x%x: legitimate function (impl_addresses): 0x%x: %s" % ( ea, funcea, fnName))
         elif len(callRefs) > 0:
-            isRealFunc = setIsRealFunc("0x%x: legitimate function (callRefs): 0x%x: %s" % (ea, fnLoc, fnName))
-
-        elif not noPdata and isSegmentInXrefsTo(fnLoc, '.pdata') and get_pdata_fnStart(ea) == fnLoc:
-            isRealFunc = setIsRealFunc("0x%x: legitimate function (in .pdata): 0x%x: %s" % (ea, fnLoc, fnName))
+            isRealFunc = setIsRealFunc("0x%x: legitimate function (callRefs): 0x%x: %s" % (ea, funcea, fnName))
+        elif not noPdata and isPdata(funcea) and not ida_funcs.is_same_func(ea, funcea):
+            isRealFunc = setIsRealFunc("0x%x: legitimate function (in .pdata): 0x%x: %s" % (ea, funcea, fnName))
         elif idc.get_wide_byte(target) == 0xc3 and not isConditionalJmp(ea):
             if debug: sprint((_file, 'is_real_func'), "target is retn")
             nassemble(ea, 'retn', apply=1)
         elif fnName.startswith("Arxan") and not isSameFunc:
             isRealFunc = setIsRealFunc("fnName.startswith('Arxan')")
-        elif fnLoc in slvars.justVisited:   
+        elif funcea in slvars.justVisited:
             if debug: sprint((_file, 'is_real_func'), "justVisited")
             isRealFunc = False
-        elif IsFunc_(fnLoc) and not isSameFunc and not noDenyJmp and Commenter(GetFuncStart(fnLoc)).exists("[DENY JMP]"):
+        elif IsFunc_(funcea) and not isSameFunc and not noDenyJmp and Commenter(GetFuncStart(funcea)).exists("[DENY JMP]"):
             if debug: sprint((_file, 'is_real_func'), "IsFunc_ not isSameFunc")
             isRealFunc = setIsRealFunc("IsFunc_")
 
 
 
-        elif False and isSegmentInXrefsTo(fnLoc, '.rdata') and idc.get_segm_name(ea) != '.rdata' and not IsSameFunc(ea, fnLoc):
-            isRealFunc = setIsRealFunc("0x%x: legitimate function (in .rdata): 0x%x: %s" % (ea, fnLoc, fnName))
+        elif False and isSegmentInXrefsTo(funcea, '.rdata') and idc.get_segm_name(ea) != '.rdata' and not IsSameFunc(ea, funcea):
+            isRealFunc = setIsRealFunc("0x%x: legitimate function (in .rdata): 0x%x: %s" % (ea, funcea, fnName))
 
-        elif ida_funcs.is_same_func(ea, fnLoc):
+        elif ida_funcs.is_same_func(ea, funcea):
             isRealFunc = False
 
         #
@@ -2062,7 +2098,7 @@ def slowtrace2(ea=None,
                     ourHex = int(ourHexStr, 16)
                     if debug: sprint((_file, 'is_real_func'), "ourHex: {}".format(ourHex))
                     ourNamespace = string_between('', ['::_0x', '___0x'], slvars.startFnName)
-                else: 
+                else:
                     ourHex = 0
                 for r in jmpRefs:
                     refName = idc.get_func_name(r)
@@ -2075,12 +2111,46 @@ def slowtrace2(ea=None,
                             isRealFunc = setIsRealFunc("jmpRef: different hexes: '{}' '{}@{:x}'".format(ourHexStr, refHexStr, r))
                 if not ourHexStr or not refHexStr:
                     _jrefs = _.uniq(GetFuncName(jmpRefs, 1))
-                    if len(_jrefs) > 1:
-                        _jrefs = _.filter(_jrefs, lambda v, *a: bad_as_none(GetMinSpd(eax(v))))
-                        if len(_jrefs) > 1:
+                    if len(_jrefs) > 0:
+                        #  _jrefs = _.filter(_jrefs, lambda v, *a: bad_as_none(GetMinSpd(eax(v))))
+                        if len(_jrefs) > 0:
                             _jrefs = _.filter(_jrefs, lambda v, *a: GetSpds(eax(v)) and not _.contains(GetFuncStart(xrefs_to(v)), slvars.startLoc))
                             if len(_jrefs) > 0:
-                                isRealFunc = setIsRealFunc("jmpRef: more than 1 ref: {}".format(_jrefs))
+                                ourjr = RecurseCallers(ea, iteratee=lambda v: GetFuncStart(v))
+                                pph(ourjr)
+                                _remove = []
+                                for _r in _jrefs:
+                                    # dprint("[is_real_func] _r")
+                                    print("[is_real_func] _r:{}".format(ahex(_r)))
+                                    
+                                    jr = RecurseCallers(eax(_r), iteratee=lambda v: GetFuncStart(v))
+                                    pph(jr)
+                                    if (len(ourjr.iteratee) > 2 
+                                            and len(jr.iteratee) < 3 
+                                            and len(jr.named) < len(ourjr.named)):
+                                        for addr in jr.iteratee + [eax(_r)]:
+                                            printi("removing {:#x}".format(addr))
+                                            idc.del_func(addr)
+                                            if addr in _jrefs:
+                                                _remove.append(addr)
+
+                                    else:
+                                        # dprint("[is_real_func] len(jr.iteratee), len(jr.named)")
+                                        print("[is_real_func] len(jr.iteratee):{}, len(jr.named):{}".format(len(jr.iteratee), len(jr.named)))
+                                        
+                                for _r in _remove:
+                                    _jrefs.remove(_r)
+
+                                if len(_jrefs) > 0:
+                                    isRealFunc = setIsRealFunc("jmpRef: more than 1 ref: {}".format(_jrefs))
+
+                                    if funcea not in later2:
+                                        later2.add(funcea)
+                                        later.add(funcea)
+                                    if not IsFuncHead(funcea):
+                                        ForceFunction(funcea)
+                                    if not HasUserName(funcea):
+                                        name_common_function(funcea)
                 if debug:
                     for r in jmpRefs:
                         sprint((_file, 'is_real_func'), "jmpRef: {}".format(idc.GetDisasm(r)))
@@ -2091,60 +2161,62 @@ def slowtrace2(ea=None,
         if isRealFunc and canInclude and include:
             isRealFunc = False
         if isRealFunc:
-            codeRefsTo.add(fnLoc)
+            codeRefsTo.add(funcea)
             if debug: sprint((_file, 'is_real_func'), "real func")
-            if IsChunkHead(fnLoc) and not IsFuncHead(fnLoc):
-                printi("{:x} chunkhead".format(fnLoc))
-                ForceFunction(fnLoc)
-                retrace(fnLoc, once=1, depth=depth+1, max_depth=max_depth)
+            if False:
+                if IsChunkHead(funcea) and not IsFuncHead(funcea):
+                    printi("{:x} chunkhead".format(funcea))
+                    ForceFunction(funcea)
+                    retrace(funcea, once=1, depth=depth+1, max_depth=max_depth)
             if addFuncs:
-                if not isSameFunc and not IsFunc_(fnLoc):
-                    if debug: sprint((_file, 'is_real_func'), "0x%x: adding function: %s at 0x%x" % (ea, GetFunctionName(fnLoc), fnLoc))
-                    if not MyMakeFunction(fnLoc, noMakeFunction):
-                        if debug: sprint((_file, 'is_real_func'), "0x%x: removing chunk in order to make function: 0x%x" % (ea, fnLoc))
-                        RemoveThisChunk(fnLoc)
-                        RemoveThisChunk(fnLoc)
-                        if not MyMakeFunction(fnLoc, noMakeFunction):
+                ForceFunction(funcea)
+                if not isSameFunc and not IsFunc_(funcea):
+                    if debug: sprint((_file, 'is_real_func'), "0x%x: adding function: %s at 0x%x" % (ea, GetFunctionName(funcea), funcea))
+                    if not MyMakeFunction(funcea, noMakeFunction):
+                        if debug: sprint((_file, 'is_real_func'), "0x%x: removing chunk in order to make function: 0x%x" % (ea, funcea))
+                        RemoveThisChunk(funcea)
+                        RemoveThisChunk(funcea)
+                        if not MyMakeFunction(funcea, noMakeFunction):
                             sprint(
                                 "0x%x: removing chunk in order to make function: 0x%x (didn't work)" % (
-                                    ea, fnLoc))
-                if not idc.hasUserName(ida_bytes.get_flags(fnLoc)):
-                    LabelAddressPlus(fnLoc, slvars.startFnName + "_impl")
+                                    ea, funcea))
+                if not idc.hasUserName(ida_bytes.get_flags(funcea)):
+                    LabelAddressPlus(funcea, slvars.startFnName + "_impl")
                 else:
-                    cf = Commenter(fnLoc)
+                    cf = Commenter(funcea)
                     cf.add("[JMP_FROM] " + slvars.startFnName)
 
-            if fnLoc in slvars.justVisited:
+            if funcea in slvars.justVisited:
                 pass
             else:
-                if slvars.rsp: 
+                if slvars.rsp:
                     if depth == 0:
-                        if not IsCode_(idc.prev_not_tail(fnLoc)) and IsFunc_(idc.prev_not_tail(fnLoc)):
-                            printi("refreshing annoying function @ {:x}".format(fnLoc))
-                            unpatch_func2(fnLoc, unpatch=1)
-                            retrace(fnLoc, once=1, forceRemoveChunks=1, depth=depth+1, max_depth=max_depth)
-                    printi("[annoying] depth:{}, hex(fnLoc):{}, IsCode_(idc.prev_not_tail(fnLoc)):{}, IsFunc_(idc.prev_not_tail(fnLoc)):{}".format(depth, hex(fnLoc), IsCode_(idc.prev_not_tail(fnLoc)), IsFunc_(idc.prev_not_tail(fnLoc))))
-                    
-                    msg = ("{:x}: jmp to {} which has no stack (isRealFunc: {}) retn rsp of {}".format(ea, describe_target(fnLoc), reason[0], slvars.rsp))
+                        if not IsCode_(idc.prev_not_tail(funcea)) and IsFunc_(idc.prev_not_tail(funcea)):
+                            printi("refreshing annoying function @ {:x}".format(funcea))
+                            unpatch_func2(funcea)
+                            retrace(funcea, once=1, forceRemoveChunks=1, depth=depth+1, max_depth=max_depth)
+                    # printi("[annoying] depth:{}, hex(funcea):{}, IsCode_(idc.prev_not_tail(funcea)):{}, IsFunc_(idc.prev_not_tail(funcea)):{}".format(depth, hex(funcea), IsCode_(idc.prev_not_tail(funcea)), IsFunc_(idc.prev_not_tail(funcea))))
+
+                    msg = ("{:x}: jmp to {} with rsp {}".format(ea, describe_target(funcea), ahex(slvars.rsp)))
                     if not vim: raise RelocationStackError(msg)
                 if not skipAddRsp:
                     slvars.retSps.add(slvars.rsp)
         else:
-            if debug: sprint((_file, 'is_real_func'), "not real func {:x}".format(fnLoc))
+            if debug: sprint((_file, 'is_real_func'), "not real func {:x}".format(funcea))
             if removeFuncs and not isSameFunc:
-                if IsFunc_(fnLoc) and not IsFuncHead(fnLoc):
-                    if (GetChunkStart(fnLoc) < fnLoc):
-                        if debug: sprint((_file, 'is_real_func'), "removeFuncs: doing wierd shit: GetChunkStart(0x{:x}) 0x{:x} < 0x{:x}".format(fnLoc, GetChunkStart(fnLoc), fnLoc))
-                        SetFuncEnd(GetChunkStart(fnLoc), fnLoc)
-
-                if IsFunc_(fnLoc):
-                    ShowAppendFunc(ea, slvars.startLoc, fnLoc)
-                else:
-                    SmartAddChunk(fnLoc, ea)
+                ZeroFunction(funcea, total=1)
+                #  if IsFunc_(funcea) and not IsFuncHead(funcea):
+                    #  if (GetChunkStart(funcea) < funcea):
+                        #  if debug: sprint((_file, 'is_real_func'), "removeFuncs: doing wierd shit: GetChunkStart(0x{:x}) 0x{:x} < 0x{:x}".format(funcea, GetChunkStart(funcea), funcea))
+                        #  SetFuncEnd(GetChunkStart(funcea), funcea)
+                #  if IsFuncHead(funcea):
+                    #  ShowAppendFunc(ea, slvars.startLoc, funcea)
+                #  else:
+                    #  SmartAddChunk(funcea, ea)
 
         return reason[0] if isRealFunc else False
 
-    if debug: sprint("0x%x: Mnem::%s" % (ea, idc.print_insn_mnem(ea)))
+    if debug: sprint("0x%x: starting mnem::%s" % (ea, idc.print_insn_mnem(ea)))
     if not IsFunc_(ea):
         if debug: sprint('MAkeFunction112')
         if not MyMakeFunction(ea) and not ForceFunction(ea):  # , noMakeFunction):
@@ -2168,30 +2240,22 @@ def slowtrace2(ea=None,
             msg = "0x%x: 'next_relocation' label not found" % ea
             if 'slvars' in globals(): sprint(Exception(msg))
             raise Exception(msg)
-        for l in """
-          _____.__        __      __         .__      
-  _______/ ____\__| ____ |  | ___/  |______  |  |__   
- /  ___/\   __\|  |/    \|  |/ /\   __\__  \ |  |  \  
- \___ \  |  |  |  |   |  \    <  |  |  / __ \|   Y  \ 
-/____  > |__|  |__|___|  /__|_ \ |__| (____  /___|  / 
-     \/  obfu kungfu   \/     \/ version 1 \/     \/  
-        """.splitlines():
-            relocPrefix.append('; ' + l)
 
         fnName = GetFunctionName(ea)
         if not len(fnName):
             fnName = "unknown_function"
-        relocPrefix.append("")
-        relocPrefix.append(";;;".ljust(len(fnName) + 6, ";"))
-        relocPrefix.append(";; " + fnName + " ;;")
-        relocPrefix.append(";;;".ljust(len(fnName) + 6, ";"))
-        relocPrefix.append("")
-        relocPrefix.append("[org {:x}h]".format(origin))
-        relocPrefix.append("[bits 64]")
-        relocPrefix.append("[default rel]")
-        relocPrefix.append("")
+        #  relocPrefix.append("")
+        #  relocPrefix.append(";;;".ljust(len(fnName) + 6, ";"))
+        #  relocPrefix.append(";; " + fnName + " ;;")
+        #  relocPrefix.append(";;;".ljust(len(fnName) + 6, ";"))
+        #  relocPrefix.append("")
+        #  relocPrefix.append("[org {:x}h]".format(origin))
+        #  relocPrefix.append("[bits 64]")
+        #  relocPrefix.append("[default rel]")
+        #  relocPrefix.append("")
 
     lastEa = ea
+    later2.add(ea)
     #  with JsonStoredSet('obfu-targets.json') as redux:
     #  if 1:
     if remake:
@@ -2212,7 +2276,7 @@ def slowtrace2(ea=None,
         if count and len(slvars.addresses) > count:
             printi("... count reached #2")
             return 0
-                
+
         for step in range(5):
             cn += 1
             if cn >= stop: raise Exception("Stop!")
@@ -2256,15 +2320,11 @@ def slowtrace2(ea=None,
         #
         # while idc.is_code(ida_bytes.get_flags(ea)) or idc.plan_and_wait(ea, EndOfContig(ea)) or idc.create_insn(ea):
         while idc.is_code(ida_bytes.get_flags(ea)): # or idc.plan_and_wait(ea, EndOfContig(ea)) or idc.create_insn(ea):
+            # if debug: sprint("[WhileIsCode] {} real:{} nops:{} jumps:{} chunks:{} {}".format(ahex(ea), len(slvars.real), len(slvars.nops), len(slvars.jumps), len(slvars.chunks), diida(ea)))
+
             if count and len(slvars.addresses) > count:
                 printi("... count reached #3 ({})".format(count))
                 return 0
-            if ea == slvars.startLoc:
-                new_ea = skip_initial_jumps(ea)
-                if new_ea == False:
-                    return
-                if new_ea != ea:
-                    AdvanceHead(ea, new_ea)
 
             if ea == slvars.startLoc and not IsFuncHead(ea):
                 MyMakeFunction(ea)
@@ -2289,7 +2349,7 @@ def slowtrace2(ea=None,
             if ea in slvars.willVisit:
                 slvars.willVisit.remove(ea)
             if ea in slvars.justVisited:
-                if debug: 
+                if debug:
                     sprint("forceJump - justVisited")
                 forceJump = ea
                 forceJumpRsp = slvars.justVisitedRsp[ea]
@@ -2349,67 +2409,189 @@ def slowtrace2(ea=None,
                 # disasm = kp.ida_get_disasm(ea, fixup=0)
                 disasm = diida(ea)
                 mnem = idc.print_insn_mnem(ea)
-                if mnem and (mnem == "nop" or Word(ea) == 0x9066 or isAnyJmp(mnem)):
-                    pass
-                elif noObfu:
-                    slvars2.instructions.append(FuncTailsInsn(disasm, ea, disasm, size=MyGetInstructionLength(ea), sp=slvars.rsp, spd=slvars.rsp_diff))
+
+                # nasty alternative to sti.multimatch.sti
+                if insn_match(ea, idaapi.NN_push, (idc.o_reg, 11), comment='push r11'):
+                    slvars2.rspHelper['push r11'].append(len(slvars.real))
+                elif insn_match(ea, idaapi.NN_pop, (idc.o_reg, 4), comment='pop rsp'):
+                    if _.last(slvars2.rspHelper['push r11']) == len(slvars.real) - 1:
+                        # pass
+                        trigger_result = obfu.trigger(ea, 'mov_r11_rsp', search=hex_pattern("41 53 5c"), context={'slvars': slvars, 'slvars2': slvars2})
+                        #  print("trigger result: {:#x}".format(ea))
+                        #  pph(trigger_result)
+
+                elif insn_match(ea, idaapi.NN_mov, (idc.o_reg, 0), (idc.o_reg, 4), comment='mov rax, rsp'):
+                    slvars2.rspHelper['mov rax, rsp'].append(slvars.rsp)
+                elif insn_match(ea, idaapi.NN_lea, (idc.o_reg, 11), (idc.o_phrase, 0), comment='lea r11, [rax]'):
+                    slvars2.rspHelper['lea r11, [rax]'].extend(slvars2.rspHelper['mov rax, rsp'])
+                elif insn_match(ea, idaapi.NN_mov, (idc.o_reg, 4), (idc.o_reg, 11), comment='mov rsp, r11'):
+                    if slvars2.rspHelper['mov rax, rsp'] and slvars2.rspHelper['lea r11, [rax]']:
+                        spd = slvars.rsp - slvars2.rspHelper['lea r11, [rax]'][0]
+                        # spd will be picked up automaticall at next instruction
+                        # slvars.rsp = slvars.rsp - spd
+                        _next_head = ea + IdaGetInsnLen(ea) # idc.next_head(ea)
+                        printi("Adjusting spd at {:#x} by {:#x} due to rax->r11->rsp".format(_next_head, spd))
+                        printi("slvars.rsp_diff: {}".format(slvars.rsp_diff))
+                        idc.add_user_stkpnt(_next_head, spd)
+                        cmt = "[SPD+={:#x}] mov rax, rsp; lea r11, [rax]; mov rsp, r11".format(spd)
+                        Commenter(ea, "line").remove_matching(r'.*SPD.*')
+                        Commenter(ea, "line").add(cmt)
+
+                skipObfu = False
+                if mnem == "nop" or Word(ea) == 0x9066 or isAnyJmp(mnem):
+                    skipObfu = True
+
+
+                #  if noObfu:
                     # slvars.rspMarks[disasm] = slvars.rsp
-                    sti = slvars2.instructions
-                    #  if disasm.startswith('mov rsp'):
-                    globals()['sti'] = sti
-                    try:
-                        # intentionally dumbing this down to match IDA's new capability
-                        # which applies the SPD to the `call _alloca_probe` not the
-                        # subsequent sub slvars.rsp.
-                            #  push rbp
-                            #  lea rbp, [rel sub_1417DBB0C]
-                            #  xchg [rsp], rbp
-                            #  retn
-                        if sti[-1] == 'retn' and sti[-2] == 'xchg [rsp], rbp' and sti[-4] == 'push rbp':
-                            printi("[feel] jump: {}".format(sti[-3]))
-                            target = eax(string_between('[rel ', ']', str(sti[-3])) or string_between(', ', '', str(str[-3])))
-                            printi("[feel] target: {}".format(hex(target)))
-                            ea = AdvanceHead(ea, target)
-                            continue
-                    except IndexError:
-                        pass
+                    #  sti = slvars2.instructions
+                    #  #  if disasm.startswith('mov rsp'):
+                    #  globals()['sti'] = sti
+                    #  try:
+                        #  if sti[-1] == 'retn' and sti[-2] == 'xchg [rsp], rbp' and sti[-4] == 'push rbp':
+                            #  printi("[feel] jump: {}".format(sti[-3]))
+                            #  target = eax(string_between('[rel ', ']', str(sti[-3])) or string_between(', ', '', str(str[-3])))
+                            #  printi("[feel] target: {}".format(hex(target)))
+                            #  ea = AdvanceHead(ea, target)
+                            #  continue
+                    #  except IndexError:
+                        #  pass
 
 
-                elif not noObfu:
+                if noSti and disasm == "call __alloca_probe":
+                    printi("enabling sti due to presence of call __alloca_probe")
+                    noSti = False
+
+                if not noSti:
+                    if slvars2.instructions and slvars2.instructions[-1].ea == ea:
+                        slvars2.instructions.pop()
+                    slvars2.instructions.append(FuncTailsInsn(disasm, ea, disasm, size=IdaGetInsnLen(ea), sp=slvars.rsp, spd=slvars.rsp_diff))
+
                     # (self, insn=None, ea=None, text=None, size=None,
                     # comments=None, sp=None, spd=None, warnings=None,
                     # errors=None, chunkhead=None, op=None, labels=[],
                     # refs_from={}, refs_to={}, flow_refs_from={},
                     # flow_refs_to={}):
                     #  slvars2.instructions.append(disasm)
-                    slvars2.instructions.append(FuncTailsInsn(disasm, ea, disasm, size=MyGetInstructionLength(ea), sp=slvars.rsp, spd=slvars.rsp_diff))
+
+
+
+
                     slvars.rspMarks[disasm] = slvars.rsp
                     sti = slvars2.instructions
                     #  if disasm.startswith('mov rsp'):
                     globals()['sti'] = sti
-                    try:
-                        # intentionally dumbing this down to match IDA's new capability
-                        # which applies the SPD to the `call _alloca_probe` not the
-                        # subsequent sub slvars.rsp.
-                        if sti[-1] == "call _alloca_probe" or sti[-1] == "call __alloca_probe"  and \
-                           sti[-2].startswith("mov eax, "):
-                            s = sti[-2]
-                        #  if \
-                                #  sti[-1] == "sub rsp, rax" and \
-                                        #  sti[-2] == "call __alloca_probe" and \
-                                        #  sti[-3].startswith("mov eax, "):
-                            #  s = sti[-3]
-                            spd = 0 - int(str(s)[len("mov eax, "):].rstrip('h'), 16)
-                            slvars.rsp = slvars.rsp - spd
-                            print("Setting spd at {:x}".format(sti[-1].ea + IdaGetInsnLen(sti[-1].ea)))
-                            SetSpDiff(sti[-1].ea + IdaGetInsnLen(sti[-1].ea), spd)
+                    # intentionally dumbing this down to match IDA's new capability
+                    # which applies the SPD to the `call _alloca_probe` not the
+                    # subsequent sub slvars.rsp.
+                    #
+                    # typically occuring in annoying fashion with variable value:
+                    # FindInSegments("48 83 c0 0f 48 83 e0 f0 48 8d 48 0f 48 3b c8 77 0a 48 b9 f0 ff ff ff ff ff ff 0f 48 83 e1 f0 48 8b c1 e8 ?? ?? ?? ??")
+                    #                  add     rax, 0Fh
+                    #                  and     rax, 0FFFFFFFFFFFFFFF0h
+                    #                  lea     rcx, [rax+0Fh]
+                    #                  cmp     rcx, rax
+                    #                  ja      short loc_14010D149
+                    #                  mov     rcx, 0FFFFFFFFFFFFFF0h
+                    #
+                    #  loc_14010D149:                          ; CODE XREF: sub_14010CEEC+251↑j
+                    #                  and     rcx, 0FFFFFFFFFFFFFFF0h
+                    #                  mov     rax, rcx
+                    #                  call    __alloca_probe
+                    #                  ; sometimes extra instructions are inserted here
+                    #                  sub     rsp, rcx
+                    #
+                    # Or in other forms:
+                    # FindInSegments("48 83 e2 f0 48 8b c2 e8 ?? ?? ?? ??")
+                    #
+                    #    49 b9 f0 ff ff ff ff ff ff 0f 	mov r9, 0xffffffffffffff0
+                    #    48 8d 50 0f                   	lea rdx, [rax+0xf]
+                    #    48 3b d0                      	cmp rdx, rax
+                    #    77 03                         	ja loc_1415A47C3
+                    #    49 8b d1                      	mov rdx, r9
+                    #                               loc_1415A47C3:
+                    #    48 83 e2 f0                   	and rdx, -0x10
+                    #    48 8b c2                      	mov rax, rdx
+                    #    e8 e1 12 22 00                	call __alloca_probe
+                    #    49 c1 e0 07                   	shl r8, 7
+                    #    48 2b e2                      	sub rsp, rdx
+                    #  
+                    #  
+                    #    49 3b c0                      	cmp rax, r8
+                    #    77 03                         	ja loc_1415A47EB
+                    #    49 8b c1                      	mov rax, r9
+                    #                               loc_1415A47EB:
+                    #    48 83 e0 f0                   	and rax, -0x10
+                    #    e8 bc 12 22 00                	call __alloca_probe
+                    #    48 2b e0                      	sub rsp, rax
+                    #  
+                    #  
+                    #    49 3b c0                      	cmp rax, r8
+                    #    77 03                         	ja loc_1415A480C
+                    #    49 8b c1                      	mov rax, r9
+                    #                               loc_1415A480C:
+                    #    48 83 e0 f0                   	and rax, -0x10
+                    #    e8 9b 12 22 00                	call __alloca_probe
+                    #    48 2b e0                      	sub rsp, rax
 
-                            cmt = "[SPD:ALLOCA=%s]" % hex(spd)
-                            Commenter(sti[-1].ea, "line").remove_matching(r'.*SPD.*')
-                            Commenter(sti[-1].ea, "line").add(cmt)
-                            #  if not Commenter(ea, "line").match(r'^\[SPD='):
-                    except IndexError:
-                        pass
+
+
+                    if False:
+                        # Disabled, because we can get the same result without needing to untangle shit
+                        m = sti.multimatch([
+                            r'(.*)**?',
+                            r'add rax, 0xf',                #  add rax, 0xf
+                            r'and rax, -0x10',              #  and rax, -0x10
+                            r'lea rcx, \[rax\+0xf]',        #  lea rcx, [rax+0xf]
+                            r'cmp rcx, rax',                #  cmp rcx, rax
+                            r'mov rcx, 0xffffffffffffff0',  #  mov rcx, 0xffffffffffffff0
+                            r'and rcx, -0x10',              #  and rcx, -0x10
+                            r'mov rax, rcx',                #  mov rax, rcx
+                            r'call __alloca_probe',         #  call __alloca_probe
+                            r'({insert}.*)++?',             #  .... any extra instruction(s)
+                            r'({sub}sub rsp, rcx)',         #  sub rsp, rcx
+                        ])
+                        if m:
+                            nassemble(
+                                    ea      = _.first(m.insert_insn).ea, 
+                                    string  = m.sub + m.insert, 
+                                    apply   = True, 
+                                    comment = "post-alloca swap"
+                                    )
+                            # we need to reanalyse this last sub instructions to apply SpDiff
+                            continue
+
+                            # when we loop around again, we will trigger this:
+                            # 
+                            # if insn_match(ea, idaapi.NN_sub, (idc.o_reg, 4), (idc.o_reg, 1), comment='sub rsp, rcx') \
+                            #         and slvars2.instructions[-2] == 'call __alloca_probe':
+                            #             if idc.get_spd(slvars2.instructions[-2].ea) != 0:
+                            #                 idc.add_user_stkpnt(ea, -0x1000)
+                            #                 slvars.rsp_diff = -0x1000
+
+
+                    if True:
+                        try:
+                            if sti[-1] == "call _alloca_probe" or sti[-1] == "call __alloca_probe"  and \
+                                    sti[-2].startswith("mov eax, "):
+                                s = sti[-2]
+                                #  if \
+                                    #  sti[-1] == "sub rsp, rax" and \
+                                            #  sti[-2] == "call __alloca_probe" and \
+                                            #  sti[-3].startswith("mov eax, "):
+                                #  s = sti[-3]
+                                spd = 0 - int(str(s)[len("mov eax, "):].rstrip('h'), 16)
+                                slvars.rsp = slvars.rsp - spd
+                                # slvars.rsp_diff = spd
+                                printi("Setting spd at {:x}".format(sti[-1].ea + IdaGetInsnLen(sti[-1].ea)))
+                                SetSpDiff(sti[-1].ea + IdaGetInsnLen(sti[-1].ea), spd)
+
+                                cmt = "[SPD+={:#x}] ALLOCA".format(spd)
+                                Commenter(sti[-1].ea, "line").remove_matching(r'.*SPD.*')
+                                Commenter(sti[-1].ea, "line").add(cmt)
+                                #  if not Commenter(ea, "line").match(r'^\[SPD='):
+                        except IndexError:
+                            pass
 
                         """
                             {   'address': 5434450470,
@@ -2448,6 +2630,7 @@ def slowtrace2(ea=None,
 
                     """
 
+
                     # Balance
                     if 0:
                         m = sti.multimatch([
@@ -2471,14 +2654,14 @@ def slowtrace2(ea=None,
                             sprint("*** found balance ***")
                             sprint("*** {} ***".format(m))
 
-                    #  48 8b 05 43 dd 00 fd          	mov rax, [off_140D0AB4C]   
-                    #  8b 15 2d 6c d6 fc             	mov edx, [dword_140A63A3C] 
-                    #  89 d1                         	mov ecx, edx               
-                    #  55                            	push rbp                   
-                    #  48 8d 2d a2 bc db ff          	lea rbp, [label22]         
-                    #  48 87 2c 24                   	xchg [rsp], rbp            
-                    #  50                            	push rax                   
-                    #  c3                            	retn                       
+                    #  48 8b 05 43 dd 00 fd          	mov rax, [off_140D0AB4C]
+                    #  8b 15 2d 6c d6 fc             	mov edx, [dword_140A63A3C]
+                    #  89 d1                         	mov ecx, edx
+                    #  55                            	push rbp
+                    #  48 8d 2d a2 bc db ff          	lea rbp, [label22]
+                    #  48 87 2c 24                   	xchg [rsp], rbp
+                    #  50                            	push rax
+                    #  c3                            	retn
                     if False:
                         m = sti.multimatch([
                             r'mov rax, ({call}\[\w+])',
@@ -2494,7 +2677,8 @@ def slowtrace2(ea=None,
                             sprint("*** {} ***".format(m))
 
 
-                    if True and True:
+                    # replaced with nasty but quick solution
+                    if False and True:
                         m = sti.multimatch([
                             # r'(.*)**?',
                             r'mov rax, rsp',
@@ -2529,7 +2713,7 @@ def slowtrace2(ea=None,
                         #  cmt = "[SPD=0x{:x}]".format( _spd )
                         #  Commenter(ea, "line").remove_matching(r'^\[SPD=')
                         #  Commenter(ea, "line").add(cmt).commit()
-#  
+#
 
 
 
@@ -2538,35 +2722,35 @@ def slowtrace2(ea=None,
                         #  r'pop rcx',
                         #  r'mov byte.*'
                     #  ])
-                    setglobal('sti', sti)
-                    if True and True:
+                    # setglobal('sti', sti)
+                    if False and True:
                         m = sti.multimatch([
                             # load r11 with stack adjustment: lea r11, [slvars.rsp+xxx]
-                            r'lea r11, \[rsp\+(0x[0-9a-fA-F]+|[0-9a-fA-F]+h)]',
+                            r'lea r11, \[rsp\+(0x[0-9a-fA-F]+|[0-9a-fA-F]+h)]|push r11',
 
                             # a bunch of mov and movabs statements
 
                             # then either mov slvars.rsp, r11; lea slvars.rsp, [r11];
-                            # or push r11 & pop slvars.rsp
+                            # or push r11 & pop rsp
                             r'mov rsp, r11|lea rsp, \[r11]|pop rsp'
                         ])
-                        
+
                         if m:
                             print("matched: {}".format("   ".join([str(x) for x in sti.as_list()])))
                             #  sprint("*** found r11 spd shennanigans***")
                             setglobal('_m', m)
                             sti.clear()
                             #  stack = string_between(
-                                    #  ["[rsp+0x", "[rsp+" ], 
-                                    #  [      "]",    "h]" ], 
-                                    #  m.default[0].group(0)) 
+                                    #  ["[rsp+0x", "[rsp+" ],
+                                    #  [      "]",    "h]" ],
+                                    #  m.default[0].group(0))
                             stack = string_between(
-                                    "[rsp+0x", "]", 
-                                    m.default[0], retn_all_on_fail=1) 
+                                    "[rsp+0x", "]",
+                                    m.default[0], retn_all_on_fail=1)
 
                             if stack:
                                 if debug: sprint("m.default: {}".format(m.default))
-                                
+
                                 spd = int(stack, 16)
                                 if m.default[1] == 'pop rsp':
                                     spd += 8
@@ -2625,100 +2809,41 @@ def slowtrace2(ea=None,
                     #  pass
 
 
-                if noObfu:
-                    pass
-                elif Commenter(ea, "line").match(r'\[NO-OBFU]'):
-                    printi("no-obfu comment at {:x}".format(ea))
-                    #  printi("no-obfu option: {} {}".format(noObfu, type(noObfu)))
-                else:
-                    if debug: sprint("checking for patches")
+                if not noObfu and not skipObfu:
                     must_reverse = False
+                    patches_made = 0
                     _loop = True
-                    while _loop:
-                        _loop = False
-                        patch_result = False
-                        patch_results = []
-                        if not isNop(ea) and not isUnconditionalJmp(ea):
-                            patch_result = True
-                            while patch_result:
-                                patch_result = obfu._patch(ea, context={'slvars': slvars, 'slvars2': slvars2}, depth=depth)
-                                if patch_result:
-                                    if isinstance(patch_result, list):
-                                        patch_result = patch_result[0]
-                                    if debug: printi("patch_result: {}".format(patch_result))
-                                    if isinstance(patch_result, PatternResult):
-                                        pat, result = patch_result.pat, patch_result.result
-                                        must_reverse = forceReflow or getattr(pat.options, 'reflow', None) or noResume
-                                        # this is all backwards
-                                        if must_reverse:
-                                            _loop = True
-                                            continue
-                                    else:
-                                        # this is all backwards
-                                        if forceReflow or noResume:
-                                            must_reverse = True
-                                            _loop = True
-                                            continue
-                            if patch_results:
-                                #  printi("patch at insn {}".format(slvars.insnCount))
-                                if isinstance(patch_results, list):
-                                    patch_results = patch_results[0]
-                                if isinstance(patch_results, PatternResult):
-                                    if isinstance(returnPatches, list):
-                                        returnPatches.append(patch_results)
-                                        if debug: sprint("found patternresult")
+                    while not must_reverse and not isNop(ea) and not isUnconditionalJmp(ea):
+                        patch_results = asList(obfu._patch(ea, context={'slvars': slvars, 'slvars2': slvars2}, depth=depth))
+                        if not patch_results:
+                            break
+                        for patch_result in patch_results:
+                            if debug: printi("patch_result: {}".format(patch_result))
+                            patches_made += 1
+                            if isinstance(patch_result, PatternResult):
+                                pat, result = patch_result.pat, patch_result.result
+                                if forceReflow or noResume or getattr(pat.options, 'reflow', None):
+                                    must_reverse = True
+                            elif forceReflow or noResume:
+                                must_reverse = True
 
-                                    if debug: sprint("found one")
-                                    pat, result = patch_results.pat, patch_results.result
-                                    patches += 1
-                                    must_reverse = forceReflow or getattr(pat.options, 'reflow', None) or noResume
-                                    if must_reverse is None:
-                                        must_reverse = not getattr(pat.options, 'resume', False)
-                                        #  _loop = getattr(pat.options, 'resume', False)
-                                    if False and len(slvars.justVisited) > 1000:
-                                        # we don't want to have to restart later if were're this far in 
-                                        must_reverse = True
-                                    _loop = not must_reverse
-                                    EaseCode(ea)
-                                    [GetDisasm(x) for x in idautils.Heads(ea, ea+32)]
-                                    idc.auto_wait()
-                                elif isinstance(patch_results, int):
-                                    if debug: sprint("patch_results wre int {} (0 is good)".format(patch_results))
-                                    if patch_results != 0:
-                                        raise ObfuFailure("patchresults was non-zero int")
-                                else:
-                                    msg = "cannot handle patch result type: {}".format(type(patch_results))
-                                    raise ObfuFailure(msg)
-                    #  if result and result[0]:
-                        #  for r in patch_results[1]:
-                            #  patched.extend(r['addressList'])
-            # If we patched something, we need to start the trace again
-            # or do we? should we?
-            if patches or must_reverse:
-                patches = 0
-                if single:
-                    raise SlowtraceSingleStep()
-                if must_reverse:
-                    prev_ea = ea
-                    ea = ReverseHead(ea)
-                    msg = "{:x} made patches (reversing head) to {:x}".format(prev_ea, ea)
-                    if debug: printi(msg)
-                    continue
-                else:
-                    msg = "made patches (resuming)"
-                    if debug: printi(msg)
-                    continue
-                #  printi("slvars.rsp", slvars.rsp)
-                
-                #  printi("slvars.rsp", slvars.rsp)
+                    # If we patched something, we need to start the trace again
+                    # or do we? should we?
+                    if patches_made:
+                        if single:
+                            raise SlowtraceSingleStep()
+                        if must_reverse:
+                            _prev_ea = ea
+                            ea = ReverseHead(ea)
+                            msg = "{:x} made patches (reversing head) to {:x}".format(_prev_ea, ea)
+                            if debug: printi(msg)
+                            continue
+                        else:
+                            msg = "made patches (resuming)"
+                            if debug: printi(msg)
+                            continue
 
-                #  if not silent or debug: sprint("0x%x: Return early due to application of patch" % ea)
-                #  end = idc.get_fchunk_attr(ea, FUNCATTR_END)
-                #  #  analyze(ea, end)
-                #  #  idaapi.func_setend(ea, end)
-                #  if debug: printi("cbuffer", slvars.cbuffer)
-                #  raise RelocationPatchedError(slvars.cbuffer)
-            # sprint("0x%x: patch: %i" % (ea, obfu._patch(ea)))
+            # end if modify
             if line:
                 # line = re.sub('7ff79', '', line, 0, re.IGNORECASE)
                 if not showComments:
@@ -2737,7 +2862,7 @@ def slowtrace2(ea=None,
             if ea in slvars.justVisited:
                 if debug: sprint("already in justVisited: {}".format(hex(ea)))
 
-            # this check is just a formality
+            # this check is just a formality (wtf? it's the only place that adds to justVisited)
             if ea not in slvars.justVisited:
                 slvars.justVisited.add(ea)
                 slvars.justVisitedRsp[ea] = slvars.rsp
@@ -2769,7 +2894,7 @@ def slowtrace2(ea=None,
             #  SetSpDiffEx(ea)
             slvars.rsp_diff = 0
             if not modify:
-                # removed CALL from regex to avoid trouncing __alloca_probe call 
+                # removed CALL from regex to avoid trouncing __alloca_probe call
                 if not re.match(r'FC_(CND_BRANCH|UNC_BRANCH|CXXXXALL)', decomp.flowControl):
                     slvars.rsp_diff = GetSpDiff(idc.next_head(ea))
             if modify:
@@ -2833,6 +2958,7 @@ def slowtrace2(ea=None,
                                 raise AdvanceFailure(msg)
 
                         if not IsFunc_(_next_insn):
+                            pph([x.ea for x in slvars2.instructions[-16:]])
                             msg = sprint("No func/chunk at {:x}".format(_next_insn))
                             raise AdvanceFailure(msg)
                             break
@@ -2901,10 +3027,11 @@ def slowtrace2(ea=None,
                                         if not _chunk_owners_include_us:
                                             printi("idc.append_func_tail(0x{:x}, 0x{:x}, 0x{:x}".format(slvars.startLoc, _chunk_start, _chunk_end))
                                             idc.append_func_tail(slvars.startLoc, _chunk_start, _chunk_end)
+                                            # global_chunks[slvars.startLoc].update(idautils.Chunks(ea))
                                     if GetChunkNumber(_chunk_start, _chunk_owner) > 0:
                                         if not idc.remove_fchunk(_chunk_owner, _chunk_start):
-                                            printi("ZeroFunction({:x})".format(_chunk_owner))
-                                            ZeroFunction(_chunk_owner)
+                                            printi("132 ZeroFunction({:x})".format(_chunk_owner))
+                                            ZeroFunction(_chunk_owner, total=1)
                                             if _chunk_owner in GetChunkOwners(_chunk_start()):
                                                 msg = "couldn't fix chunk 0x{:x}".format(idc.next_head(ea))
                                                 if 'slvars' in globals(): sprint(ChunkFailure(msg))
@@ -2989,7 +3116,7 @@ def slowtrace2(ea=None,
             if isAnyJmpOrCall(ea):
                 target = GetTarget(ea) # target = GetOperandValue(ea, 0)
                 if not ida_funcs.func_does_return(target):
-                    printi("*** {:x} non-returning function: {}".format(ea, describe_target(target)))
+                    if debug: printi("*** {:x} non-returning function: {}".format(ea, describe_target(target)))
             else:
                 target = False
             # GetParamLong
@@ -3007,7 +3134,7 @@ def slowtrace2(ea=None,
 
             #  lineFmt = ".text:%x %3s #%3i %-30s%-4s%s%-24s%s"
             # for elem in lineFmtObj:
-                
+
             #  lineFmt = "{segment}:{ea} {rsp: > 3x} {func:16} {hex} {filler:{indent}}\t{disasm} {cmt}"
             lineFmt = "{segment}:{ea:x} {rsp:> 4x} {spd:>4} {func:16} {hex:<30}{label}\t{disasm} {cmt}"
 
@@ -3034,7 +3161,7 @@ def slowtrace2(ea=None,
                     ForceFunction(ea)
                     idc.auto_wait()
 
-                
+
             _ref_func = ea or slvars.startLoc
             if ida_funcs.get_func(_ref_func):
                 spd_this = idc.get_sp_delta(ea)
@@ -3095,7 +3222,7 @@ def slowtrace2(ea=None,
                     msg = "forceJump target {:x} rsp {:x} does not match current {:x} rsp {:x}".format(forceJump, forceJumpRsp, ea, slvars.rsp)
                     if 'slvars' in globals(): sprint(RelocationStackError(msg))
                     raise RelocationStackError(msg)
-                    
+
                 slvars.rsp = 0
                 break
 
@@ -3236,6 +3363,47 @@ def slowtrace2(ea=None,
             #  m = re.search(r'(\w*word ptr)? cs:([a-z]+_[A-F0-9]+\+[A-F0-9]+)h?', ida_disasm)
             fix_location_plus_2(ea)
 
+            if (insn_match(ea, idaapi.NN_retn, comment='retn')
+                    or insn_match(ea, idaapi.NN_jmpni, (idc.o_displ, None), comment='jmp qword [reg+0x28]')
+                    or insn_match(ea, idaapi.NN_jmpni, (idc.o_mem, 5), comment='jmp qword [rel UnhandledExceptionFilter]')
+                    or insn_match(ea, idaapi.NN_jmpni, (idc.o_phrase, None), comment='jmp qword [rax+r8*8]')
+                    or insn_match(ea, idaapi.NN_jmpni, (idc.o_reg, 0), comment='jmp rax')):
+                if debug: printi("**************")
+                if slvars.rsp is None:
+                    slvars.rsp = -9999
+                if not skipAddRsp:
+                    if not silent or slvars.rsp: sprint("%s: adding retn rsp of 0x%x" % (ida_disasm, slvars.rsp))
+                    slvars.retSps.add(slvars.rsp)
+                if len(callStack) < 1:
+                    line = output("\t; call stack is empty; END OF BRANCH")
+                    break
+                else:
+                    slvars.rsp_diff = +8
+                    if slvars.rsp is None:
+                        slvars.rsp = 0
+                    rsp_effective = slvars.rsp - slvars.rsp_diff
+                    popped_mnem = ""
+                    while popped_mnem != "call" and len(callStack):
+                        target = callStack.pop()
+                        slvars.previousHead = None
+                        # dprint("poptarget1 ")
+                        if debug: sprint("poptarget1")
+                        ea = PopTarget(ea, target)
+                        retn_rsp = rspStack.pop()
+                        popped_mnem = mnemStack.pop()
+                        poppedState = popState()
+                    #  if len(callStack) == 0:
+                    #  line = output("\t; call stack is empty; END OF BRANCH")
+                    #  break
+                    line = output("\t; from %s @ %0x" % (" ".join(poppedState.disasm.split()), poppedState.ea))
+                    if retn_rsp != rsp_effective:
+                        if retn_rsp is not None and rsp_effective is not None:
+                            line = output("\t; slvars.rsp slippage: got %0x, expected %0x" % (rsp_effective, retn_rsp))
+                        else:
+                            line = output("\t; slvars.rsp slippage: lost track of slvars.rsp (reanalyse?)")
+                    continue  # dont want to do a idc.next_head, or do we?
+                    # Well we would have to push current address to callStack
+
             if 0:
                 # Arxan re-enabledment
                 if isUnconditionalJmp(mnem) and opType0 == o_near and idc.get_wide_byte(ea) == 0xe9 and not Commenter(ea).match(r'\[ARXAN-'):
@@ -3262,7 +3430,10 @@ def slowtrace2(ea=None,
                 sprint("unlikely instruction {}".format(mnem))
 
 
-            target = GetTarget(ea)
+            if isCall(ea) or isJmp(ea):
+                target = GetTarget(ea)
+            else:
+                target = ea
 
             # first check for "call"
             if isCall(mnem):
@@ -3283,44 +3454,42 @@ def slowtrace2(ea=None,
                                         target = GetTarget(target)
                                         continue
                         break
-                    
 
-            isArxan = False
-            thisIsArxan = False
+
             # if isCall(mnem) and opType0 in (o_near, o_mem, o_reg):
-            if isCall(mnem) and opType0 in (o_near,): # o_mem
+            if insn_match(ea, idaapi.NN_call, (idc.o_near, 0), comment='call sub_140CEBFBC'):
+            # if isCall(mnem) and opType0 in (o_near,): # o_mem
                 # if idc.get_spd(ea) and (idc.get_spd(ea) % 16) == 0:
                 # TODO: queue this to happen AFTER, because sometimes we need to de-obfu a (parent?) func into a call first
                 if not IsFuncHead(target):
-                    isArxan = True
                     if debug: sprint("forcing function for call target {:x}".format(target))
                     ForceFunction(target)
-                if ea == slvars.startLoc and ida_funcs.func_does_return(target) : # slvars.rsp == 0 and len(slvars.addresses) == 0: # (slvars.rsp % 16) == 0:
-                    balanceCalls, balanceLoc, balanceName = CountConsecutiveCalls(ea)
-                    balanceCallCount = len(balanceCalls)
-                    if balanceCallCount > 2: 
-                        thisIsArxan = True
-                    else:
-                        if depth + 1 < max_depth:
-                            SetFuncFlags(target, lambda f: f & ~(idc.FUNC_NORET))
-                            printi("\ngoing deeper to {:x} ({})".format(target, depth + 1))
-                            EaseCode(target, forceStart=1)
-                            retrace(target, adjustStack=adjustStack, depth=depth + 1, max_depth=max_depth)
-                            #  print("Have to restart, slvars sullied")
-                            #  return 1
-                            isArxan = True
-                        else:
-                            # need to stop processing at this point, since we're probably looking at:
-                            # call x -- arxan 
-                            # jmp y  -- never reach
-                            
-                            printi("{:x} skipping arxan rabbit hole (depth: {}, balanceCallCount: {})".format(ea, depth, balanceCallCount))
-                            raise Exception("Must do something about rabbit hole")
-                else:
-                    if debug: sprint("0x{:x} [spd:{:x}] #{} call {:x} Nice: {}".format(ea, slvars.rsp, len(slvars.addresses), target, IsNiceFunc(target)))
+                #  if ea == slvars.startLoc and ida_funcs.func_does_return(target) : # slvars.rsp == 0 and len(slvars.addresses) == 0: # (slvars.rsp % 16) == 0:
+                    #  balanceCalls, balanceLoc, balanceName = CountConsecutiveCalls(ea)
+                    #  balanceCallCount = len(balanceCalls)
+                    #  if balanceCallCount > 2:
+                        #  pass
+                    #  else:
+                        #  if False:
+                            #  if depth + 1 < max_depth:
+                                #  SetFuncFlags(target, lambda f: f & ~(idc.FUNC_NORET))
+                                #  printi("\ngoing deeper to {:x} ({})".format(target, depth + 1))
+                                #  EaseCode(target, forceStart=1)
+                                #  retrace(target, adjustStack=adjustStack, depth=depth + 1, max_depth=max_depth)
+                                #  #  print("Have to restart, slvars sullied")
+                                #  #  return 1
+                            #  else:
+                                #  # need to stop processing at this point, since we're probably looking at:
+                                #  # call x -- arxan
+                                #  # jmp y  -- never reach
+                                #
+                                #  printi("{:x} skipping arxan rabbit hole (depth: {}, balanceCallCount: {})".format(ea, depth, balanceCallCount))
+                                #  raise Exception("Must do something about rabbit hole")
+                #  else:
+                if debug: sprint("0x{:x} [sp:{:x}] [spd:{:x}] #{} call {:x} Nice: {}".format(ea, slvars.rsp, slvars.rsp_diff, len(slvars.addresses), target, IsNiceFunc(target)))
 
 
-                    
+
                 # TODO: non-returning functions screw us, need to find why
                 # ida_funcs.func_does_return
                 #  if Commenter(ea).match(r'\[ARXAN-'):
@@ -3340,7 +3509,7 @@ def slowtrace2(ea=None,
                                 line = output("\nnon-returning call to 0x%x at 0x%x (1st check)" % (target, ea))
                                 slvars.rsp = 0
                                 break
-                    
+
                     # check for arxan leaders
                     # Check all calls in a function to find repeated nested calls.
                     # Skip through all the calls in a function, then down the
@@ -3349,6 +3518,10 @@ def slowtrace2(ea=None,
                     # sets one of the return addresses on the stack, grab the function address
                     # from the offset it uses, and paste that over the original call, as a jmp.
                     balanceCalls, balanceLoc, balanceName = CountConsecutiveCalls(ea)
+                    if debug:
+                        # dprint("[setIsRealFunc] balanceCalls, balanceLoc, balanceName")
+                        print("[balanceCheck] {:#x} balanceCalls:{}, balanceLoc:{}, balanceName:{}".format(ea, hex(balanceCalls), hex(balanceLoc), balanceName))
+
                     balanceCallCount = len(balanceCalls)
                     if balanceCallCount > 2:
                         if balanceCallCount > 3:
@@ -3387,10 +3560,21 @@ def slowtrace2(ea=None,
                             retrace(balanceLoc, depth=depth+1, max_depth=max_depth, once=1)
 
                             _extra = process_balance(balanceLoc)
-                            assert _extra, hex(balanceLoc)
+                            if not _extra:
+                                unpatch_func2(balanceLoc)
+                                retrace(balanceLoc)
+                                _extra = process_balance(balanceLoc)
+                                if not _extra:
+                                    assert _extra, hex(balanceLoc)
                             if 'extra' in _extra and _extra['extra']:
                                 _extra = _extra['extra']
                                 setglobal('_extra', _extra)
+                                Commenter(ea).add("{:16} {:x}".format("TheBalancerExtra", _extra[0].ea))
+
+                                for i, a in enumerate(balanceCalls):
+                                    Commenter(balanceLoc).add("{:16} {:x}".format(labels[i % len(labels)], a))
+                                Commenter(balanceLoc).add("{:16} {:x}".format("TheBalancerExtra", _extra[0].ea))
+
                                 _extra = AdvanceInsnList(ea=balanceLoc, insns=_extra, start_ea=balanceLoc, byte_count=_.sum(_extra, lambda v, *a: len(v)))
                                 if _extra.insns[-1].insn.startswith('ret'):
                                     printi("removing trailing ret from _extra")
@@ -3479,7 +3663,7 @@ def slowtrace2(ea=None,
                                                         #  start_num = call_num
                                                     #  num = call_num - start_num
                                                     # dprint("[returnAddresses] len(returnAddresses), num")
-                                                    
+
                                                     num = len(returnAddresses)
                                                     returnAddresses.append(call_return)
 
@@ -3499,7 +3683,7 @@ def slowtrace2(ea=None,
                                                 raise
 
 
-                                            
+
                                         if _.indexOf(returnAddresses, None) == -1:
                                             smth_count = 0
                                             balanceCalls.reverse()
@@ -3508,20 +3692,30 @@ def slowtrace2(ea=None,
                                                 smth_count += 1
                                                 if retn_loc is None:
                                                     printi("[arxan] retn_loc is None")
-                                                else: 
+                                                else:
                                                     Commenter(ea).add("Arxan Return {}: {:x} {} {}".format(smth_count, retn_loc, idc.print_insn_mnem(SkipJumps(retn_loc)), idc.get_name(retn_loc)))
 
                                             smth_count = -1
                                             if cont_count == 0:
                                                 if _extra:
-                                                    raise ArxanFailure("No effective returns, but extra code after balance present")
-                                                Commenter(ea).add("ArxanCheck with no effective returns")
-                                                Commenter(ea).add("[ARXAN-PATCHED]")
-                                                #  nassemble(target, "retn", apply=1)
-                                                if arxanJmpOrCall == 'call':
-                                                    PatchNops(ea, IdaGetInsnLen(ea), 'Arxan with no returns')
+                                                    printi("[ArxanQuickFix] {:x} -> {:x} (BalanceExtra)".format(ea, _extra[0].ea))
+                                                    if IsFuncHead(_extra[0].ea):
+                                                        idc.del_func(_extra[0].ea)
+                                                    else:
+                                                        RemoveChunk(_extra[0].ea)
+                                                    xr = xrefs_to(_extra[0].ea, filter=lambda x: isUnconditionalJmpOrCall(x.frm))
+                                                    if len(xr) == 1:
+                                                        PatchNops(xr[0], MyGetInstructionLength(xr[0]))
+                                                    nassemble(ea, "{} {:#x}".format(arxanJmpOrCall, _extra[0].ea), apply=1)
+                                                    Commenter(ea, 'line').add("[ArxanQuickFix] {:x} -> {:x} (BalanceExtra)".format(ea, _extra[0].ea))
                                                 else:
-                                                    nassemble(ea, 'retn', apply=1)
+                                                    Commenter(ea).add("ArxanCheck with no effective returns")
+                                                    Commenter(ea).add("[ARXAN-PATCHED]")
+                                                    #  nassemble(target, "retn", apply=1)
+                                                    if arxanJmpOrCall == 'call':
+                                                        PatchNops(ea, IdaGetInsnLen(ea), 'Arxan with no returns')
+                                                    else:
+                                                        nassemble(ea, 'retn', apply=1)
 
                                             elif cont_count == 1 and _extra is None:
                                                 skip_next = 0
@@ -3571,13 +3765,14 @@ def slowtrace2(ea=None,
                                                     _locations = _.uniq(_locations)
 
                                                     #  _locations = _.sortBy(_stackMut, lambda x, *a: x['offset'])
-                                                    #  _locations_used = _.map(_locations, lambda x, *a: not x['mnem'].startswith('ret')) 
+                                                    #  _locations_used = _.map(_locations, lambda x, *a: not x['mnem'].startswith('ret'))
                                                     #  _locations = _.pluck(_locations, 'location')
-                                                    #  # _.filter(_stackMut, lambda x, *a: not x['mnem'].startswith('ret')), 
-                                                    
+                                                    #  # _.filter(_stackMut, lambda x, *a: not x['mnem'].startswith('ret')),
+
+
                                                     printi("*#*# retracing {}".format(hex(_locations[0:-1])))
                                                     # may need to retrace final location is _extra is in play
-                                                    _retrace = [retrace(addr, once=1, depth=depth+1, max_depth=depth+1) for addr in _locations[0:-1]]
+                                                    _retrace = [retrace(addr, once=0, depth=depth+1, max_depth=depth+1) for addr in _locations[0:-1]]
                                                     #  printi("[Target Retracings] {}".format(pfh(_retrace)))
                                                     #  r2 = _.sortBy(_.filter(_stackMut, lambda x, *a: not x['mnem'].startswith('ret')), lambda x, *a: x['offset'])
 
@@ -3595,12 +3790,12 @@ def slowtrace2(ea=None,
                                                     sizes = [getattr(x, 'byte_count') for x in _sections]
                                                     printi("[Target Sizes] {}".format(pfh(sizes)))
                                                     #    r2 = [
-                                                    #            (addr, nassemble(addr, "\n".join(AdvanceToMnemEx(addr).insns))) 
-                                                    #                for addr in 
+                                                    #            (addr, nassemble(addr, "\n".join(AdvanceToMnemEx(addr).insns)))
+                                                    #                for addr in
                                                     #            _.pluck(
                                                     #                _.sortBy(
-                                                    #                    _.filter(_stackMut, lambda x, *a: not x['mnem'].startswith('ret')), 
-                                                    #                lambda x, *a:  x['offset']), 
+                                                    #                    _.filter(_stackMut, lambda x, *a: not x['mnem'].startswith('ret')),
+                                                    #                lambda x, *a:  x['offset']),
                                                     #            'location')]
                                                     #    sizes = [len(x[1]) for x in r2]
 
@@ -3651,7 +3846,7 @@ def slowtrace2(ea=None,
 
                                                     elif 5 + sum_sizes_first < remaining:
                                                         printi("[ArxanFiller] can fit some 0x{:x} bytes in cave".format(sum_sizes_all))
-                                                        # we should (i think) always use a jump to join inside the cave, but will use call 
+                                                        # we should (i think) always use a jump to join inside the cave, but will use call
                                                         # when appropriate to jmp/call the cave entire
                                                         _filler = _.flatten(_.pluck(_filtered[0:-1], 'labeled_values')) + ["{} 0x{:x}".format('jmp', _filtered[-1].ea)]
                                                         # _filler = _.filter(_filler, lambda x, *a: not re.match('\s*jmp \w*(locret|nullsub)', x))
@@ -3708,41 +3903,42 @@ def slowtrace2(ea=None,
                                                     #  ForceFunction(balanceLoc)
                                                     # ForceFunction(cave_start)
                                                     Commenter(cave_start).add("Filler Bunny Code Cave for 0x{:x}".format(ea))
-                                                    # SetFuncEnd(cave_start, 
+                                                    # SetFuncEnd(cave_start,
 
+                                                    idc.add_func(balanceLoc)
                                                     ea = ReverseHead(ea)
                                                     continue
 
 
 
-    #  
+    #
                                                 #  asm = ''
                                                 #  skip_next = 0
                                                 #  patch_target = 0
-    #  
+    #
                                                 #  for call_loc, retn_loc in _.zip(balanceCalls, returnAddresses):
                                                     #  smth_count += 1
                                                     #  printi("[arxan] call_loc {} of {}.{}".format(smth_count, len(balanceCalls), len(returnAddresses)))
-    #  
+    #
                                                     #  if skip_next:
                                                         #  skip_next = 0
                                                         #  patch_target = 1
                                                         #  continue
                                                     #  elif patch_target == 1:
                                                         #  patch_target = call_loc
-    #  
+    #
 
         #  if idc.print_insn_mnem(SkipJumps(retn_loc)).startswith('ret'):
                                                         #  printi("[arxan] skipping retn_loc {} {:x} (call_loc {:x})".format(smth_count, retn_loc, call_loc))
                                                         #  skip_next = 1
                                                         #  continue
-    #  
+    #
                                                     #  printi("[arxan] adding retn_loc {} {:x} (call_loc {:x})".format(smth_count, retn_loc, call_loc))
                                                     #  asm += '; '.join(AdvanceToMnemEx(SkipJumps(retn_loc), 'retn', inclusive=0)[1])
                                                     #  asm = re.sub(r';\s*jmp [^;].*$', '; ', asm)
                                                     #  skip_next = 1
                                                     #  continue
-    #  
+    #
                                                 #  printi("[arxan] asm: {} for {:x}".format(asm, cave_start))
                                                 #  assembled = nassemble(cave_start, asm + "; retn")
                                                 #  asm_len = len(assembled)
@@ -3758,7 +3954,7 @@ def slowtrace2(ea=None,
                                                 #  printi("[arxan] rewriting first call: {}".format(assembled))
                                                 #  PatchBytes(patch_target, assembled, "ArxanRemoval")
                                                 #  Commenter(patch_target).add("[ARXAN-PATCHED]")
-    #  
+    #
                                                 #  ea = ReverseHead(ea)
                                                 #  continue
                                         else:
@@ -3775,8 +3971,8 @@ def slowtrace2(ea=None,
                                                                     #  #  setTimeout(lambda *a: \
                                         #  Commenter(ea).add(sprint(f"{ea:x}: Avoided Arxan function at {mainLoc:x}")) # , 5200)
                                         mnem = arxanJmpOrCall
-    # XXX  
-    #  
+    # XXX
+    #
                             #  skipped_insn_count, callLoc, unused = AdvanceToMnem(new_ea, "call")
                             #  if skipped_insn_count > 1:
                                 #  balanceSpd = idc.get_spd(GetChunkEnd(balanceLoc)-1) // -8
@@ -3798,7 +3994,7 @@ def slowtrace2(ea=None,
                                         #  # [(0x2f, 0x143e929c9, 0x20, 0x90),
                                         #  #  (0x30, 0x140d38c01, 0x20, 0x90),
                                         #  #  (0x31, 0x140a60ce7, 0x20, 0x90)]
-    #  
+    #
                                         #  #  results: 4800000080858948, 30, 88, b0 ([0, 1, 2, 3])
                                         #  #  [   ('0x4800000080858948', '0x30', '0x88', '0xb0'),
                                             #  #  ('0x895045034c458bfc', '0x30', '0x88', '0xb0'),
@@ -3821,10 +4017,10 @@ def slowtrace2(ea=None,
                                                     #  start_num = call_num
                                                 #  num = call_num - start_num
                                                 #  returnAddresses[num] = call_return
-    #  
+    #
                                                 #  if not IsCode_(call_return):
                                                     #  forceCode(call_return)
-    #  
+    #
                                                 #  if idc.print_insn_mnem(call_return).startswith("ret"):
                                                     #  sprint(f"ArxanContinuation: {call_num} ({call_num - balanceSpd}) {hex(call_return)}: ret")
                                                     #  null_count += 1
@@ -3832,7 +4028,7 @@ def slowtrace2(ea=None,
                                                     #  sprint(f"ArxanContinuation: {call_num} ({call_num - balanceSpd}) {hex(call_return)}: {idc.print_insn_mnem(call_return)}")
                                                     #  cont_count += 1
 
-                                            
+
                                         #  if _.indexOf(returnAddresses, None) == -1:
                                             #  smth_count = -1
                                             #  balanceCalls.reverse()
@@ -3843,12 +4039,12 @@ def slowtrace2(ea=None,
                                                     #  if skip_next:
                                                         #  skip_next = 0
                                                         #  continue
-    #  
+    #
                                                     #  if idc.print_insn_mnem(SkipJumps(retn_loc)).startswith('ret'):
                                                         #  printi("[arxan] skipping retn_loc {} {:x} (call_loc {:x})".format(smth_count, retn_loc, call_loc))
                                                         #  skip_next = 1
                                                         #  continue
-    #  
+    #
                                                     #  nassemble(call_loc, "jmp {:#x}".format(retn_loc), apply=1)
                                                     #  Commenter(ea).add("Arxan Leader with single return redirected to {} at {:x}".format(idc.get_name(retn_loc), retn_loc))
                                             #  else:
@@ -3861,33 +4057,33 @@ def slowtrace2(ea=None,
                                                 #  PatchBytes(balanceLoc, asm, "FillerBunny")
                                                 #  MyMakeFunction(balanceLoc, balanceLoc + asm_len)
                                                 #  LabelAddressPlus(balanceLoc, "FillerBunny")
-    #  
+    #
                                                 #  asm = ''
                                                 #  skip_next = 0
                                                 #  patch_target = 0
-    #  
+    #
                                                 #  for call_loc, retn_loc in _.zip(balanceCalls, returnAddresses):
                                                     #  smth_count += 1
                                                     #  printi("[arxan] call_loc {} of {}.{}".format(smth_count, len(balanceCalls), len(returnAddresses)))
-    #  
+    #
                                                     #  if skip_next:
                                                         #  skip_next = 0
                                                         #  patch_target = 1
                                                         #  continue
                                                     #  elif patch_target == 1:
                                                         #  patch_target = call_loc
-    #  
+    #
                                                     #  if idc.print_insn_mnem(SkipJumps(retn_loc)).startswith('ret'):
                                                         #  printi("[arxan] skipping retn_loc {} {:x} (call_loc {:x})".format(smth_count, retn_loc, call_loc))
                                                         #  skip_next = 1
                                                         #  continue
-    #  
+    #
                                                     #  printi("[arxan] adding retn_loc {} {:x} (call_loc {:x})".format(smth_count, retn_loc, call_loc))
                                                     #  asm += '; '.join(AdvanceToMnemEx(SkipJumps(retn_loc), 'retn', inclusive=0)[1])
                                                     #  asm = re.sub(r';\s*jmp [^;].*$', '; ', asm)
                                                     #  skip_next = 1
                                                     #  continue
-    #  
+    #
                                                 #  printi("[arxan] asm: {} for {:x}".format(asm, cave_start))
                                                 #  assembled = nassemble(cave_start, asm + "; retn")
                                                 #  asm_len = len(assembled)
@@ -3903,14 +4099,14 @@ def slowtrace2(ea=None,
                                                 #  printi("[arxan] rewriting first call: {}".format(assembled))
                                                 #  PatchBytes(patch_target, assembled, "ArxanRemoval")
                                                 #  Commenter(patch_target).add("[ARXAN-PATCHED]")
-    #  
+    #
                                                 #  ea = ReverseHead(ea)
                                                 #  continue
                                         #  else:
                                             #  pp(returnAddresses)
                                             #  Commenter(ea).add("complex arxan unsolved")
                                             #  raise ObfuFailure("can't handle {} arxan returns with {} calls".format(len(returnAddresses), balanceCallCount))
-    #  
+    #
                                         #  arxan_comments[ea] = "Avoided Arxan function at {:x}".format(mainLoc)
 
                                         #  setTimeout(lambda *a: \
@@ -3928,9 +4124,34 @@ def slowtrace2(ea=None,
                     #  else: codeRefsTo.add(target)
 
 
+            if (
+                    not slvars.startFnName.startswith('Arxan') and
+                    (insn_match(ea, idaapi.NN_lea, (idc.o_reg, (1, 2, 8, 9)), (idc.o_mem, 5), comment='lea rdx, [rel unk_140015EC8]')
+                        )):
+                if debug: sprint("matched lea r64, [rel sub]")
+                _target = GetTarget(ea)
+                if debug: sprint("[slowtrace2] _target:{}".format(ahex(_target)))
+                _sktarget = SkipJumps(ea, skipObfu=1)
+                if debug: sprint("[slowtrace2] _target:{}, _sktarget:{}".format(ahex(_target), ahex(_sktarget)))
+                    
+                if _sktarget != _target and _sktarget != ea:
+                    if applySkipJumps:
+                        SkipJumps(ea, apply=1)
+                    _target = SkipJumps(_target)
+                    if IsValidEA(_target) and idc.get_segm_name(_target) == '.text':
+                        possible_later_targets = SkipJumps(_target, returnJumps=True, returnTarget=True)
+                        if not _.any(possible_later_targets, lambda v, *a: v in later2):
+                            later2.add(_target)
+                            later.add(_target)
+                            printi("later2: adding {}".format(diida(ea)))
+
+            if applySkipJumps and isAnyJmpOrCall(ea):
+                SkipJumps(ea, apply=1, skipNops=1)
 
             # if isCall(mnem) and opType0 in (o_mem, o_near, o_reg) and GetJumpTarget(ea):
             if isCall(mnem) and opType0 in (o_near,) and GetJumpTarget(ea): # o_mem
+                if ean(target) == 'RegisterNative':
+                    raise AdvanceFailure('Tried to call RegisterNative from {:#x}'.format(ea))
                 if False and ida_funcs.get_func(target) and not ida_funcs.func_does_return(target):
                     line = output("\nnon-returning call to 0x%x at 0x%x (2nd check)" % (target, ea))
                     slvars.rsp = 0
@@ -3940,8 +4161,13 @@ def slowtrace2(ea=None,
                 line = output("\t; Skipping o_near call")
                 if opType0 == o_near:
 
-                    if target not in later2 and not IsUnknown(target) and idc.get_func_attr(GetJumpTarget(ea), idc.FUNCATTR_FLAGS) & FUNC_LIB == 0:
-                        later_pending.add(GetJumpTarget(ea))
+                    # if target not in later2 and not IsUnknown(target) and idc.get_func_attr(GetJumpTarget(ea), idc.FUNCATTR_FLAGS) & FUNC_LIB == 0:
+                    possible_later_targets = SkipJumps(target, returnJumps=True, returnTarget=True)
+                    if not _.any(possible_later_targets, lambda v, *a: v in later2):
+                        later2.add(target)
+                        later.add(target)
+                    # TODO: move this check into retrace to avoid library functions
+                    # if IsValidEA(target) and target not in later2 and idc.get_func_attr(GetJumpTarget(ea), idc.FUNCATTR_FLAGS) & FUNC_LIB == 0:
                 try:
                     ea = AdvanceHead(ea)
                     continue
@@ -3963,22 +4189,22 @@ def slowtrace2(ea=None,
                         LabelAddress(target, newFunctionName)
                         labelNextCall = False
 
+            if insn_match(ea, idaapi.NN_cmp, (idc.o_displ, 0), (idc.o_reg, 15), comment='cmp [rax-0x1c], r15w'):
+                slvars2.previousHeads.clear()
+
             if isConditionalJmp(mnem):
+                slvars2.previousHeads.clear()
                 fnLoc = GetTarget(ea) # target = GetOperandValue(ea, 0)
                 if not is_real_func(ea, fnLoc):
                     if not noAppendChunks and (modify or appendChunks):
                         if debug: sprint("ShowAppendFchunk 2182")
-                        ShowAppendFchunk(slvars.startLoc, target, EndOfFlow(target, soft=ignoreInt), ea)
+                        ShowAppendFchunk(slvars.startLoc, target, EaseCode(target, forceStart=1), ea)
 
                     ida_auto.auto_wait()
 
                     if modify:
                         if delsp:
                             SetSpDiffEx(ea, 0)
-
-            if applySkipJumps and isAnyJmp(ea):
-                SkipJumps(ea, apply=1, skipNops=1)
-
 
             if isUnconditionalJmpOrCall(mnem):
                 target = GetTarget(ea) # target = GetOperandValue(ea, 0)
@@ -4002,11 +4228,11 @@ def slowtrace2(ea=None,
                     # output("e: %s" % line)
                 if isUnconditionalJmp(mnem) and slvars.rsp == 0 and not IsSameFunc(ea, target):
                     if debug: sprint("[debug] slvars.rspHist.items:{}".format(slvars.rspHist.items))
-                    
+
                     if not "allow_tail_calls":
                         if slvars.rspHist and max(slvars.rspHist)[1] > 0 and slvars.rspHist[-2][1] > 0:
                             with Commenter(ea) as c:
-                                if not isRet(SkipJumps(ea, skipNops=1)) and not c.match("\[ALLOW JMP]"): 
+                                if not isRet(SkipJumps(ea, skipNops=1)) and not c.match("\[ALLOW JMP]"):
                                     c.add("[TAIL-CALL]")
                                     line = output("\t; assuming tail-call jmp")
                                     break
@@ -4031,7 +4257,10 @@ def slowtrace2(ea=None,
                     Commenter(target, repeatable=1).add(add_comment)
 
             # added extra mnem = because retn keeps showing up as a jmp
-            mnem = idc.print_insn_mnem(ea)
+            new_mnem = idc.print_insn_mnem(ea)
+            if not new_mnem:
+                raise AdvanceFailure("Couldn't decode mnem for {:#x} (was {})".format(ea, mnem))
+            mnem = new_mnem
             if isAnyJmp(mnem):
                 target = GetTarget(ea) # target = GetOperandValue(ea, 0)
                 if target == idc.BADADDR:
@@ -4202,7 +4431,7 @@ def slowtrace2(ea=None,
                 if idc.is_flow(ida_bytes.get_flags(ea_next)) and not isFlowEnd(ea) and n:
                     ida_disasm_next = string_between(';', '', idc.GetDisasm(ea_next), inclusive=1, repl='').rstrip()
 
-                    if not '__alloca_probe' in ida_disasm and not Commenter(ea, "line").match(r'\[.*SPD=', re.I): #  and not Commenter(ea_next, "line").match(r'\[.*SPD=', re.I):
+                    if not '__alloca_probe' in ida_disasm and not Commenter(ea, "line").match(r'\[.*SPD.?=', re.I): #  and not Commenter(ea_next, "line").match(r'\[.*SPD=', re.I):
                         sprint("fixing unexpected stack change from: {} | {}".format(ida_disasm, ida_disasm_next))
                         # user stkpnt will stay around, auto stkpnt will quickly disappear
                         SetSpDiffEx(ea, None)
@@ -4231,25 +4460,44 @@ def slowtrace2(ea=None,
                         m = re.match(r"""lea rsp, \[rsp([-+][0-9a-fxh]+)]""", diida(ea))
                         if m:
                             _delta = int(m.group(1).rstrip('h'), 0)
-                            sp_correct = _delta 
+                            sp_correct = _delta
                         else:
                             if debug: printi("[info] {:x} should instruction affect stack: {}? spdelta: 0x{:x}".format(ea, diida(ea), n))
                             if diida(ea).startswith('lea esp'):
                                 raise RelocationUnpatchRequest('lea esp', ea)
                             line = output("\t; [info] should instruction affect stack?")
                     elif mnem == "sub" or mnem == "add":
+                        # if not insn_match(ea, idaapi.NN_sub, (idc.o_reg, 4), (idc.o_reg, 0), comment='sub rsp, rax'):
                         m = re.match(r"""(sub|add) rsp, (-?[0-9a-fxh]+)""", diida(ea))
                         if m:
                             _delta = int(m.group(2).rstrip('h'), 16)
                             if m.group(1) == 'sub':
                                 _delta = 0 - _delta
-                            sp_correct = _delta 
+                            sp_correct = _delta
                         else:
                             m = re.match(r"""add rsp, \[rsp([-+][0-9a-fxh]+)]""", diida(ea))
                             if m:
                                 # tricky push 10, 18 pop *rsp bullshit
                                 pass
-                            else:
+                            elif insn_match(ea, idaapi.NN_sub, (idc.o_reg, 4), (idc.o_reg, None), comment='sub rsp, reg'):
+                                if _.any(slvars2.instructions[-16:], lambda v, *a: v == 'call __alloca_probe'):
+                                    printi("*** we know what this is ****")
+                                    _alloca = _.last(_.filter(slvars2.instructions[-16:], lambda v, *a: v == 'call __alloca_probe'))
+                                    if idc.get_sp_delta(_alloca.ea + len(_alloca)) == 0:
+                                        idc.add_user_stkpnt(ea, -0x1000)
+                                        slvars.rsp_diff = -0x1000
+                                        Commenter(ea, "line").remove_matching(r'.*SPD.*')
+                                        Commenter(ea, "line").add("[SPD+={:#x}]".format(slvars.rsp_diff))
+                                    else:
+                                        printi("*** we know what this is, but there seems to already be an spd set on __alloca_probe *** {:#x}".format(_alloca.ea))
+                                else:
+                                    if noSti:
+                                        print("*** need to disable 'noSti' option in order to find __alloca_probe ***")
+                                    else:
+                                        printi("*** can't find previous instruction for call __alloca_probe ***")
+                                        setglobal('_instructions', slvars2.instructions.copy())
+                                        
+                            elif not stk:
                                 printi("[warn] {:x} instruction should affect stack: {}".format(ea, diida(ea)))
                                 line = output("\t; [warn] instruction should affect stack")
 
@@ -4312,42 +4560,6 @@ def slowtrace2(ea=None,
                         #  else:
                         #  sprint("0x%x: confused about stackop '%s'" % (ea, mnem))
 
-            if mnem == "retn" or mnem == "ret":
-                if slvars.rsp is None:
-                    slvars.rsp = -9999
-                if not skipAddRsp:
-                    if not silent or slvars.rsp: sprint("%s: adding retn rsp of 0x%x" % (ida_disasm, slvars.rsp))
-                    slvars.retSps.add(slvars.rsp)
-                if len(callStack) < 1:
-                    line = output("\t; call stack is empty; END OF BRANCH")
-                    printi(line)
-                    break
-                else:
-                    slvars.rsp_diff = +8
-                    if slvars.rsp is None:
-                        slvars.rsp = 0
-                    rsp_effective = slvars.rsp - slvars.rsp_diff
-                    popped_mnem = ""
-                    while popped_mnem != "call" and len(callStack):
-                        target = callStack.pop()
-                        slvars.previousHead = None
-                        # dprint("poptarget1 ")
-                        if debug: sprint("poptarget1")
-                        ea = PopTarget(ea, target)
-                        retn_rsp = rspStack.pop()
-                        popped_mnem = mnemStack.pop()
-                        poppedState = popState()
-                    #  if len(callStack) == 0:
-                    #  line = output("\t; call stack is empty; END OF BRANCH")
-                    #  break
-                    line = output("\t; from %s @ %0x" % (" ".join(poppedState.disasm.split()), poppedState.ea))
-                    if retn_rsp != rsp_effective:
-                        if retn_rsp is not None and rsp_effective is not None:
-                            line = output("\t; slvars.rsp slippage: got %0x, expected %0x" % (rsp_effective, retn_rsp))
-                        else:
-                            line = output("\t; slvars.rsp slippage: lost track of slvars.rsp (reanalyse?)")
-                    continue  # dont want to do a idc.next_head, or do we?
-                    # Well we would have to push current address to callStack
 
             # If no interesting mnem was found, default here:
 
@@ -4395,8 +4607,12 @@ def slowtrace2(ea=None,
             if not skipAddRsp:
                 next_ea = ea + IdaGetInsnLen(ea)
 
-                if not silent or slvars.rsp: sprint(("0x%x: break - adding retn slvars.rsp of 0x%x: {}" % (ea, slvars.rsp)).format(diida(next_ea)))
-                slvars.retSps.add(slvars.rsp)
+                if insn_match(next_ea, idaapi.NN_int3) or insn_match(ea, idaapi.NN_jmpni, idc.o_reg):
+                    # forceRemoveChunks = True
+                    pass
+                else:
+                    if not silent or slvars.rsp: sprint(("0x%x: break - adding retn slvars.rsp of 0x%x: {}; {}" % (ea, slvars.rsp)).format(diida(ea), diida(next_ea)))
+                    slvars.retSps.add(slvars.rsp)
 
         aborted = -1
         while len(slvars.branchStack):
@@ -4433,8 +4649,8 @@ def slowtrace2(ea=None,
             for k in _.keys(branch.state):
                 v = getattr(slvars, k, None)
                 b = branch.state[k]
-                if k == 'ea':
-                    pass
+                if k in ('ea', 'prev_ea'):
+                    slvars[k] = v
                 if k == 'startLoc':
                     pass
                 if k == 'startFnName':
@@ -4447,7 +4663,7 @@ def slowtrace2(ea=None,
                     pass
                 #  elif k == 'rspHist':
                     #  print("rsp_...")
-                elif k == 'addresses':
+                elif k in ('addresses', 'real', 'nops', 'jumps', 'chunks'):
                         if debug: sprint("rewrote slvars.addresses with {} entries".format(len(b)))
                         slvars[k].clear()
                         for x in b:
@@ -4523,7 +4739,7 @@ def slowtrace2(ea=None,
         VimEdit(slvars.startLoc, s)
         return
 
-    if regexPatch and not patches:
+    if regexPatch:
         r = obfu_regex(slvars.startLoc, s.split("\n"))
         if r:
             sprint("Found regex patch")
@@ -4531,265 +4747,261 @@ def slowtrace2(ea=None,
             if 'slvars' in globals(): sprint(RelocationPatchedError(msg))
             raise RelocationPatchedError(msg)
 
-    if not patches or force:
-        if reloc:
-            if not force:
-                if patches:
-                    sprint("Patches were applied, please re-run.")
-                    msg = slvars.cbuffer
-                    if 'slvars' in globals(): sprint(RelocationPatchedError(msg))
-                    raise RelocationPatchedError(msg)
-                rs = slvars.retSps
-                if len(rs) and (min(rs) != 0 or max(rs) != 0):
-                    msg = "0x%x: Function has unbalanced stack, please fix. %s" % (slvars.startLoc, rs)
-                    sprint(msg)
-                    if regexPatch:
-                        obfu_regex(slvars.startLoc, slvars2.outputLines)
-                    msg = msg
-                    if 'slvars' in globals(): sprint(RelocationStackError(msg))
-                    raise RelocationStackError(msg)
-                if slvars.minSp < 0:
-                    msg = ("0x%x: Function has positive stack offset, please fix. %s, %s" % (slvars.startLoc, slvars.minSp, slvars.maxSp))
-                    sprint(msg)
-                    if regexPatch:
-                        obfu_regex(slvars2.outputLines)
-                    msg = msg
-                    if 'slvars' in globals(): sprint(RelocationStackError(msg))
-                    raise RelocationStackError(msg)
-                if not len(rs):
-                    msg = ("0x%x: Function has no retrn. TODO" % slvars.startLoc)
-                    sprint(msg)
-                    msg = msg
-                    if 'slvars' in globals(): sprint(RelocationTerminalError(msg))
-                    raise RelocationTerminalError(msg)
+    if reloc:
+        if not force:
+            rs = slvars.retSps
+            if len(rs) and (min(rs) != 0 or max(rs) != 0):
+                msg = "0x%x: Function has unbalanced stack, please fix. %s" % (slvars.startLoc, rs)
+                sprint(msg)
+                if regexPatch:
+                    obfu_regex(slvars.startLoc, slvars2.outputLines)
+                msg = msg
+                if 'slvars' in globals(): sprint(RelocationStackError(msg))
+                raise RelocationStackError(msg)
+            if slvars.minSp < 0:
+                msg = ("0x%x: Function has positive stack offset, please fix. %s, %s" % (slvars.startLoc, slvars.minSp, slvars.maxSp))
+                sprint(msg)
+                if regexPatch:
+                    obfu_regex(slvars2.outputLines)
+                msg = msg
+                if 'slvars' in globals(): sprint(RelocationStackError(msg))
+                raise RelocationStackError(msg)
+            if not len(rs):
+                msg = ("0x%x: Function has no retrn. TODO" % slvars.startLoc)
+                sprint(msg)
+                msg = msg
+                if 'slvars' in globals(): sprint(RelocationTerminalError(msg))
+                raise RelocationTerminalError(msg)
 
-            if noJunk:
-                pattern = r'^(\s+jmp (\w+).*\n\2:)'
-                # s = re.sub(pattern, r';\U\1', s, 0, re.MULTILINE | re.IGNORECASE)
-                s = re.sub(pattern, r';\1', s, 0, re.MULTILINE | re.IGNORECASE)
+        if noJunk:
+            pattern = r'^(\s+jmp (\w+).*\n\2:)'
+            # s = re.sub(pattern, r';\U\1', s, 0, re.MULTILINE | re.IGNORECASE)
+            s = re.sub(pattern, r';\1', s, 0, re.MULTILINE | re.IGNORECASE)
 
-            if not showComments:
-                pattern = r'^(\s+nop).*'
-                s = re.sub(pattern, r';\1', s, 0, re.MULTILINE | re.IGNORECASE)
+        if not showComments:
+            pattern = r'^(\s+nop).*'
+            s = re.sub(pattern, r';\1', s, 0, re.MULTILINE | re.IGNORECASE)
 
-            #  re_labeluse = r'^.+(##LABEL##)'
+        #  re_labeluse = r'^.+(##LABEL##)'
 
-            labelSet = set()
-            #  labelUsed = set()
-            # re_labels = r'^(\w[a-zA-Z0-9_:]+):'
-            re_labels = r'^(\w+):'  # [a-zA-Z0-9_:]+):'
-            matches = re.finditer(re_labels, s, re.MULTILINE)
-            for matchNum, match in enumerate(matches, start=1):
-                labelSet.add(match.group(1))
+        labelSet = set()
+        #  labelUsed = set()
+        re_labels = r'^(\w[a-zA-Z0-9_:]+):'
+        # re_labels = r'^(\w+):'  # [a-zA-Z0-9_:]+):'
+        matches = re.finditer(re_labels, s, re.MULTILINE)
+        for matchNum, match in enumerate(matches, start=1):
+            labelSet.add(match.group(1))
 
-            if debug: sprint("labelSet: %s" % labelSet)
+        if debug: sprint("labelSet: %s" % labelSet)
 
-            for label in labelSet:
-                loc = idc.get_name_ea_simple(label)
+        for label in labelSet:
+            loc = idc.get_name_ea_simple(label)
+            if loc == BADADDR:
+                printi("Couldn't get address for label '{}'".format(label))
+                if 'slvars' in globals(): sprint(RelocationAssemblerError("Couldn't get address for label '{}'".format(label)))
+                raise RelocationAssemblerError()
+                # this shouldn't be needed if we are outputting valid labels
+                loc = LocByName(label.replace('__', '::', 1))
                 if loc == BADADDR:
-                    printi("Couldn't get address for label '{}'".format(label))
-                    if 'slvars' in globals(): sprint(RelocationAssemblerError("Couldn't get address for label '{}'".format(label)))
-                    raise RelocationAssemblerError()
-                    # this shouldn't be needed if we are outputting valid labels
-                    loc = LocByName(label.replace('__', '::', 1))
-                    if loc == BADADDR:
-                        printi("0x%x: Can't find label %s" % (slvars.startLoc, label))
-                        msg = "No message"
-                        if 'slvars' in globals(): sprint(RelocationAssemblerError(msg))
-                        raise RelocationAssemblerError(msg)
-                s = re.sub("0x%x" % loc, label, s, 0, re.IGNORECASE)
-                # we can remove this label from the list of labels we need to replace
-                global name_addr_map
-                if label in name_addr_map:
-                    del name_addr_map[label]
+                    printi("0x%x: Can't find label %s" % (slvars.startLoc, label))
+                    msg = "No message"
+                    if 'slvars' in globals(): sprint(RelocationAssemblerError(msg))
+                    raise RelocationAssemblerError(msg)
+            s = re.sub("0x%x" % loc, label, s, 0, re.IGNORECASE)
+            # we can remove this label from the list of labels we need to replace
+            global name_addr_map
+            if label in name_addr_map:
+                del name_addr_map[label]
 
 
-            s = re.sub(r';.*', '', s, 0, re.MULTILINE)
-            s = re.sub(r'\s+$', '', s, 0, re.MULTILINE)
-            s = re.sub(r'^$\n', '', s, 0, re.MULTILINE)
+        s = re.sub(r';.*', '', s, 0, re.MULTILINE)
+        s = re.sub(r'\s+$', '', s, 0, re.MULTILINE)
+        s = re.sub(r'^$\n', '', s, 0, re.MULTILINE)
+        #  s = re.sub(r'::', '__', s)
 
-            #  sprint("Labels: %s" % labelUsed)
+        #  sprint("Labels: %s" % labelUsed)
 
-            printi("---[b4good]---")
-            printi(s)
+        printi("---[b4good]---")
+        printi(s)
 
-            good = "\n".join(relocPrefix)
-            pattern = r'^((?:\w[^ ]+:\n)+)((?:\t.*\n)*)'
-            matches = re.finditer(pattern, s + "\n", re.MULTILINE)
-            labelParse = set()
-            for matchNum, match in enumerate(matches, start=1):
-                labels = [x.strip(':') for x in match.group(1).splitlines()]
-                seen = False
-                lastLabel = ""
-                for label in labels:
-                    lastLabel = label
-                    if label in labelParse:
-                        seen = True
-                    else:
-                        labelParse.add(label)
-                        good += label + ":\n"
-
-                if not seen:
-                    good += s[match.start(2):match.end(2)]
+        good = "\n".join(relocPrefix)
+        pattern = r'^((?:\w[^ ]+:\n)+)((?:\t.*\n)*)'
+        matches = re.finditer(pattern, s + "\n", re.MULTILINE)
+        labelParse = set()
+        for matchNum, match in enumerate(matches, start=1):
+            labels = [x.strip(':') for x in match.group(1).splitlines()]
+            seen = False
+            lastLabel = ""
+            for label in labels:
+                lastLabel = label
+                if label in labelParse:
+                    seen = True
                 else:
-                    good += "\tjmp " + lastLabel + "\n"
+                    labelParse.add(label)
+                    good += label + ":\n"
 
-            if relabel:
-                labelCount = 0
-                for label in labelParse:
-                    if label.startswith("loc_"):
-                        good = good.replace(label, "label{}".format(labelCount))
-                        labelCount += 1
+            if not seen:
+                good += s[match.start(2):match.end(2)]
+            else:
+                good += "\tjmp " + lastLabel + "\n"
 
-                # sprint(("Match {matchNum} was found at {start}-{end}: {match}".format(matchNum = matchNum, start = match.start(), end = match.end(), match = match.group())))
+        if relabel:
+            labelCount = 0
+            for label in labelParse:
+                if label.startswith("loc_"):
+                    good = good.replace(label, "label{}".format(labelCount))
+                    labelCount += 1
 
-                # for groupNum in range(0, len(match.groups())+1):
-                #   sprint(("Group {groupNum} found at {start}-{end}: {group}".format(groupNum = groupNum, start = match.start(groupNum), end = match.end(groupNum), group = match.group(groupNum))))
+            # sprint(("Match {matchNum} was found at {start}-{end}: {match}".format(matchNum = matchNum, start = match.start(), end = match.end(), match = match.group())))
 
-            s = good + "\n"
-            #  printi("---[aftergood]---")
+            # for groupNum in range(0, len(match.groups())+1):
+            #   sprint(("Group {groupNum} found at {start}-{end}: {group}".format(groupNum = groupNum, start = match.start(groupNum), end = match.end(groupNum), group = match.group(groupNum))))
+
+        s = good + "\n"
+        #  printi("---[aftergood]---")
+        printi(s)
+        printi("---[end]---")
+
+        if noJunk:
+            regex = r"^\s+jmp (\w+)\n\1:"
+            s = re.sub(regex, r'\1:', s, 0, re.MULTILINE | re.IGNORECASE)
+
+        if not silent:
+            printi("---[after_jmp_removal]---")
             printi(s)
             printi("---[end]---")
 
-            if noJunk:
-                regex = r"^\s+jmp (\w+)\n\1:"
-                s = re.sub(regex, r'\1:', s, 0, re.MULTILINE | re.IGNORECASE)
+        if vimedit:
+            s = VimEdit(ea, s, wait=1)
+        else:
+            origin = LocByName("next_relocation")
 
-            if not silent:
-                printi("---[after_jmp_removal]---")
-                printi(s)
-                printi("---[end]---")
+        # disabling this until we remove the labels that shouldn't be translated
+        # (think this should be fixed now)
+        if 1:
+            #  global name_addr_map
+            for name_v, slvars.name, loc in name_addr_map.values():
+                printi("Replacing" + re.escape(name_v) + "with" + str(loc))
+                s = re.sub("(?<=[^\w]){}(?=[^:\w])".format(re.escape(name_v)), hex(loc).rstrip('L'), s)
+
+        retry = 1
+        printi("Assembling " + hex(origin))
+        # this will have to be changed to a new function
+        # raise RuntimeError("out of date code")
+        print("---[final]---")
+        print(s)
+        #  raise RuntimeError('debbug here')
+        happy = nassemble(origin, s)
+        sprint("Happy")
+        if happy and isinstance(happy, list):
+            o = asByteArray(happy)
+            length = len(o)
+            lengthPlus = (length + 15) & ~15
+            if debug: sprint("got %i bytes from assembler" % length)
+            fnEnd = origin + length
+            nextRelocation = origin + lengthPlus
+            for i in range(lengthPlus):
+                ida_bytes.revert_byte(origin + i)
+            MyMakeUnknown(origin, lengthPlus, DELIT_DELNAMES | DELIT_NOTRUNC)
+            #  PatchBytes(origin, [0x00] * (lengthPlus) )
+            #  analyze(origin, origin + lengthPlus)
+            globals()['o'] = o
+            PatchBytes(origin, o)
+            forceAllAsCode(origin, length)
+            #  analyze(origin, origin + length)
+            if not MyMakeFunction(origin, origin + length, noMakeFunction):
+                sprint("couldn't make function at 0x%x" % origin)
+                msg = "couldn't make function at 0x%x" % origin
+                if 'slvars' in globals(): sprint(RelocationAssemblerError(msg))
+                raise RelocationAssemblerError(msg)
+            # nassemble(slvars.startLoc, 'jmp {:#x}'.format(origin), apply=1)
+
+            #  slowtrace2(origin, silent=1, modify=0)
+
+            if not vimedit:
+                if not MakeNameEx(origin, reloc_name(slvars.startLoc), idc.SN_NOWARN):
+                    sprint("Couldn't set slvars.name %s at 0x%x" % (reloc_name(slvars.startLoc), origin))
+                    PatchBytes(origin, [0xCC] * (1 + length))
+                    msg = reloc_name(slvars.startLoc)
+                    if 'slvars' in globals(): sprint(RelocationDupeError(msg))
+                    raise RelocationDupeError(msg)
+                gap = nextRelocation - fnEnd
+                if gap:
+                    MakeAlign(fnEnd, gap, 0)
 
             if vimedit:
-                s = VimEdit(ea, s, wait=1)
-            else:
-                origin = LocByName("next_relocation")
+                return
 
-            # disabling this until we remove the labels that shouldn't be translated
-            # (think this should be fixed now)
-            if 1:
-                #  global name_addr_map
-                for name_v, slvars.name, loc in name_addr_map.values():
-                    printi("Replacing" + re.escape(name_v) + "with" + str(loc))
-                    s = re.sub("(?<=[^\w]){}(?=[^:\w])".format(re.escape(name_v)), hex(loc).rstrip('L'), s)
+            LabelAddressPlus(nextRelocation, "next_relocation", force=1)
+            if LocByName("next_relocation") != nextRelocation:
+                msg = "next relocation was put down wrong"
+                if 'slvars' in globals(): sprint(Exception(msg))
+                raise Exception(msg)
+            sprint("Wrote %i bytes to 0x%x from 0x%x" % (length, origin, slvars.startLoc))
+            c = Commenter(origin, "func")
+            c.add("relocated from {} at 0x{:x}".format(idc.get_func_name(slvars.startLoc), slvars.startLoc))
 
-            retry = 1
-            while retry:
-                retry = 0
-                printi("Assembling " + hex(origin))
-                # this will have to be changed to a new function
-                raise RuntimeError("out of date code")
-                happy, o = NasmAssemble(origin, s, Name(slvars.startLoc))
-                if happy:
-                    name_addr_map.clear()
-                else:
-                    sprint("Error compiling: %s" % o)
-                    for sym in re.findall(r"undefined symbol `([^']+)", o["output"]):
-                        repl = hex(idc.get_name_ea_simple(sym)).rstrip('L')
-                        printi("Replacing " + sym + re.escape(sym) + "with" + repl)
-                        s = re.sub("(?<=[^\w]){}(?=[^\w])".format(re.escape(sym)), repl, s)
-                        retry = 1
-                        continue
-
-                    if not retry:
-                        msg = "No message"
-                        if 'slvars' in globals(): sprint(RelocationAssemblerError(msg))
-                        raise RelocationAssemblerError(msg)
-            sprint("Happy")
-            if happy and type(o) is bytearray and len(o):
-                length = len(o)
-                lengthPlus = (length + 0x200) & 0xffffffffffffff00
-                if debug: sprint("got %i bytes from assembler" % length)
-                fnEnd = origin + length
-                nextRelocation = origin + lengthPlus
-                for i in range(lengthPlus):
-                    ida_bytes.revert_byte(origin + i)
-                MyMakeUnknown(origin, lengthPlus, DELIT_DELNAMES | DELIT_NOTRUNC)
-                #  PatchBytes(origin, [0x00] * (lengthPlus) )
-                #  analyze(origin, origin + lengthPlus)
-                globals()['o'] = o
-                PatchBytes(origin, o)
-                forceAllAsCode(origin, length)
-                #  analyze(origin, origin + length)
-                if not MyMakeFunction(origin, origin + length, noMakeFunction):
-                    sprint("couldn't make function at 0x%x" % origin)
-                    msg = "couldn't make function at 0x%x" % origin
-                    if 'slvars' in globals(): sprint(RelocationAssemblerError(msg))
-                    raise RelocationAssemblerError(msg)
-
-                #  slowtrace2(origin, silent=1, modify=0)
-
-                if not vimedit:
-                    if not MakeNameEx(origin, reloc_name(slvars.startLoc), idc.SN_NOWARN):
-                        sprint("Couldn't set slvars.name %s at 0x%x" % (reloc_name(slvars.startLoc), origin))
-                        PatchBytes(origin, [0xCC] * (1 + length))
-                        msg = reloc_name(slvars.startLoc)
-                        if 'slvars' in globals(): sprint(RelocationDupeError(msg))
-                        raise RelocationDupeError(msg)
-                    gap = nextRelocation - fnEnd
-                    if gap:
-                        MakeAlign(fnEnd, gap, 0)
-
-                if vimedit:
-                    return
-
-                LabelAddressPlus(nextRelocation, "next_relocation", force=1)
-                if LocByName("next_relocation") != nextRelocation:
-                    msg = "next relocation was put down wrong"
-                    if 'slvars' in globals(): sprint(Exception(msg))
-                    raise Exception(msg)
-                sprint("Wrote %i bytes to 0x%x from 0x%x" % (length, origin, slvars.startLoc))
-                c = Commenter(origin, "func")
-                c.add("relocated from {} at 0x{:x}".format(idc.get_func_name(slvars.startLoc), slvars.startLoc))
+            ida_retrace(origin)
+            idc.auto_wait()
+            if IsFuncHead(origin):
+                if idc.get_type(slvars.startLoc):
+                    printi("idc.SetType({:#x}, '{}')".format(origin, idc.get_type(slvars.startLoc)))
+                    idc.SetType(origin, idc.get_type(slvars.startLoc).replace('(', ' func(', 1))
+                for cs, ce in Chunks(slvars.startLoc): PatchNops(cs, ce, "Relocated ({})".format(ean(slvars.startLoc)), put=True)
+                nassemble(slvars.startLoc, 'jmp {:#x}'.format(origin), apply=1, comment="Relocated ({}) [HEAD]".format(ean(slvars.startLoc)), put=1)
+                ida_retrace(slvars.startLoc)
                 if adjustCallers:
-                    for ea in set(slvars.startLoc, slvars.realStartLoc):
-                        Commenter(ea, 'line', repeatable=1).add('[RELOCED:{}]'.format(idc.get_name(origin)))
-                        fix_links_to_reloc(ea, origin)
+                    for ea in _.uniq(xrefs_to([slvars.startLoc, slvars.realStartLoc])):
+                        SkipJumps(ea, apply=1)
 
-                msg = GetFunctionName(origin)
-                if 'slvars' in globals(): sprint(RelocationDupeError(msg))
-                raise RelocationDupeError(msg)
+                if max(GetAllSpdsMinMax(slvars.startLoc)) == 0:
+                    printi("Relocated sucessfully")
+                else:
+                    printi("Relocated error? Check GetAllSpdsMinMax")
             else:
-                sprint("Error compiling (unknown)")
-                if 'slvars' in globals(): sprint(RelocationAssemblerError)
-                raise RelocationAssemblerError
+                printi("Relocation target {:#x} was not turned into a function".format(origin))
+                return 1
 
-        if not slvars.retSps:
-            msg = "Function ended without RETN"
+            return 0
+            if 'slvars' in globals(): sprint(RelocationDupeError(msg))
+            raise RelocationDupeError(msg)
+        else:
+            sprint("Error compiling (unknown)")
+            if 'slvars' in globals(): sprint(RelocationAssemblerError)
+            raise RelocationAssemblerError
+
+    if not slvars.retSps:
+        msg = "Function ended without RETN"
+        if not ida_funcs.func_does_return(slvars.startLoc):
+            msg = "This function does not return"
+        else:
             if 'slvars' in globals(): sprint(RelocationInvalidStackError(msg))
             raise RelocationInvalidStackError(msg)
 
-        rv = _.reduce(list(slvars.retSps), lambda memo, value, index: memo + abs(value), 0)
-        if debug: sprint("slowtrace2 returning: {} ({})".format(rv, type(rv)))
-        if rv == 0:
-            for addr in later_pending:
-                if addr not in later2:
-                    later.add(addr)
-                    later2.add(addr)
-            #  later = later.union(later_pending)
-            #  later2 = later2.union(later_pending)
-        if midfunc is None and (rv == 0 or forceRemoveChunks):
-            _chunks = [x for x in idautils.Chunks(slvars.startLoc)]
-            chunks = GenericRanger([GenericRange(x[0], trend=x[1])           for x in _chunks],            sort = 1)
-            keep   = GenericRanger([GenericRange(a, trend=a + IdaGetInsnLen(a)) for a in slvars.justVisited], sort = 1)
-            if debug: sprint("chunks: {}".format(keep))
-            if debug: sprint("keep: {}".format(keep))
-            remove = difference(chunks, keep)
-            if debug:
-                sprint("remove: {}".format(remove))
-                globals()["_keep"] = keep
-                globals()["_remove"] = remove
-                globals()["__chunks"] = _chunks
-                globals()["_chunks"] = chunks
-                for ea1, ea2 in [x.chunk() for x in remove]:
-                    sprint("remove: {:x}-{:x}".format(ea1, ea2))
+    rv = _.reduce(list(slvars.retSps), lambda memo, value, index: memo + abs(value), 0)
+    if debug: sprint("slowtrace2 returning: {} ({})".format(rv, type(rv)))
+    if midfunc is None and (rv == 0 or forceRemoveChunks):
+        _chunks = [x for x in idautils.Chunks(slvars.startLoc)]
+        chunks = GenericRanger([GenericRange(x[0], trend=x[1])           for x in _chunks],            sort = 1)
+        keep   = GenericRanger([GenericRange(a, trend=a + IdaGetInsnLen(a)) for a in slvars.justVisited], sort = 1)
+        if debug: sprint("chunks: {}".format(keep))
+        if debug: sprint("keep: {}".format(keep))
+        remove = difference(chunks, keep)
+        globals()["_keep"] = keep
+        globals()["_remove"] = remove
+        globals()["__chunks"] = _chunks
+        globals()["_chunks"] = chunks
+        if debug:
+            sprint("remove: {}".format(remove))
+            for ea1, ea2 in [x.chunk() for x in remove]:
+                sprint("remove: {:x}-{:x}".format(ea1, ea2))
 
-            modify_chunks(slvars.startLoc, chunks, keep, remove)
+        modify_chunks(slvars.startLoc, chunks, keep, remove)
 
 
 
-        return rv
-    return patches
+    return rv
+
 
 
 def fasttrace(ea=None, reloc=0, silent=1):

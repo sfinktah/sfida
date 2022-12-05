@@ -1033,11 +1033,14 @@ class underscore(object):
                     return list(ns.result.values())[0]
         return ns.result
 
-    def groupBy(self, val):
+    def groupBy(self, val=None):
         """
         Groups the object's values by a criterion. Pass either a string
         attribute to group by, or a function that returns the criterion.
         """
+
+        if val is None:
+            val = lambda v, *a: v
 
         def by(result, key, value):
             if key not in result:
@@ -1072,12 +1075,15 @@ class underscore(object):
 
         return self._wrap(res)
 
-    def countBy(self, val):
+    def countBy(self, val=None):
         """
         Counts instances of an object that group by a certain criterion. Pass
         either a string attribute to count by, or a function that returns the
         criterion.
         """
+
+        if val is None:
+            val = lambda v, *a: v
 
         def by(result, key, value):
             if key not in result:
@@ -2078,15 +2084,19 @@ class underscore(object):
 
     def times(self, func, *args):
         """ Run a function **n** times.
+
+        underscore.js: times_.times(n, iteratee, [context])
+
+        Invokes the given iteratee function n times. Each invocation of
+        iteratee is called with an index argument. Produces an array of the
+        returned values.
         """
         n = self.obj
-        i = 0
-        while n != 0:
-            n -= 1
-            func(i)
-            i += 1
+        accum = []
+        for i in range(n):
+            accum.append(func(i))
 
-        return self._wrap(func)
+        return self._wrap(accum)
 
     def now(self):
         return self._wrap(time.time())

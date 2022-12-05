@@ -59,7 +59,7 @@ class GenericRange(object):
             i += 1 
 
     def chunk(self):
-        return self.start, self.last
+        return self.start, self.last + 1
 
     def issubset(self, other):
         return issubset(self, other)
@@ -113,6 +113,10 @@ class GenericRange(object):
     @property
     def last(self):
         return self._last
+
+    #  @property
+    #  def stop(self):
+        #  return self._last
 
     @last.setter
     def last(self, value):

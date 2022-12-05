@@ -199,7 +199,12 @@ RSP    OFF CODE                            ASSEMBLY                  TRANSLATION
                 pass
                 #  raise ObfuFailure("0x%x: 0x%x: Couldn't get ChunkStart" % (ea, addressList[i]))
             else:
-                EaseCode(_chunkstart)
+                try:
+                    EaseCode(_chunkstart)
+                except AdvanceFailure as e:
+                    print("{}: {}".format(e.__class__.__name__, str(e)))
+                    return []
+
             addrs.append(addressList[i])
 
         while addrs:
