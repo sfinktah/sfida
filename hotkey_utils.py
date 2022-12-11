@@ -472,7 +472,7 @@ def make_sig_from_comb(_chunks, addresses, ripRelAsQuad=False, replValues=None):
 
     for ea, octets in addresses:
         chunk = chunks.pop()
-        mnem = idc.print_insn_mnem(ea)
+        mnem = IdaGetMnem(ea)
         op0 = idc.get_operand_type(ea, 0)
         op1 = idc.get_operand_type(ea, 1)
         opSet = set([op0, op1])
@@ -635,7 +635,7 @@ def make_sig_from_comb(_chunks, addresses, ripRelAsQuad=False, replValues=None):
                             #  results.append( \
                                     #  { 'ea': sub,
                                       #  'name': TagRemoveSubstring(idc.get_name(sub)),
-                                      #  'path': [('offset', head - ea + 1 + offset), ('is_mnem', idc.print_insn_mnem(head)), ('rip', 4), ('name', TagRemoveSubstring(idc.get_name(sub))), ('type', MyGetType(sub))],
+                                      #  'path': [('offset', head - ea + 1 + offset), ('is_mnem', IdaGetMnem(head)), ('rip', 4), ('name', TagRemoveSubstring(idc.get_name(sub))), ('type', MyGetType(sub))],
                                       #  'sub' : True,
                                       #  'type': MyGetType(sub) })
     #  return results
@@ -708,7 +708,7 @@ def sig_globals(ea=None, sig='', sig_offset=0, fullFuncTypes=False):
                                     { 'ea': global_address,
                                       'name': global_name,
                                       'path': [('offset', _offset),
-                                               ('is_mnem', idc.print_insn_mnem(instruction_start)),
+                                               ('is_mnem', IdaGetMnem(instruction_start)),
                                                ('rip', _rip),
                                                ('name', global_name),
                                                ('type', MyGetType(global_address))],
@@ -732,7 +732,7 @@ def make_sig(chunks, start, ripRelAsQuad=False, replValues=None):
     for chunk in chunks:
         chunk = chunk.lower()
         octets = div3(len(chunk))
-        mnem = idc.print_insn_mnem(start)
+        mnem = IdaGetMnem(start)
         op0 = idc.get_operand_type(start, 0)
         op1 = idc.get_operand_type(start, 1)
         opSet = set([op0, op1])

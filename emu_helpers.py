@@ -30,8 +30,8 @@ except ModuleNotFoundError:
     raise ModuleNotFoundError('string-between')
 
 from choose_multi import *
-from di import diInsns, MyGetInstructionLength
-from file_get_contents import *
+# from di import diInsns, MyGetInstructionLength
+# from file_get_contents import *
 
 def unhashword(fn):
     if isinstance(fn, int):
@@ -122,13 +122,6 @@ def get_name_by_any(address):
 def eax(*args):
     return get_ea_by_any(*args)
 
-def static_vars(**kwargs):
-    def decorate(func):
-        for k in kwargs:
-            setattr(func, k, kwargs[k])
-        return func
-    return decorate
-
 class _MyChoose(idaapi.Choose):
     def __init__(self, items, title, cols, icon=-1):
         idaapi.Choose.__init__(self, title, cols, flags=idaapi.Choose.CH_MODAL | idaapi.Choose.CH_MULTI, icon=icon)
@@ -194,9 +187,9 @@ def make_native_patchfile(ea=None, outFilename=None, noImport=False, width=76):
         result = [
                 "def base64_patch_tmp():",
                 "    import idc, ida_ida, idautils, idaapi",
-                "    from base64 import b64decode",
+                "    from base64 import b64decode as b",
                 "    from ida_bytes import put_bytes, patch_bytes",
-                "    from lzma import decompress",
+                "    from lzma import decompress as d",
                 "    chunks = []",
                 "    def expand_chunklist(c):",
                 "        l = iter(c); x = unbase(next(l)); yield (x[0], x[0] + x[1]); j, k = x",
@@ -232,9 +225,7 @@ def make_native_patchfile(ea=None, outFilename=None, noImport=False, width=76):
                 "        for r in range(1000):",
                 "            if not fsc(l): break",
                 "    def expand_spdlist(c):",
-                "        l = iter(c)",
-                "        x = next(l)",
-                "        yield tuple(unbase(x))",
+                "        l = iter(c); x = next(l); yield tuple(unbase(x))",
                 "        j, k = unbase(x)",
                 "        for x in [unbase(x) for x in l]: x = (x[0] + j, x[1] + k); j, k = x; yield x",
                 "    def spds(l): fspd(list(expand_spdlist(l)))",
@@ -244,8 +235,10 @@ def make_native_patchfile(ea=None, outFilename=None, noImport=False, width=76):
                 "        if isinstance(a, int): a = [a]",
                 "        if len(a) > 1: return [ea - {:#x} + min_ea for ea in a]".format(ida_ida.cvar.inf.min_ea),
                 "        else: return a[0] - {:#x} + min_ea".format(ida_ida.cvar.inf.min_ea),
-                "    put64  = lambda ea, b64: patch_bytes(unbase(ea), b64decode(b64))",
-                "    lzp64  = lambda ea, b64: patch_bytes(unbase(ea), decompress(b64decode(b64)))",
+                "    put64  = lambda ea, b64: patch_bytes(unbase(ea), b(b64))",
+                "    lzp64  = lambda ea, b64: patch_bytes(unbase(ea), d(b(b64)))",
+                "    cmt64  = lambda ea, b64: idc.set_func_cmt(unbase(ea), b(b64).decode('utf-8'), 0)",
+                "    lzc64  = lambda ea, b64: idc.set_func_cmt(unbase(ea), d(b(b64)).decode('utf-8'), 0)",
                 "",
                 ]
     else:
@@ -291,6 +284,28 @@ def make_native_patchfile(ea=None, outFilename=None, noImport=False, width=76):
 
             bout = '    spds({})'.format(re.sub(r'\d\d+', lambda m: hex(m[0]) if len(hex(m[0])) <= (1 + len(m[0])) else m[0], str(list(compact_spdlist(GetAllSpds(ea, address=1)))).replace("'", "")))
     result.extend(indent(8, bout, width=width, joinWith=None, skipFirst=False, firstIndent=0))
+
+    b = idc.get_func_cmt(ea, 0)
+    if b:
+        b = asBytes(b)
+        cmd = 'cmt64'
+        if len(b) > 32:
+            c = lzma.compress(b)
+            if len(c) < len(b):
+                b = c
+                cmd = 'lzc64'
+        b64 = base64.b64encode(b).decode('raw_unicode_escape')
+        if len(b64) < (width - 22 - 4):
+            bout = '    {}(0x{:x}, "{}")'.format(cmd, base, b64)
+            result.append(bout)
+        else:
+            bout = '    {}(0x{:x}, """'.format(cmd, base) + b64
+            bout = indent(8, bout, width=width, joinWith=None, skipFirst=True)
+            result.extend(bout)
+            if len(result[-1]) < (width - 3 - 4):
+                result[-1] += '""")'
+            else:
+                result.append('        """)')
     return result 
 
 def make_emu_patchfile(fn=None, outFilename=None, noImport=False, width=76):

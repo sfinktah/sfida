@@ -541,7 +541,7 @@ class Keypatch_Asm:
     # return '' on invalid address
     def ida_get_disasm(self, address, fixup=False):
 
-        def GetMnem(asm):
+        def IdaGetMnem(asm):
             sp = asm.find(' ')
             if sp == -1:
                 return asm
@@ -563,7 +563,7 @@ class Keypatch_Asm:
         # KS_ARCH_X86 mode
         # rebuild disasm code from IDA
         i = 0
-        mnem = GetMnem(asm)
+        mnem = IdaGetMnem(asm)
         if mnem == '' or mnem in ('rep', 'repne', 'repe'):
             return asm
 

@@ -873,7 +873,7 @@ def find_shifty_stuff():
     #  LabelManyAddresses(results['cs'][0], "ArxanCheckFunction__1", force=1)
     #  LabelManyAddresses(results['cs'][1], "ArxanCheckFunction__2", force=1)
     #  LabelManyAddresses(results['cs'][2], "ArxanCheckFunction__3", force=1)
-    LabelManyAddresses(results['csworkers'], "ArxanGetNextRange", force=1)
+    # LabelManyAddresses(results['csworkers'], "ArxanGetNextRange", force=1)
     for ea in results['balance']:
         if not ean(ea).startswith('ArxanBalance'):
             LabelAddressPlus(ea, 'ArxanBalance')
@@ -1796,13 +1796,13 @@ class membrick_memo(object):
     def mnem(self, force=0):
         if self.in_error(): return self.error_return_chained()
         if IsCode_(self.eax()) or force:
-            return idc.print_insn_mnem(self.eax())
+            return IdaGetMnem(self.eax())
         return ''
 
     def is_mnem(self, mnem, force=0):
         if self.in_error(): return self.error_return_chained()
         if IsCode_(idc.get_item_head(self.eax())) or force:
-            actual_mnem = idc.print_insn_mnem(idc.get_item_head(self.eax()))
+            actual_mnem = IdaGetMnem(idc.get_item_head(self.eax()))
             if actual_mnem == mnem:
                 return self
             print("mnem mismatch: wanted:{} found:{}".format(mnem, actual_mnem))

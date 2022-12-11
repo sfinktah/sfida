@@ -12,6 +12,7 @@ from static_vars import static_vars
 
 @static_vars(last_width=getglobal('_progress_console_width', None))
 def _get_console_width():
+    return screenwidth_process.width
     output_window_title = "Output window"
     tw = ida_kernwin.find_widget(output_window_title)
     if not tw:
@@ -35,7 +36,6 @@ def _get_console_width():
 class ProgressBar:
     """Show a progress bar"""
 
-
     def __init__(self, *maxvals):
         self.count = len(maxvals)
         self.compound = True
@@ -49,15 +49,14 @@ class ProgressBar:
                 _max = v
             self.transpose_fns.append( make_transpose_fn( (_min, _max), (0.0, 100.0) ) )
 
-        self.console_width = int(_get_console_width() * 0.12)
+        self.console_width = _get_console_width()
         self.blocks = [0] * self.count
+        self.remainders = [0] * self.count
         self.value = [None] * self.count
         self.raw_value = [0] * self.count
         self.always_print = 0
         self.show_percentage = True
         self.last_blocks = [0] * self.count
-        self.timer = timeit.default_timer
-        self.start_time = self.timer()
         self.onPrePrint = None
 
     def update(self, *values):
@@ -66,7 +65,7 @@ class ProgressBar:
             if value is not None:
                 self.raw_value[i] = value
                 self.value[i] = self.transpose_fns[i](value)
-                self.blocks[i] = self.calc_blocks(self.value[i])
+                self.blocks[i], self.remainders[i] = self.calc_blocks(self.value[i])
                 if self.blocks[i] != self.last_blocks[i]:
                     _should_print = 1
                 self.last_blocks[i] = self.blocks[i]
@@ -78,7 +77,11 @@ class ProgressBar:
     def calc_blocks(self, value):
         done = self.console_width * value / self.maxval
         whole = int(done)
-        return whole
+        remainder = done - whole
+        # dprint("[calc_blocks] value, done, whole, remainder")
+        # print("[calc_blocks] value:{}, done:{}, whole:{}, remainder:{}".format(value, done, whole, remainder))
+        
+        return whole, remainder
         
 
     def print_blocks(self):
@@ -87,6 +90,7 @@ class ProgressBar:
         #  blocks = b'\xe2\x96\x91\xe2\x96\x92\xe2\x96\x93\xe2\x96\x91\xe2\x96\x92\xe2\x96\x93\xe2\x96\x91\xe2\x96\x92\xe2\x96\x93\xe2\x96\x88'.decode('utf-8')
 
         block = "█▒▓░"
+        block_half = "▏▎▍▋▊▉█" # half-block: ▌
         drawn = 0
         max_drawn = 0
         blocks = [''] * len(self.blocks)
@@ -95,6 +99,10 @@ class ProgressBar:
             block_v = value // (len(self.blocks) if not self.compound else 1)
             drawn += block_v
             b = block[i % len(block)]
+            bh = ''
+            if i == 0:
+                bh = b
+                bh = block_half[int(self.remainders[i] * len(block_half))]
             if block_v > 8 and len(self.blocks) > 1:
                 p = "{}%".format(int(actual_v))
                 block_v -= len(p)
@@ -105,6 +113,7 @@ class ProgressBar:
                 s = "{}{}{}".format(lhs, p, rhs)
             else:
                 s = b * block_v
+            s += bh
             blocks[i] = s
         empty = self.console_width - drawn
         if six.PY3:
@@ -112,7 +121,72 @@ class ProgressBar:
                 pct = "{}%".format(int(sum(self.value) / (len(self.value) if not self.compound else 1)))
             else:
                 pct = ' '.join([str(x) for x in self.raw_value])
-            print("[{}{}] {}".format(''.join(blocks), ' ' * empty, pct))
+            # sameline("{}{}      {}".format(''.join(blocks), ' ' * empty, pct))
+            sameline("{}{}".format(''.join(blocks), ' ' * empty))
             #  print("[{}{}{}{}{}] {}%".format("\u2591" * self.blocks_bad, "\u2593"* self.blocks_good, "\u2588" * done, decimal, "\u2505" * remain, 100 * self.value // self.maxval))
         else:
-            print("{}%".format(int(sum(self.value) / (len(self.value) if not self.compound else 1))))
+            sameline("{}%".format(int(sum(self.value) / (len(self.value) if not self.compound else 1))))
+
+def progress_demo():
+    p = ProgressBar(250, 250)
+    # p = ProgressBar(1000)
+    p.always_print = True
+    for r in range(1001):
+        p.update(250 - r/4, r/4)
+        # p.update(r)
+        if r % 300 == 250:
+            print("Sample of interrupting output...")
+        # idc.qsleep(5)
+
+    
+    ctr_text = "░▒▓█▓▒░┅"
+    ctr = 0
+    ctr_len = len(ctr_text)
+    ctr_interval = 1
+    ctr_icount = 0
+    ctr_interval_count = 0
+    ctr_hpos = 0
+
+def hpos():
+    return len(ida_kernwin.msg_get_lines(1)[-1])
+
+@static_vars(hpos=None)
+def sameline(s, e=''):
+    # s += "\t{}".format(e)
+    cur_hpos = hpos()
+    if cur_hpos == sameline.hpos:
+        idc.msg(chr(13) + s)
+    else:
+        idc.msg(s)
+    new_hpos = hpos()
+    sameline.hpos = new_hpos
+    return (cur_hpos, new_hpos)
+
+def screenwidth_display_test(m):
+    clear()
+    idc.msg("\n")
+    for x in range(m): idc.msg("# ")
+    idc.msg("\n")
+
+@static_vars(r=[], width=10)
+def screenwidth_process(m, x, y):
+    screenwidth_process.r.append((m, x, y))
+
+def screenwidth_calc():
+    screenwidth_process.width = _.last(_.filter(screenwidth_process.r, lambda v, *a: v[2] == 1))[1]
+    print("screenwidth is {} characters".format(screenwidth_process.width))
+    progress_demo()
+
+cmds=[]
+def nextcmd():
+    if cmds:
+        fake_cli(cmds.pop(0))
+
+def screenwidth_get():
+    for x in range(400):
+        cmds.append("screenwidth_display_test({}); nextcmd()".format(x))
+        cmds.append("screenwidth_process({}, *ida_kernwin.get_output_cursor()[1:]); nextcmd()".format(x))
+    cmds.append("screenwidth_calc()")
+    nextcmd()
+
+screenwidth_get()

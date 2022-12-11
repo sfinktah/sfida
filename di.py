@@ -2,6 +2,7 @@ import os
 import re
 import idc
 import ida_ua, idaapi
+from superglobals import *
 
 #  try:
     #  import distorm3c as distorm3
@@ -14,7 +15,7 @@ from idc import *
 
 try:
     from exectools import make_refresh, execfile, _import
-    #  _import("from sfida.sf_common import asBytes, isInt")
+    #  _import("from sfida.sf_common import asBytes, _isInt")
     #  _import("from sftools import eax")
     #  _import("from sfida.sf_string_between import string_between")
 
@@ -65,7 +66,7 @@ def get_ea_by_any(val, d=object):
 
 def eax(*args):
     return get_ea_by_any(*args)
-def isInt(o):
+def _isInt(o):
     return isinstance(o, int)
 
 def asBytes(o):
@@ -86,7 +87,7 @@ def distorm_64_bit_flag():
     return distorm3.Decode64Bits 
     return distorm3.Decode64Bits if idc.get_inf_attr(idc.INF_LFLAGS) & idc.LFLG_64BIT else distorm3.Decode32Bits
 
-def MyGetMnem(ea):
+def IdaGetMnem(ea):
     if idc.get_wide_word(ea) == 0x9066:
         return "nop"
     mnem = idc.print_insn_mnem(ea)
@@ -110,7 +111,7 @@ def GetMnemDi(ea=None):
     m = d.mnemonic.lower().replace('ret', 'retn')
     return m
 
-GetInsnMnem = MyGetMnem
+GetInsnMnem = IdaGetMnem
 
 def GetMnemForce(ea=None):
     """
@@ -133,8 +134,8 @@ def GetInsn(*args):
 def MyGetInstructionLength(*args):
     lengths = []
     if len(args) == 1:
-        if not isInt(args[0]):
-            print("return_unless: isInt(args[0])")
+        if not _isInt(args[0]):
+            print("return_unless: _isInt(args[0])")
             return 
         
         # ida method
@@ -302,7 +303,7 @@ def diInsnsIter(code, ea = None, dt=distorm_64_bit_flag()):
     return distorm3.DecodeGenerator(ea, code, dt)
 
 def di_decode_insn(code_or_ea, length=16, dt=distorm_64_bit_flag()):
-    if isInt(code_or_ea):
+    if _isInt(code_or_ea):
         ea = eax(code_or_ea)
         code = getCode(ea, length)
     elif isByteish(code_or_ea):
@@ -335,11 +336,17 @@ def diInsnsObjectIter(code, ea=None, dt=distorm_64_bit_flag()):
 
 
 
-def diCode(code, offset = 0):
+def diCode(code, offset = 0, noHex=0):
     dt       = distorm_64_bit_flag()
     iterable = distorm3.DecodeGenerator(offset, code, dt)
+    result = []
     for (offset, size, instruction, hexdump) in iterable:
-        print("%.8x: %-32s %s" % (offset, hexdump, instruction))
+        # print("%.8x: %-32s %s" % (offset, hexdump, instruction))
+        if noHex:
+            result.append(instruction)
+        else:
+            result.append("%-32s %s" % (hexdump, instruction))
+    return result
 
     # It could also be used as a returned list:
     # l = distorm3.Decode(offset, code, options.dt)
@@ -994,7 +1001,7 @@ def diStrip(ea1=None, ea2=None):
     if ea2 is None:
         ea2 = GetChunkEnd(ea1)
         
-    if IsValidEA(ea1, ea2):
+    if IsValidEA([ea1, ea2]):
         # dprint("[xx] ea1, ea2")
         print("[xx] ea1:{}, ea2:{}".format(ea1, ea2))
         
@@ -1240,3 +1247,6 @@ def reverse_assembler():
     # d = deCode(bytes(bytearray.fromhex('80 1c 0d ef 00 00 00 00')))
     # pph(deCode(bytes(bytearray.fromhex('40 09 0c 4d 00 00 00 00')))[0])
 
+if hasglobal('PerfTimer'):
+    __di__ = [get_ea_by_any, eax, _isInt, asBytes, asString, asBytesRaw, distorm_64_bit_flag, IdaGetMnem, GetMnemDi, GetMnemForce, GetInsn, MyGetInstructionLength, getLength, GetInsLen, getCode, GetFuncCode, GetFuncCodeNoJunk, GetFuncCodeIndexNoJunk, GetFuncCodeNoJunk_, GetFuncCodeIndexNoJunk_, GetFuncCodeIndexTest, GetFuncCodeIndex, getCodeAsList, ripadd, diInsn, diInsnsPretty, diInsns, diInsnsIter, di_decode_insn, di_can_decode, idafy, diInsnsObjectIter, diCode, deCode, deCodeIter, de, de1, derange, deranger, der, destart2, destart, label, _di_indent, instruction, deri, derip, deriploc, di, dii, log2, get_name_or_hex, get_operand_size_type, diida, diidaIter, idii, mov_reg_reg, find_movs, transmute_mov, diStrip, insn_sample, shr, sar, rol, ror, imul, shv86, reverse_assembler]
+    PerfTimer.binditems(locals(), funcs=__di__, name='di')

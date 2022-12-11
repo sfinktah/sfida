@@ -92,7 +92,7 @@ def trim_func_tails(funcea):
         chunklabels[str(startea)] = chunk_label
         graph.append('"{}" [ label="{}" style="filled" ];'.format(node_format(startea), chunk_label))
         if not isJmp(tail):
-            mnem = idc.print_insn_mnem(tail)
+            mnem = IdaGetMnem(tail)
             print('tail', node_format(startea), diida(tail), node_format(target))
             graph.append('"{0}" -> "{1}" [ headlabel=" {2} " taillabel=" {2} " labelfontcolor="#8f2020" labelfontname="Roboto" fillcolor="0.2 0.4 1" style=solid ];'.format(node_format(startea), node_format(target), mnem))
             graph.append('"{}" [ fillcolor="0.2 0.4 1" style="filled" ];'.format(node_format(startea)))
@@ -120,7 +120,7 @@ def trim_func_tails(funcea):
         append_later = list()
         for head in heads:
             # TODO: this look very dangerous if the head doesn't end on a jmp 
-            mnem = idc.print_insn_mnem(head)
+            mnem = IdaGetMnem(head)
             if isAnyJmp(head):
                 target = GetTarget(head)
                 if target != cstart:
@@ -229,7 +229,7 @@ def get_func_heads_chunk_order(funcea, tailCheck=None):
         target = GetTarget(tail)
         #  tail_insn = diida(tail)
         if not isJmp(tail) and not isRet(tail):
-            mnem = idc.print_insn_mnem(tail)
+            mnem = IdaGetMnem(tail)
             if tailCheck is not None:
                 tailCheck.append(tail)
             print('tail', node_format(startea), diida(tail), node_format(target))
@@ -259,7 +259,7 @@ def get_func_heads_chunk_order(funcea, tailCheck=None):
         append_later = list()
         for head in heads:
             # TODO: this look very dangerous if the head doesn't end on a jmp 
-            mnem = idc.print_insn_mnem(head)
+            mnem = IdaGetMnem(head)
             if isAnyJmp(head):
                 target = GetTarget(head)
                 if target != cstart:
@@ -388,7 +388,7 @@ def json_save_functions():
 
         for ea in idautils.Functions(): # idc.get_segm_attr(x, SEGATTR_START), idc.get_segm_attr(x, SEGATTR_END)):
             count = count + 1
-            if GetMnem(ea) == "jmp" and GetFuncSize(ea) > 5:
+            if IdaGetMnem(ea) == "jmp" and GetFuncSize(ea) > 5:
                 SetFunctionEnd(ea, idc.next_head(ea))
                 continue
 

@@ -198,7 +198,7 @@ else:
 
 def checkForVortex(unicornObject, address, instructionSize, userData):
     ea = address
-    mnem = idc.print_insn_mnem(ea)  # 'mov'
+    mnem = IdaGetMnem(ea)  # 'mov'
     op1 = idc.print_operand(ea, 0)  # 'rax'
     op2 = idc.print_operand(ea, 1)  # '[rbp+80h+vortex]'
     # 'movzx', 'eax', 'byte ptr [rax]'

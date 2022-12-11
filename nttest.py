@@ -53,6 +53,7 @@ def find_joins(t, joined=None, unjoined=None):
         # print("{:x} -> {:x}".format(before.ea, after.ea))
 
     failed = []
+    setglobal('failed', failed)
     for chunk in t:
         if chunk._list_insns:
             #  target = chunk.target
@@ -152,6 +153,7 @@ def emujoin(r):
     #  print("visited: {}".format(hex(visited)))
     print("prepping output")
     c = []
+    results = []
     #  s = []
     for xx in _.reverse(_.sortBy(k, lambda v, *a: len(v))):
         #  s.append(_.first(xx)[0].ea)
@@ -169,6 +171,7 @@ def emujoin(r):
                 add_xrefs(x.ea)
 
             if not i:
+                results.append(x)
                 c.append(x.force_labeled_value.replace(': ', _pdata + ':\n    '))
             else:
                 c.append(x.labeled_indented.replace(': ', _pdata + ':\n    '))
@@ -194,7 +197,7 @@ def emujoin(r):
     #  clear(); print("\n----\n".join(b))
     # clear(); 
     print("\n".join(c))
-    return [x[0] for x in f if IsCode_(x[0])]
+    return results + [x[0] for x in f if IsCode_(x[0])]
 
 def chunkjoin():
     global t

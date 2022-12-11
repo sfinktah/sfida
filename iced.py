@@ -184,7 +184,7 @@ except ModuleNotFoundError:
 def icstorm_64_bit_flag():
     return 64
 
-def MyGetMnem(ea):
+def IdaGetMnem(ea):
     if idc.get_wide_word(ea) == 0x9066:
         return "nop"
     mnem = idc.print_insn_mnem(ea)
@@ -204,7 +204,7 @@ def GetMnemDi(ea=None):
     m = d.mnemonic.lower().replace('ret', 'retn')
     return m
 
-GetInsnMnem = MyGetMnem
+GetInsnMnem = IdaGetMnem
 
 def GetMnemForce(ea=None):
     """

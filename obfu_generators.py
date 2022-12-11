@@ -216,9 +216,9 @@ RSP    OFF CODE                            ASSEMBLY                  TRANSLATION
         # result = [0xcc]*len(search) # preallocate result with 0xcccccc...
         if not IsCode_(addressList[1]):
             forceCode(addressList[1])
-        if GetMnem(addressList[1]) != 'mov' or MakeCodeAndWait(addressList[1]) != 10:
+        if IdaGetMnem(addressList[1]) != 'mov' or MakeCodeAndWait(addressList[1]) != 10:
             raise ObfuFailure("0x{:x}: 0x{:x}: incorrectly detected compact movabs: expected 'mov' but got '{}' - {}".format \
-                    (ea, addressList[1], idc.print_insn_mnem(addressList[1]), idc.generate_disasm_line(addressList[1], GENDSM_FORCE_CODE)))
+                    (ea, addressList[1], IdaGetMnem(addressList[1]), idc.generate_disasm_line(addressList[1], GENDSM_FORCE_CODE)))
             return None
         target = BADADDR
 
@@ -384,7 +384,7 @@ def generate_cmov_abs_patch(fn1Offset, fn2Offset, condition = "jnz"):
                 return []
             i += assembled
         # result = [0xcc]*len(search) # preallocate result with 0xcccccc...
-        if GetMnem(addressList[9]) != 'mov' or MakeCodeAndWait(addressList[9]) != 10:
+        if IdaGetMnem(addressList[9]) != 'mov' or MakeCodeAndWait(addressList[9]) != 10:
             print("0x%x: incorrectly detected movabs: 0x%x: %s" % (ea, addressList[9], idc.generate_disasm_line(ea, GENDSM_FORCE_CODE)))
             return None
 
@@ -636,7 +636,7 @@ def generate_cmov_patch3(fn1Offset, fn2Offset, condition = "jnz"):
                 return []
             i += assembled
         # result = [0xcc]*len(search) # preallocate result with 0xcccccc...
-        if GetMnem(addressList[fn1Offset]) != 'mov' or MakeCodeAndWait(addressList[fn1Offset]) != 10:
+        if IdaGetMnem(addressList[fn1Offset]) != 'mov' or MakeCodeAndWait(addressList[fn1Offset]) != 10:
             print("0x%x: incorrectly detected movabs: 0x%x: %s" % (ea, addressList[fn1Offset], idc.generate_disasm_line(ea, GENDSM_FORCE_CODE)))
             return None
 
@@ -976,3 +976,7 @@ def patch_brick_jmp_jz(search, replace, original, ea, addressList):
     # if len(result) != len(original):
         # raise Exception("result(%position) originalLength != original(%position)" % (len(result), len(original)))
     return result
+
+#  if hasglobal('PerfTimer'):
+    #  __obfu_generators__ = [generate_patch1, generate_compact_cmov_abs_patch, generate_cmov_abs_patch, generate_cmov_patch3, generate_mov_reg_reg_via_stack_patch, patch_brick_jmp_jz]
+    #  PerfTimer.binditems(locals(), funcs=__obfu_generators__, name='obfu_generators')

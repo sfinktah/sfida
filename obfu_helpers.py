@@ -210,6 +210,8 @@ def hideRepeatedBytes(ea):
     return count
 
 def listAsHex(l):
+    if isInt(l):
+        l = list(l)
     try:
         return " ".join(map(lambda x: ("%02x" % x) if isinstance(x, (integer_types, bytearray)) else x, _.flatten(list(l))))
     except TypeError as e:
@@ -268,11 +270,12 @@ def PatchBytes(ea, patch=None, comment=None, code=False, put=False):
     if ea is None:
         ea = idc.get_screen_ea()
     # was_code = idc.is_code(idc.get_full_flags(idc.get_item_head(ea)))
-    was_code = code or idc.is_code(idc.get_full_flags(ea))
-    was_head = code or idc.get_item_head(ea)
-    was_func = ida_funcs.get_func(ea)
-    if was_func:
-        was_func = clone_items(was_func)
+    was_tail, was_code, was_head, was_func = IsTail(ea), IsCode_(ea), IsHead(ea), IsFunc_(ea)
+    #  was_code = code or idc.is_code(idc.get_full_flags(ea))
+    #  was_head = code or idc.get_item_head(ea)
+    #  was_func = ida_funcs.get_func(ea)
+    #  if was_func:
+        #  was_func = clone_items(was_func)
 
     if isinstance(patch, str):
         # unicode for py3, bytes for py2 - but "default" form for
@@ -288,14 +291,14 @@ def PatchBytes(ea, patch=None, comment=None, code=False, put=False):
                 byte_len -= 1
             for b8bit in b:
                 yield b8bit;
-        def hex_pattern_as_bytearray(str_list, int8_list=None): 
-            int8_list = A(int8_list)
+        def hex_pattern_as_bytearray(str_list, u8_list=None): 
+            u8_list = A(u8_list)
             for item in str_list:
                 l = len(item)
                 if l % 2:
                     raise ValueError("hex must be specified in multiples of 2 characters")
-                int8_list.extend(int_as_byte(int(item, 16), l // 2))
-            return int8_list
+                u8_list.extend(int_as_byte(int(item, 16), l // 2))
+            return u8_list
         def hex_pattern_as_list(s): 
             return -1 if '?' in s else int(s, 16)
 
@@ -303,7 +306,7 @@ def PatchBytes(ea, patch=None, comment=None, code=False, put=False):
             #  patch = hex_pattern_as_bytearray(patch.split(' '))
             patch = bytearray().fromhex(patch)
         else:
-            patch = [-1 if '?'in x else int(x, 16) for x in patch.split(' ')]
+            patch = [-1 if '?' in x else int(x, 16) for x in patch.split(' ')]
 
     length = len(patch)
     for addr in range(ea, ea + length):
@@ -316,11 +319,11 @@ def PatchBytes(ea, patch=None, comment=None, code=False, put=False):
         idaapi.del_fixup(fx)
         fx = idaapi.get_next_fixup_ea(fx)
 
-    cstart, cend = idc.get_fchunk_attr(ea, idc.FUNCATTR_START), \
-                   idc.get_fchunk_attr(ea, idc.FUNCATTR_END)
+    #  cstart, cend = idc.get_fchunk_attr(ea, idc.FUNCATTR_START), \
+                   #  idc.get_fchunk_attr(ea, idc.FUNCATTR_END)
 
-    if cstart == BADADDR: cstart = ea
-    if cend   == BADADDR: cend = 0
+    #  if cstart == BADADDR: cstart = ea
+    #  if cend   == BADADDR: cend = 0
 
     # disable automatic tracing and such to prevent function trucation
     #  with InfAttr(idc.INF_AF, lambda v: v & 0xdfe60008):
@@ -338,23 +341,17 @@ def PatchBytes(ea, patch=None, comment=None, code=False, put=False):
             idaapi.put_bytes(ea, byte_type(patch))
         else:
             idaapi.patch_bytes(ea, byte_type(patch))
-        if 'emu_helper' in globals() and hasattr(globals()['emu_helper'], 'writeEmuMem'):
-            # print("[PatchBytes] also writing to writeEmuMem")
-            emu_helper.writeEmuMem(ea, patch)
-        if comment:
-            Commenter(ea, 'line').add(comment)
     else:
-        if comment:
-            Commenter(ea, 'line').add(comment)
         # slower patch to allow for unset values
         if put:
             [ida_bytes.revert_byte(ea+i) for i in range(length) if patch[i] != -1]
             [idaapi.put_byte(ea+i, patch[i]) for i in range(length) if patch[i] != -1]
         else:
             [idaapi.patch_byte(ea+i, patch[i]) for i in range(length) if patch[i] != -1]
-        if 'emu_helper' in globals() and hasattr(globals()['emu_helper'], 'writeEmuMem'):
-            # print("[PatchBytes] also writing to writeEmuMem")
-            [helper.writeEmuMem(ea+i, bytearray([patch[i]])) for i in range(length) if patch[i] != -1]
+
+    if 'emu_helper' in globals() and hasattr(globals()['emu_helper'], 'writeEmuMem'):
+        # print("[PatchBytes] also writing to writeEmuMem")
+        [helper.writeEmuMem(ea+i, bytearray([patch[i]])) for i in range(length) if patch[i] != -1]
 
     #  if was_code:
         #  if debug: print("was_code")
@@ -371,9 +368,12 @@ def PatchBytes(ea, patch=None, comment=None, code=False, put=False):
         #  if next_code_head > pos:
             #  idaapi.patch_bytes(pos, byte_type(bytearray([0x90] * (next_code_head - pos))))
 #  
-    if debug: print("ida_auto.plan_and_wait({:#x}, {:#x})".format(ea, ea + length))
-    if was_code: EaseCode(ea, ea + length, noFlow=1, forceStart=1, noExcept=1)
-    ida_auto.plan_and_wait(ea, ea + length)
+    if debug: print("Plan({:#x}, {:#x})".format(ea, ea + length))
+    if code or was_code: EaseCode(ea, ea + length, noFlow=1, forceStart=1, noExcept=1)
+    if comment:
+        Commenter(ea, 'line').add(comment)
+
+    Plan(ea, ea + length, name='PatchNops')
         # EaseCode(ea, next_code_head)
 
 
@@ -396,33 +396,22 @@ def PatchBytes(ea, patch=None, comment=None, code=False, put=False):
         #  idc.auto_wait()
         #  EaseCode(ea, end=ea+length, create=1)
         
-            # ida_auto.plan_and_wait(cstart, cend or (cstart + length))
+            # Plan(cstart, cend or (cstart + length))
     # ensures the resultant patch stays in the chunk and as code
     #  if was_code: 
-        #  ida_auto.plan_and_wait(cstart, cend or (cstart + length))
+        #  Plan(cstart, cend or (cstart + length))
         #  idc.auto_wait()
 
 
-    if comment:
-        # comment_formatted = "[PatchBytes:{:x}-{:x}] {}".format(ea, ea + length, str(comment))
-        comment_formatted = "[PatchBytes] {}".format(str(comment))
-        if 'Commenter' in globals():
-            Commenter(was_head, 'line').add(comment_formatted)
-        else:
-            idaapi.set_cmt(was_head, comment_formatted, 0)
+    #  if comment:
+        #  # comment_formatted = "[PatchBytes:{:x}-{:x}] {}".format(ea, ea + length, str(comment))
+        #  comment_formatted = "[PatchBytes] {}".format(str(comment))
+        #  if 'Commenter' in globals():
+            #  Commenter(was_head, 'line').add(comment_formatted)
+        #  else:
+            #  idaapi.set_cmt(was_head, comment_formatted, 0)
 
-    return
-    if was_code:
-        head = was_head
-        while head < ea + length:
-            inslen = idc.get_item_size(head)                                  \
-                    if idc.is_code(idc.get_full_flags(idc.get_item_head(ea))) \
-                    else idc.create_insn(head)
-            if inslen < 1:
-                break
-            head += inslen
-
-    return length
+    return ea, length
 
 def MakeNop(length):
     if 'NopList' not in MakeNop.__dict__:
@@ -473,7 +462,7 @@ def MakeTerms(length):
 
     return result
 
-def PatchNops(ea, count = None, comment="PatchNops", put=False, nop=0x90):
+def PatchNops(ea, count = None, comment="PatchNops", put=False, nop=0x90, trailingRet=False):
     if count is None and ea < 100000:
         ea, count = count, ea
     if ea is None:
@@ -483,7 +472,14 @@ def PatchNops(ea, count = None, comment="PatchNops", put=False, nop=0x90):
     for addr in range(ea, ea + count + 1):
         idc.add_user_stkpnt(addr, 0)
     if nop == 0x90:
-        PatchBytes(ea, MakeNops(count), code=1, comment=comment, put=put)
+        if trailingRet:
+            PatchBytes(ea, MakeNops(count-1), code=1, put=put)
+            PatchBytes(ea + count - 1, 'c3', code=1, put=put)
+            end = EaseCode(ea)
+            for addr in idautils.Heads(ea, end):
+                Commenter(addr, 'line').add('{}'.format(comment))
+        else:
+            PatchBytes(ea, MakeNops(count), code=1, comment=comment, put=put)
     else:
         MyMakeUnknown(ea, count, DOUNK_DELNAMES)
         if put:
@@ -493,6 +489,8 @@ def PatchNops(ea, count = None, comment="PatchNops", put=False, nop=0x90):
             ida_bytes.patch_bytes(ea, bytes([nop] * count))
         idc.SetType(ea, "_BYTE[{}]".format(count))
         idc.set_cmt(ea, comment, 0)
+
+    return ea, count
         # PatchBytes(ea, [nop] * count, code=1, comment=comment, put=put)
     #  comment_formatted = "[PatchNops] {}".format(ea, str(comment))
     #  idc.auto_wait()
@@ -512,7 +510,7 @@ def remove_null_sub_jmps():
             if loc < BADADDR:
                 refs = list(idautils.CodeRefsTo(loc, 1))
                 for ref in refs:
-                    if GetMnem(ref) == 'jmp' and Byte(ref) == 0xe9:
+                    if IdaGetMnem(ref) == 'jmp' and Byte(ref) == 0xe9:
                         target = GetOperandValue(ref, 0)
                         if target != loc:
                             print("0x%x: wasn't jump to nullsub at %012x" % (ref, loc))
@@ -524,7 +522,7 @@ def remove_null_sub_jmps():
                         MakeCodeAndWait(ref)
                         # MakeDword(ref + 1)
                         MakeComm(ref, "was call to nullsub at %012x" % (loc))
-                    elif GetMnem(ref) == 'call':
+                    elif IdaGetMnem(ref) == 'call':
                         # NOP_5 = list(bytearray(b"\x0f\x1f\x44\x00\x00"))
                         # PatchBytes(ref, MakeNop(5));
                         MakeComm(ref, "0x%x: was call to nullsub at %012x" % (ref, loc))
@@ -532,7 +530,7 @@ def remove_null_sub_jmps():
                         MakeComm(ref, "is call to nullsub at %012x" % (loc))
                         print("0x%x: was CALL (?!) to nullsub at %012x" % (ref, loc))
                     else:
-                        print("ref %x was a %s, left it alone" % (ref, GetMnem(ref)))
+                        print("ref %x was a %s, left it alone" % (ref, IdaGetMnem(ref)))
 
 def QueueClear(queue):
     count = -1
@@ -958,7 +956,8 @@ def nassemble(ea, string = None, apply=None, comment=None, quiet=False, put=Fals
     if len(string.strip()) == 0:
         return []
     result = nasm64(ea, ida_resolve(string), quiet=quiet)
-    if obfu_debug: print("[nassemble] result:{}".format(result))
+    #  if obfu_debug: 
+        #  print("[nassemble] {:#x}  {}  {}".format(ea, " ".join([x.hex() for x in A(result[1]['output'])]), "; ".join(diCode(bytes(result[1]['output']), noHex=1))))
     if result[0]:
         #  r = bytes_as_hex(result[1])
         r = result[1]['output']
@@ -1226,7 +1225,7 @@ def assemble_contig(startIndex, length, toAssemble, addressList, clear = False):
                 #  return []
             #  i += assembled
         #  # result = [0xcc]*len(search) # preallocate result with 0xcccccc...
-        #  if GetMnem(addressList[1]) != 'mov' or MakeCodeAndWait(addressList[1]) != 10:
+        #  if IdaGetMnem(addressList[1]) != 'mov' or MakeCodeAndWait(addressList[1]) != 10:
             #  raise ObfuFailure("0x%x: 0x%x: incorrectly detected compact movabs: %s" % (ea, addressList[1], GetDisasm(addressList[1])))
             #  return None
         #  target = BADADDR
@@ -1387,7 +1386,7 @@ def assemble_contig(startIndex, length, toAssemble, addressList, clear = False):
                 #  return []
             #  i += assembled
         #  # result = [0xcc]*len(search) # preallocate result with 0xcccccc...
-        #  if GetMnem(addressList[9]) != 'mov' or MakeCodeAndWait(addressList[9]) != 10:
+        #  if IdaGetMnem(addressList[9]) != 'mov' or MakeCodeAndWait(addressList[9]) != 10:
             #  print("0x%x: incorrectly detected movabs: 0x%x: %s" % (ea, addressList[9], GetDisasm(ea)))
             #  return None
 #  
@@ -2043,7 +2042,7 @@ def truncateThunks():
             if len(chunks) == 0:
                 print("0x%x: 0 size chunks are possible: details" % (ea))
             elif len(chunks) == 1:
-                SetFunctionEnd(ea, GetInsnLen(ea))
+                SetFuncEnd(ea, GetInsnLen(ea))
             elif len(chunks) > 1:
                 print("0x%x: Removing %i chunks" % (ea, len(chunks)))
                 MyMakeUnknown(ea, 1, 1)
@@ -2062,3 +2061,8 @@ def patch_register_native_namespace():
         ida_bytes.put_bytes(ea, bytes([0] * length))
         idc.set_cmt(ea, "register_native_namespace ({} bytes)".format(length), 0)
         idc.SetType(ea, "_BYTE[{}]".format(length))
+
+
+#  __obfu_helpers__ = [GetSize, GenericRangerPretty, DeleteFunctionNames, DeleteCodeAndData, DeleteData, DeleteAllHiddenAreas, hideRepeatedBytes, listAsHex, listAsHexIfPossible, listAsHexWith0x, readDword, writeDword, IsCode, PatchBytes, MakeNop, MakeNops, MakeTerms, PatchNops, remove_null_sub_jmps, QueueClear, QueueClearAll, check_misaligned_code, patch_everything, MakeSigned, bitsize_unsigned, bitsize_signed, bitsize_signed_2, patch_manual_instruction_rsp, patch_force_as_code, colorise_xor, fix_loc_offset, FixTargetLabels, generate_log, find_contig, contig_ranges, kassemble, iassemble, ida_resolve, nassemble, qassemble, assemble_contig, bit_pattern, braceexpandlist, braceform, findAndPatch, QuickFixQueue, super_patch, patch_this_segment, slowtracepatch, fixThunks, SegmentRanges, truncateThunks, patch_register_native_namespace]
+#  if hasglobal('PerfTimer'):
+    #  PerfTimer.binditems(locals(), funcs=__obfu_helpers__, name='obfu_helpers')

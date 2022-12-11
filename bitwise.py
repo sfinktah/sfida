@@ -111,7 +111,7 @@ class BitwiseMask(object):
         return self._set[byte] & (1 << bit) != 0
 
     def __eq__(self, other):
-        return self.tri == other.tri
+        return isinstance(other, type(self)) and self.tri == other.tri
     
     def __ne__(self, other):
         return self.tri != other.tri
@@ -173,7 +173,7 @@ class BitwiseMask(object):
         _value  = self.value 
         __mask  = 0
         __value = 0
-        for x in range(min(places, len(self))-1, -1, -1):
+        for x in range(min(places, len(self)) -1, -1, -1):
             __mask  <<= 8
             __mask  |=  _mask[x]
             __value <<= 8

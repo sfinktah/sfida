@@ -208,3 +208,5 @@ class Commenter(object):
         for setter in self.fnSetters:
             setter(self.ea, "\n".join(self.cm[self.map[str(setter)]]), self.repeatable)
 
+if hasglobal('PerfTimer'):
+    PerfTimer.bindmethods(Commenter)

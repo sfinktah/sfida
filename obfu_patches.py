@@ -134,9 +134,8 @@ def mark_sp_factory(mark):
         spd = idc.get_spd(ea)
         context = kwargs.get('context', None)
         if not context:
-            #  printi("[mark_sp_factory] no context ({}), using ida's spd".format(type(context)))
-            #  spd = idc.get_spd(ea)
-            pass
+            if obfu_debug: printi("[mark_sp_factory] no context passed at {:x}".format(ea))
+            return []
         else:
             slvars = context.get('slvars', None)
             if slvars is None:
@@ -179,9 +178,15 @@ def adjust_sp_factory(mark):
     global slvars
 
     def patch(search, replace, original, ea, addressList, patternComment, addressListWithNops, **kwargs):
+
+
         context = kwargs.get('context', None)
-        context = context or dict()
-        slvars = context.get('slvars', None)
+        if not context:
+            if obfu_debug: printi("[adjust_sp_factory] no context passed at {:x}".format(ea))
+            return []
+        else:
+            slvars = context.get('slvars', None)
+
         if mark not in patchmarks:
             if obfu_debug: printi("Potential SP adjustment failed due to no patchmark {:x}".format(ea))
             return []
@@ -221,7 +226,10 @@ def set_sp_factory(mark, offset=0):
 
     def patch(search=None, replace=None, original=None, ea=None, addressList=None, patternComment=None, addressListWithNops=None, **kwargs):
         context = kwargs.get('context', None)
-        context = context or dict()
+        if not context:
+            if obfu_debug: printi("[set_sp_factory] no context passed at {:x}".format(ea))
+            return []
+
         slvars = context.get('slvars', None)
         if slvars is None:
             printi("[mark_sp_factory] no context.slvars passed, using ida's spd")
@@ -351,36 +359,39 @@ def patch_32bit_add(search, replace, original, ea, addressList, patternComment, 
     if obfu_debug: printi("patch_32bit_add")
     length = MyGetInstructionLength(ea)
     #  e = deCode(get_bytes(ea, length), ea)
-    e = de(ea)
-    if isinstance(e, list):
-        e = e[0]
-        #  pp(e.__dict__)
-        globals()['e'] = e
-        flags = e.rawFlags & FLAG_MASK
-        if e.mnemonic in ('ADD', 'SUB') \
-                and e.opcode in (11, 51) \
-                and flags == (FLAG_DST_WR | FLAG_IMM_SIGNED) \
-                and e.operands[0].type == 'Register' \
-                and e.operands[1].type == 'Immediate' \
-                and (e.operands[1].size == 32 or e.operands[1].value < 0):
-                    flip = e.operands[1].value < 0
-                    if flip:
-                        e.operands[1].value = 0 - e.operands[1].value
-                        if e.mnemonic == 'ADD':
-                            e.mnemonic = 'SUB'
-                        elif e.mnemonic == 'SUB':
-                            e.mnemonic = 'ADD'
-                        else:
-                            raise ValueError('Unexpected mnemonic {}'.format(e.mnemonic))
+    if not IsValidEA(ea):
+        return []
+    e = _.firstOr(de(ea), None)
+    if not e or e.rawFlags == 0xffff:
+        return []
+    #  pp(e.__dict__)
+    # setglobal('e', e)
+    # setglobal('ea', ea)
+    flags = e.rawFlags & FLAG_MASK
+    if e.mnemonic in ('ADD', 'SUB') \
+            and e.opcode in (11, 51) \
+            and flags == (FLAG_DST_WR | FLAG_IMM_SIGNED) \
+            and e.operands[0].type == 'Register' \
+            and e.operands[1].type == 'Immediate' \
+            and (e.operands[1].size == 32 or e.operands[1].value < 0):
+                flip = e.operands[1].value < 0
+                if flip:
+                    e.operands[1].value = 0 - e.operands[1].value
+                    if e.mnemonic == 'ADD':
+                        e.mnemonic = 'SUB'
+                    elif e.mnemonic == 'SUB':
+                        e.mnemonic = 'ADD'
+                    else:
+                        raise ValueError('Unexpected mnemonic {}'.format(e.mnemonic))
 
-                    requiredSize = bitsize_signed_2(e.operands[1].value)
-                    if requiredSize == 16:
-                        requiredSize = 32
-                    if obfu_debug: printi("0x%x: patch_32bit_add: acutalSize: %i, requiredSize: %i" % (ea, e.operands[1].size, requiredSize))
-                    if requiredSize == 8:
-                        addresses = addressList[0:e.size]
-                        return (addresses,
-                                (["{} {}, {}".format(e.mnemonic, e.operands[0].name, e.operands[1].value)]))
+                requiredSize = bitsize_signed_2(e.operands[1].value)
+                if requiredSize == 16:
+                    requiredSize = 32
+                if obfu_debug: printi("0x%x: patch_32bit_add: acutalSize: %i, requiredSize: %i" % (ea, e.operands[1].size, requiredSize))
+                if requiredSize == 8:
+                    addresses = addressList[0:e.size]
+                    return (addresses,
+                            (["{} {}, {}".format(e.mnemonic, e.operands[0].name, e.operands[1].value)]))
     else:
         if obfu_debug: printi("patch_32bit_add: e was type %s" % type(e))
     return []
@@ -749,8 +760,8 @@ def patch_single_rsp_push_call_jump(search, replace, original, ea, addressList, 
         # dprint("[patch_single_rsp_push_call_jump] callAddress, addressNext")
         printi("{:x} [patch_single_rsp_push_call_jump] callAddress:{:x}, addressNext:{:x}".format(ea, callAddress, addressNext))
 
-        if idc.print_insn_mnem(callAddress) in ('ret', 'retn', 'xchg') or \
-           idc.print_insn_mnem(addressNext) in ('ret', 'retn', 'xchg'):
+        if IdaGetMnem(callAddress) in ('ret', 'retn', 'xchg') or \
+           IdaGetMnem(addressNext) in ('ret', 'retn', 'xchg'):
                printi("{:x} [patch_single_rsp_push_call_jump] fail: retn/xchg in callAddress:{:x}, addressNext:{:x}".format(ea, callAddress, addressNext))
                return []
         # XXX: removed this, not sure what it was meant for -- some kind of safety net i guess
@@ -821,7 +832,7 @@ def process_replace_nocheck(replace, replace_asm):
 
 def process_hex_pattern(replace):
     hp = hex_pattern(replace)
-    d = _.pluck(diInsns(hp), 3)
+    d = _.flatten(_.pluck(diInsns(hp), 3))
 
     def fn(value, index, container):
         return [int(x, 16) for x in re.split('(..)', value) if x]
@@ -830,9 +841,9 @@ def process_hex_pattern(replace):
     #
 
     if d == hp:
-        return _.pluck(diInsns(hp), 2)
+        return _.flatten(_.pluck(diInsns(hp), 2))
 
-    printi("process_hex_pattern", d, hp, _.pluck(diInsns(hp), 2))
+    printi("process_hex_pattern", d, hp, _.flatten(_.pluck(diInsns(hp), 2)))
     return hex_pattern(replace)
 
 
@@ -1600,6 +1611,12 @@ def obfu_append_patches():
             simple_patch_factory([
                 "jmp {hex(idc.get_operand_value(addressList[1], 1))}",
                 "int3"]),
+            #  simple_patch_factory([
+                #  "nop",
+                #  "db 0x66, 0x90",
+                #  "jmp {hex(idc.get_operand_value(addressList[1], 1))}",
+                #  "db 0x0f, 0x1f, 0x40, 0x00",
+                #  "retn"]),
             safe=1, reflow=0
     )
 
@@ -1711,7 +1728,7 @@ def obfu_append_patches():
 
         #  [values, mask] = gen_mask(None, previous)
         #  obfu.append_bitwise(values, mask, patch_32bit_add)
-        obfu.append_bitwise(bm.value, bm.mask, patch_32bit_add, reflow=1)
+        obfu.append_bitwise(bm.value, bm.mask, bm, patch_32bit_add, reflow=1)
         # if obfu_debug: pp([binlist(bm._set), binlist(bm._clear), bm._size, bm._reserved, binlist(bm.value), binlist(bm.mask)])
 
     if "bitwise_mov32,64":
@@ -3116,6 +3133,9 @@ def obfu_append_patches():
 #  .tramp1:000000013FFEF053 FF 25 00 00 00 00                             jmp     cs:qword_13FFEF059
 #  .tramp1:000000013FFEF053                               ; ---------------------------------------------------------------------------
 #  .tramp1:000000013FFEF059 90 82 B9 E1 E0 01 00 00       qword_13FFEF059 dq 1E0E1B98290h         ; DATA XREF: .tramp1:000000013FFEF053↑r
+#  if hasglobal('PerfTimer'):
+    #  __obfu_patches__ = [patch_stack_align, simple_patch_factory, mark_sp_factory, adjust_sp_factory, set_sp_factory, mark_sp_reg_factory, gen_mask, patch_32bit_add, patch_manual_store, patch_manual, patch_double_stack_push_call_jump, patch_double_rsp_push_call_jump, patch_double_rsp_push_call_jump_b, patch_single_rsp_push_call_jump, patch_checksummer, process_replace, process_replace_nocheck, process_hex_pattern, obfu_append_patches]
+    #  PerfTimer.binditems(locals(), funcs=__obfu_patches__, name='obfu_patches')
 
 
 """

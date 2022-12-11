@@ -3,56 +3,30 @@ import os, sys, re
 import sys
 #  sys.modules["__main__"].IDAPYTHON_COMPAT_695_API = True
 # from sfida.sf_is_flags import *
-import idaapi
+from exectools import unload
+unload('execfile')
+from exectools import execfile, make_refresh, make_auto_refresh, _import, _from
+
+ida_modules = [
+        'ida_idaapi', 'idaapi', 'idc', 'ida_allins', 'ida_auto', 'ida_bytes',
+        'ida_dbg', 'ida_diskio', 'ida_entry', 'ida_enum', 'ida_expr',
+        'ida_fixup', 'ida_fpro', 'ida_frame', 'ida_funcs', 'ida_gdl',
+        'ida_graph', 'ida_hexrays', 'ida_ida', 'ida_idc', 'ida_idd', 'ida_idp',
+        'ida_kernwin', 'ida_lines', 'ida_loader', 'ida_moves', 'ida_nalt',
+        'ida_name', 'ida_netnode', 'ida_offset', 'ida_pro', 'ida_problems',
+        'ida_range', 'ida_registry', 'ida_search', 'ida_segment',
+        'ida_segregs', 'ida_strlist', 'ida_struct', 'ida_tryblks',
+        'ida_typeinf', 'ida_ua', 'ida_xref', 'idc',
+]
+
+unload('ida_idaapi')
 import ida_idaapi
-import idc
-import ida_allins
-import ida_auto
-import ida_bytes
-import ida_dbg
-import ida_diskio
-import ida_entry
-import ida_enum
-import ida_expr
-import ida_fixup
-import ida_fpro
-import ida_frame
-import ida_funcs
-import ida_gdl
-import ida_graph
-import ida_hexrays
-import ida_ida
-import ida_idc
-import ida_idd
-import ida_idp
-import ida_kernwin
-import ida_lines
-import ida_loader
-import ida_moves
-import ida_nalt
-import ida_name
-import ida_netnode
-import ida_offset
-import ida_pro
-import ida_problems
-import ida_range
-import ida_registry
-import ida_search
-import ida_segment
-import ida_segregs
-import ida_strlist
-import ida_struct
-import ida_tryblks
-import ida_typeinf
-import ida_ua
-import ida_xref
+for m in ida_modules:
+    ida_idaapi.require(m)
 
 from idc import BADADDR
 from superglobals import *
 from underscoretest import _
-from exectools import unload
-unload('execfile')
-from exectools import execfile, make_refresh, make_auto_refresh, _import, _from
 from pprint import PrettyPrinter
 from mypprint import MyPrettyPrinter
 #  _import("from sfida.sf_is_flags import *")
@@ -125,7 +99,9 @@ debug = 0
 filenames = [
             "idc695.py",
             "attrdict1.py",
+            "superglobals.py",
             "circularlist.py",
+            "bitwise.py",
             "slowtrace_helpers.py",
             "sfida/sf_is_flags.py",
             "iced.py",
@@ -140,7 +116,6 @@ filenames = [
             "slowtrace2.py",
             "hotkey_utils.py",
             "helpers.py",
-            "bitwise.py",
             "fflags.py",
             "MakeNativeHashBuckList.py",
             "sfcommon.py",
@@ -240,7 +215,6 @@ SegName = idc.get_segm_name
 Demangle = idc.demangle_name
 Qword = idc.get_qword
 GetTrueName = idc.get_name
-GetMnem = idc.print_insn_mnem
 Name = lambda x: idc.get_name(x, ida_name.GN_VISIBLE)
 
 def do_start():

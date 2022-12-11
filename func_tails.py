@@ -479,7 +479,7 @@ class FuncTailsInsn(object):
     """Docstring for FuncTailsInsn """
 
     def __init__(self, insn=None, ea=None, text=None, size=None, code=None, mnemonic=None, operands=None, comments=None, sp=None, spd=None, warnings=None,
-                 errors=None, chunkhead=None, labels=[],
+                 errors=None, chunkhead=None, labels=None,
                  refs_from={}, refs_to={}, flow_refs_from={}, flow_refs_to={}):
         """@todo: to be defined
 
@@ -492,6 +492,8 @@ class FuncTailsInsn(object):
         :insn_errors: @todo
 
         """
+        if labels is None:
+            labels = []
         if insn is None or isinstance(insn, int):
             if ea is None:
                 ea = insn
@@ -1127,7 +1129,7 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
             if isAnyJmp(head) and idc.get_operand_type(head, 0) in (idc.o_near, ):
                 target = GetTarget(head)
                 ctarget = OurGetChunkStart(target, _chunks)
-                jump_info = [head, idc.print_insn_mnem(head), GetTarget(head)]
+                jump_info = [head, IdaGetMnem(head), GetTarget(head)]
 
                 if isConditionalJmp(head):
 
@@ -1217,7 +1219,7 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
                 comments[head].append(cmt)
                 errors.append(cmt)
                 break
-            mnem = idc.print_insn_mnem(head)
+            mnem = IdaGetMnem(head)
 
             if IsRef(head):
 
@@ -1343,7 +1345,7 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
 
     disasm = []
     for ea in ordered:
-        mnemonics.append(MyGetMnem(ea))
+        mnemonics.append(IdaGetMnem(ea))
 
         insn_text = diida(ea)
         # (insn_text, insn_addr, insn_di, insn_sp, insn_comment, insn_warnings, insn_errors, insn_chunkhead):
@@ -1715,5 +1717,10 @@ def AdvanceToMnemEx(ea, term='retn', iteratee=None, ignoreInt=False, **kwargs):
         start_ea=start_ea,
         end_ea=ea,
     )
+
+if hasglobal('PerfTimer'):
+    func_tails = PerfTimer.bind(func_tails)
+    PerfTimer.bindmethods(AdvanceInsnList)
+    PerfTimer.bindmethods(FuncTailsInsn)
 
 #  \C\<\(chunkhead\|comments\|ea\|errors\|flow_refs_from\|flow_refs_to\|insn\|labeled_value\|labels\|op\|refs_from\|refs_to\|sp\|spd\|text\|warnings\)\>()

@@ -170,7 +170,7 @@ else:
     def CommentEx(ea, repeatable): return get_cmt(eax(ea), repeatable)
     def AltOp(ea, n): return get_forced_operand(eax(ea), n)
     def GetDisasmEx(ea, flags): return generate_disasm_line(eax(ea), flags)
-    def GetMnem(ea): return print_insn_mnem(eax(ea))
+    def GetMnem(ea): raise RuntimeError('GetMnem is deprecated')
     def GetOpType(ea, n): return get_operand_type(eax(ea), n)
     def GetOperandValue(ea, n): return get_operand_value(eax(ea), n)
     def DecodeInstruction(ea): return ida_ua.decode_insn(eax(ea))
@@ -992,7 +992,6 @@ else:
     idc.GetMemberSize=GetMemberSize
     idc.GetMemberStrId=GetMemberStrId
     idc.GetMinSpd=GetMinSpd
-    idc.GetMnem=GetMnem
     idc.GetModuleName=GetModuleName
     idc.GetModuleSize=GetModuleSize
     idc.GetNextBmask=GetNextBmask

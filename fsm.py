@@ -123,7 +123,7 @@ def FindStackMutators(ea=None, skipRetrace=False, path=None, **kwargs):
                 idc.patch_byte(location, 0xc3)
                 ForceFunction(location)
                 _insn = 'retn'
-            _vals = [align, idc.get_qword(offset), location, arg, idc.print_insn_mnem(location), _insn, _ori_location]
+            _vals = [align, idc.get_qword(offset), location, arg, IdaGetMnem(location), _insn, _ori_location]
             row = _.zipObject(['align', 'offset', 'location', 'arg', 'mnem', 'insn', 'ori_location'], _vals)
             results.append( row )
         #  c.addRow(row)
@@ -319,7 +319,7 @@ def FindStackMutators(ea=None, skipRetrace=False, path=None, **kwargs):
                 obj_vals[rev_index[x]] = vals[x]
 
             #  printi("obj_vals: {}".format(obj_vals))
-            _mnem     = idc.print_insn_mnem(obj_vals.location)
+            _mnem     = IdaGetMnem(obj_vals.location)
             _insn     = diida((obj_vals.location))
             if _insn == 'lea rsp, [rsp+8]' and idc.get_bytes(obj_vals.location, 9) == b'H\x8dd$\x08\xffd$\xf8':
                 ZeroFunction(obj_vals.location, 1)

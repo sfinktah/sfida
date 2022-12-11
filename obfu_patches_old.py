@@ -516,8 +516,8 @@ def patch_single_rsp_push_call_jump(search, replace, original, ea, addressList, 
         # dprint("[patch_single_rsp_push_call_jump] callAddress, addressNext")
         print("[patch_single_rsp_push_call_jump] callAddress:{:x}, addressNext:{:x}".format(callAddress, addressNext))
         
-        if idc.print_insn_mnem(callAddress) in ('ret', 'retn', 'xchg') or \
-           idc.print_insn_mnem(addressNext) in ('ret', 'retn', 'xchg'):
+        if IdaGetMnem(callAddress) in ('ret', 'retn', 'xchg') or \
+           IdaGetMnem(addressNext) in ('ret', 'retn', 'xchg'):
                print("[patch_single_rsp_push_call_jump] fail: retn/xchg in callAddress:{:x}, addressNext:{:x}".format(callAddress, addressNext))
                return []
         if not IsFuncHead(callAddress) and len(xrefs_to_ex(callAddress, flow=0)) < 2:

@@ -199,7 +199,7 @@ def getglobal(path, default=None, _type=None, _set=False):
         result = _full(path)
         if _type is None:
             return result
-        if isinstance(result, _type):
+        if type(result) == _type:
             return result
             #            fail = True
             #            _types = None
@@ -215,6 +215,8 @@ def getglobal(path, default=None, _type=None, _set=False):
             #            if fail:
             #                raise TypeError('_type must be a type or tuple of types')
 
+    if default == type and _type:
+        default = _type()
     if _set:
         setglobal(path, default)
         return getglobal(path)

@@ -29,7 +29,7 @@ if not idc:
     # from sftools import fix_links_to_reloc, SmartAddChunkImpl, smartadder, MyMakeUnkn, MyMakeUnknown, MyMakeFunction, \
     #    analyze, dinjasm
     # from slowtrace2_helpers import isSegmentInXrefsTo, opTypeAsName, traceBackwards, ForceFunction, forgeAheadWithCode, \
-    #    cleanLine, ShowAppendFchunk, EndOfContig, EndOfFlow, remake_func, fix_non_func, reloc_name, hex_to_colorsys_rgb, \
+    #    cleanLine, ShowAppendFchunk, EndOfContig, ExndOfFlow, remake_func, fix_non_func, reloc_name, hex_to_colorsys_rgb, \
     #    colorsys_rgb_to_rgb, rgb_to_int
     # from slowtrace_helpers import ZeroFunction, IsFunc_, IsFuncHead, IsSameFunc, GetChunkOwner, GetChunkEnd, InsnLen, \
     #    InsnRange, SetSpDiffEx, IsChunked, GetFuncSize, SetSpd, isAnyJmp, isCall
@@ -170,15 +170,6 @@ def indent(n, s, skipEmpty=True, splitWith='\n', joinWith='\n', n2plus=None, ski
         return joinWith.join(result)
     return result
 
-def getglobal(key, default=None):
-    """
-    getglobal(key[, default]) -> value
-
-    Return the value for key if key is in the global dictionary, else default.
-    """
-    return globals().get(key, default)
-    pass
-
 debug = getglobal('debug', 0)
 
 def itypes(pattern):
@@ -315,6 +306,7 @@ def stopped():
     return os.path.exists('e:/git/ida/stop')
 
 @static_vars(history=[])
+@perf_timed()
 def retrace_list(address, pre=None, post=None, recolor=0, func=0, color="#280c01", spd=0, tails=0, dual=0, jump=0, zero=0, unpatch=0, chunk=False, *args, **kwargs):
     global later
     #  if address == later:
@@ -667,7 +659,7 @@ def retrace(address=None, color="#280c01", no_hash=False, _ida_retrace=False, no
         if skipJumps:
             address = SkipJumps(address, skipNops=1, skipObfu=1, skipCalls=False, includeStart=True, includeEnd=False, apply=applySkipJumps, iteratee=lambda ea, i, *a: MakeThunk(ea))
             #  elif ea + IdaGetInsnLen(ea) < GetFuncEnd(ea):
-                #  mnem = idc.print_insn_mnem(ea)
+                #  mnem = IdaGetMnem(ea)
                 #  if mnem and mnem.startswith('jmp'):
                     #  target = GetTarget(ea)
                     #  if not IsSameChunk(target, ea):
@@ -1086,6 +1078,7 @@ class RelocationAssemblerError(ObfuError):
 
 later = globals().get('later', set())
 later2 = globals().get('later2', set())
+done2 = globals().get('done2', set())
 global_chunks = globals().get('global_chunks', defaultdict(set))
 if 'arxan_comments' not in globals():
     arxan_comments = dict()
@@ -1115,7 +1108,9 @@ def slowtrace2(ea=None,
                fatalStack=False,
                force=False,
                forceReflow=False,
+               forceAddChunks=False,
                forceRemoveChunks=False,
+               forceRemoveFuncs=False,
                fresh=True,
                helper=None,
                ignoreExtraStack=False,
@@ -1179,6 +1174,8 @@ def slowtrace2(ea=None,
 
     if debug: printi("slowtrace2 called for {:#x}".format(ea))
 
+    if forceRemoveFuncs:
+        removeFuncs = 1
     if vimlike:
         removeFuncs=1
         noObfu=1
@@ -1215,9 +1212,9 @@ def slowtrace2(ea=None,
     slvars = SimpleAttrDict()
     slvars2 = SimpleAttrDict()
     slvars.addresses = set()
-    slvars.nops = set()
+    #  slvars.nops = set()
     slvars.real = set()
-    slvars.jumps = set()
+    #  slvars.jumps = set()
     slvars.chunks = set()
     slvars.ea = ea
     prev_ea = ea
@@ -1287,7 +1284,6 @@ def slowtrace2(ea=None,
         slvars.startLoc = ea
     slvars.rspMarks = dict()
     slvars.rspHist = RunLengthList()
-    slvars.insnCount = 0
     if debug: print("Start of slowtrace, type rspHist: {}".format(type(slvars.rspHist)))
 
     slvars2.appendLines = []
@@ -1429,92 +1425,120 @@ def slowtrace2(ea=None,
             returnOutput.append(s)
         return ''
 
-    def CheckChunkChange(old, new):
-        # TODO: should check if chunk can be extended, even if belonging to same func
-        if not IsFunc_(old):
-            raise AdvanceFailure('CheckChunkChange called with non-func old: {:#x}'.format(old))
-        if not IsSameChunk(old, new) and new != slvars.startLoc:
 
-            #  _chunk = (GetChunkStart(new), GetChunkEnd(new))
-            #  slvars.chunks.add(_chunk)
-            #  slvars2.chunks.add(_chunk)
-            #  global_chunks[slvars.startLoc].add((GetChunkStart(new), GetChunkEnd(new)))
-            rv = SmartAddChunk(new, old)
-            #
-        #  if GetChunkNumber(new) != GetChunkNumber(old) and GetChunkNumber(new) != 0:
-            #  if IsSameFunc(new, old):
-                #  if IsFlow(GetChunkEnd(idc.prev_head(new))):
-                    #  print("Checking Chunk End (flows) {:x}".format(idc.prev_head(new)))
-                #  else:
-                    #  return
-            #  rv = SmartAddChunk(new, old)
-
-    def SmartAddChunk(new, old, end=0):
-        if noAppendChunks or not modify and not appendChunks:
+    @perf_timed()
+    def SmartAddChunk(old, new):
+        if noAppendChunks or (not modify and not appendChunks):
             return
 
         cs, ce = GetChunkStart(new), GetChunkEnd(new)
+        nominal_start = new
+        nominal_end = EaseCode(new, forceStart=1, ignoreInt=ignoreInt)
 
         if cs == slvars.startLoc:
-            # start of func
+            sprint("Attempted to add start of this function as a chunk {:#x}-{:#x} + {:#x}-{:#x}".format(cs, ce, nominal_start, nominal_end))
             return
 
         if GetChunkNumber(new, slvars.startLoc) == 0:
-            # start of func
+            sprint("Cowardly refused to add new chunk (start of function)")
             return
 
-        if IsSameFunc(new, old) or IsSameFunc(slvars.startLoc, new):
-            # chunk already added -- but should probably check extent
-            return
+        # checked for in ShouldAddChunk
+        #  if IsSameFunc(new, old) or IsSameFunc(slvars.startLoc, new):
+            #  # chunk already added -- but should probably check extent
+            #  return
 
+        if not IsValidEA(nominal_end) or nominal_end == nominal_start:
+            raise AdvanceFailure("Invalid chunk spec {:#x}-{:#x}".format(nominal_start, nominal_end))
         count = 0
         while count < 5:
             count += 1
-            cs, ce = GetChunkStart(new), GetChunkEnd(new)
+            # for ea in idautils.Heads(new, end):
             if IsChunk(new):
+                cs, ce = GetChunkStart(new), GetChunkEnd(new)
+                if not IsValidEA(cs):
+                    sprint("Chunk has invalid start")
+                    return
+                if not IsValidEA(ce):
+                    sprint("Chunk has invalid end")
+                    return
                 # is chunk (excluding head of func)
-                owners = GetChunkOwners(new, includeOwner=1)
-                if len(owners) > 0:
-                    if len(owners) > 1:
-                        if debug: sprint("SmartAddChunk: {:x} has multiple owners".format(new))
-                        FixChunk(new)
-                        continue
-                        #  RemoveAllChunkOwners(new)
-                        #  raise ChunkFailure("SmartAddChunk: {:x} has multiple owners".format(new))
-                    elif slvars.startLoc not in owners:
-                        if not HasUserName(owners[0]):
-                            if debug: sprint("removing chunk from no-name func {:x} at {:x}".format(owners[0], new))
-                            idc.remove_fchunk(owners[0], new)
-                        else:
-                            msg = "SmartAddChunk: {} already owned by {} while attempting to add to {}".format(
-                                    format_chunk_range(new),
-                                    describe_target(owners[0]),
-                                    describe_target(slvars.startLoc))
-                            printi(msg)
-                            retrace(owners[0], once=1, forceRemoveChunks=1)
-                        continue
+                owners = GetChunkOwners(new)
+                owner = GetChunkOwner(new)
+                all_owners = list(set(owners + [owner]))
+                if not owners:
+                    sprint("Chunk has no owners")
+                    FixChunk(new)
+                    continue
 
-                if GetChunkNumber(new, slvars.startLoc) != GetChunkNumber(old, slvars.startLoc):
-                    cstart, cend = cs, ce
-                    if IsValidEA(cstart) and IsValidEA(cend):
-                        sh = set((Heads(cstart, cend)))
-                        snt = set((NotHeads(cstart, cend, lambda x: not IsTail(x), lambda x, *a: idc.next_not_tail(x))))
-                        if snt.difference(sh) or not isFlowEnd(idc.prev_head(cend), ignoreInt=ignoreInt):
+                if not owner:
+                    sprint("Chunk has no owner")
+                    FixChunk(new)
+                    continue
+
+                if len(owners) > 1:
+                    if debug: sprint("SmartAddChunk: {:#x} has multiple owners {}".format(new, hex(owners)))
+                    FixChunk(new)
+                    continue
+
+                if owner != _.first(owners):
+                    sprint("Chunk {:#x} has different owner {:#x} and owners {}".format(new, owner, hex(owners)))
+                    FixChunk(new)
+                    continue
+
+                    #  RemoveAllChunkOwners(new)
+                    #  raise ChunkFailure("SmartAddChunk: {:x} has multiple owners".format(new))
+
+                if slvars.startLoc not in owners:
+                    # some-one elses chunk
+                    if not HasUserName(owner):
+                        sprint("removing chunk from no-name func {:x} at {:x}".format(owner, new))
+                        idc.remove_fchunk(owner, new)
+                    else:
+                        msg = "SmartAddChunk: {} already owned by {} while attempting to add to {}".format(
+                                format_chunk_range(new),
+                                describe_target(owner),
+                                describe_target(slvars.startLoc))
+                        printi(msg)
+                        retrace(owner, once=1, forceRemoveChunks=1)
+
+                    # loop until the chunk [start] is unowned or only owned by us
+                    continue
+
+                sh = set(Heads(cs, ce))
+                snt = set(NotHeads(cs, ce, lambda x: not IsTail(x), lambda x, *a: idc.next_not_tail(x)))
+                if snt.difference(sh) or not isFlowEnd(idc.prev_not_tail(ce), ignoreInt=ignoreInt):
+                    try:
+                        end = nominal_start
+                        while end < nominal_end:
+                            new_end = end
                             try:
-                                end = EaseCode(cstart)
-                                if end > cend:
-                                    printi("[SmartAddChunk] Setting chunk end from EaseCode: {:x} -> {:x}".format(cend, end))
-                                    SetChunkEnd(cstart, end)
-                                    ida_auto.plan_and_wait(cstart, end)
+                                new_end = EaseCode(end)
+                                if new_end == end:
+                                    msg = "[SmartAddChunk] EaseCode got stuck in a loop: {:x} -> {:x}".format(end, new_end)
+                                    raise AdvanceFailure(msg)
+                                end = new_end
                             except AdvanceFailure as e:
-                                printi("Connecting chunk {} to chunk {}".format(ahex(old), ahex(new)))
-                                printi("History: {}".format(hex([x.source for x in slvars2.previousHeads])))
-                                printi("slowtrace threw {}: {}".format(e.__class__.__name__, str(e)))
-                                raise
+                                printi("[SmartAddChunk] Shortening chunk at due to EaseCode advance failure {} from nominal_start/end {:x}-{:x} (hmmm....): {:x}-{:x} -> {:x}-{:x}".format(str(e), nominal_start, nominal_end, cs, ce, cs, end))
+                                SetChunkEnd(cs, end)
+                                Plan(cs, end, name='SmartAddChunk.shorten')
+
+                        if end > ce:
+                            printi("[SmartAddChunk] Lengthening chunk at due to EaseCode from nominal_start/end {:x}-{:x} (hmmm....): {:x}-{:x} -> {:x}-{:x}".format(nominal_start, nominal_end, cs, ce, cs, end))
+                            SetChunkEnd(cs, end)
+                            Plan(cs, end, name='SmartAddChunk.lengthen')
+                    except AdvanceFailure as e:
+                        printi("slowtrace threw {}: {}".format(e.__class__.__name__, str(e)))
+                        printi("while connecting chunk {} to chunk {}".format(ahex(old), ahex(new)))
+                        printi("History: {}".format(hex([x.source for x in slvars2.previousHeads])))
+                        raise
+                # TODO: check the rest of the chunk (is it owned?)
             else: 
-                # if not chunk
+                # if not chunk [at start]
+                # TODO: could fall through to this if the above checks all pass
+                end = 0
                 try:
-                    end = EaseCode(new, forceStart=1)
+                    end = EaseCode(new, forceStart=1, ignoreInt=ignoreInt)
                 except AdvanceFailure as e:
                     printi("History assessing new chick-size: {}".format(hex([x.source for x in slvars2.previousHeads])))
                     printi("slowtrace threw {}: {}".format(e.__class__.__name__, str(e)))
@@ -1534,7 +1558,7 @@ def slowtrace2(ea=None,
                     #  end += 1
                 if debug: printi("[SmartAddChunk] New Chunk: {:x}-{:x}".format(new, end))
                 if IsValidEA(end):
-                    rv = ida_auto.plan_and_wait(new, end)
+                    rv = Plan(new, end, name='SmartAddChunk.new')
                     if not ShowAppendFchunk(slvars.startLoc, new, end, 0):
                         for ea in idautils.Heads(new, end): GetDisasm(ea)
 
@@ -1555,7 +1579,7 @@ def slowtrace2(ea=None,
                     #  printi("returned where we didn't before")
                     return
 
-        if not IsValidEA(end) or IsTail(end):
+        if False: # and not IsValidEA(end) or IsTail(end):
             end = EaseCode(new, forceStart=1)
             sprint("ShowAppendFchunk 48")
             return ShowAppendFchunkReal(slvars.startLoc, new, end, old)
@@ -1563,24 +1587,28 @@ def slowtrace2(ea=None,
     slvars.notification_interval = 128
 
     def ShouldAddChunk(old, new):
-        if modify or appendChunks:
+        if new != old and (modify or appendChunks):
             # if debug: sprint("ShouldAddChunk: 0x{:x}, 0x{:x}".format(old, new))
-            if new == old: return
-            slvars.addresses.add(new)
+            if new not in slvars.addresses:
+                slvars.addresses.add(new)
+                num_addresses = len(slvars.addresses)
+                if num_addresses > 500 and num_addresses % slvars.notification_interval == 0:
+                    printi("{:0.2f}k addresses... {:4} chunks... processing: {:#x}".format(num_addresses / 1024.0, len(slvars.chunks), old))
             # if debug: sprint("[ShouldAddChunk] {:#x} -> {:#x}".format(old, new))
 
-            num_addresses = len(slvars.addresses)
-            if num_addresses > 500 and num_addresses % slvars.notification_interval == 0:
-                printi("{}k addresses... {} chunks... processing: {:#x}".format((len(slvars.addresses)) / 1024.0, len(slvars.chunks), old))
                 #  slvars.notification_interval *= 2
-            if GetChunkNumber(old) != GetChunkNumber(new):
-                #  XXX: shouldn't be `ea` it's checking for skipjumps
-                #  if applySkipJumps and isAnyJmp(ea):
-                    #  new = SkipJumps(ea, apply=1, skipNops=1)
-                #  fix_non_func(new, old)
-                CheckChunkChange(old, new)
-                slvars.currentChunk = new
-                slvars.contig = 1
+                # XXX: testing whether making this conditional on it being a new address will break anything
+                if new not in slvars.chunks and not IsSameChunk(old, new):
+                    slvars.chunks.add(new)
+                    #  XXX: shouldn't be `ea` it's checking for skipjumps
+                    #  if applySkipJumps and isAnyJmp(ea):
+                        #  new = SkipJumps(ea, apply=1, skipNops=1)
+                    #  fix_non_func(new, old)
+                    if forceAddChunks and IsFunc_(old) and IsFunc_(new) and not ida_funcs.is_same_func(old, new):
+                        RemoveChunk(new)
+                    rv = SmartAddChunk(old, new)
+                    slvars.currentChunk = new
+                    slvars.contig = 1
 
     def ChangeTarget(old, new):
         if debug: sprint("Changing target 0x{:x}".format(new))
@@ -1681,15 +1709,17 @@ def slowtrace2(ea=None,
             slvars.justVisited.remove(new_ea)
         return new_ea
 
+    @static_vars(advance_counter = 0)
     def AdvanceHead(current_ea, new_ea = None):
         if debug: sprint("[AdvanceHead] [spd:{:x}] {} -> {}".format(slvars.rsp_diff, ahex(current_ea), ahex(new_ea)))
-        if (insn_match(current_ea, idaapi.NN_nop, comment='nop') or
-                insn_match(current_ea, idaapi.NN_xchg, (idc.o_reg, 0), (idc.o_reg, 0), comment='nop')):
-            slvars.nops.add(current_ea)
-        elif insn_match(current_ea, idaapi.NN_jmp, (idc.o_near, 0), comment='jmp loc_143B3DC89'):
-            slvars.jumps.add(current_ea)
-        else:
-            slvars.real.add(current_ea)
+        #  if (insn_match(current_ea, idaapi.NN_nop, comment='nop') or
+                #  insn_match(current_ea, idaapi.NN_xchg, (idc.o_reg, 0), (idc.o_reg, 0), comment='nop')):
+            #  slvars.nops.add(current_ea)
+        #  elif insn_match(current_ea, idaapi.NN_jmp, (idc.o_near, 0), comment='jmp loc_143B3DC89'):
+            #  slvars.jumps.add(current_ea)
+        #  else:
+            #  slvars.real.add(current_ea)
+        slvars.real.add(current_ea)
 
         if helper and new_ea not in slvars2.helped:
             _start, _end = helper(new_ea)
@@ -1703,50 +1733,48 @@ def slowtrace2(ea=None,
             #  if IsFlow(current_ea):
                 #  new_ea = idc.next_head(current_ea)
             #  else:
-                #  raise AdvanceFailure("AdvanceHead should be smarter: mnem: {}".format(idc.print_insn_mnem(current_ea)))
+                #  raise AdvanceFailure("AdvanceHead should be smarter: mnem: {}".format(IdaGetMnem(current_ea)))
         #  slvars.cbuffer.append(current_ea)
 
+        #  if current_ea not in slvars.justVisited:
+            #  slvars.justVisited.add(current_ea)
         if modify and not noObfu:
-            head_dict = SimpleAttrDict(
-                source=current_ea,
-                branchStack=slvars.branchStack[0:],
-                state=SimpleAttrDict(getState(advance_head = 1))
-            )
-            slvars2.previousHeads.append(head_dict)
-            setglobal('previousHeads', slvars2.previousHeads)
+            AdvanceHead.advance_counter += 1
+            if AdvanceHead.advance_counter == 16 or len(slvars2.previousHeads) == 0:
+                AdvanceHead.advance_counter = 0
+                head_dict = SimpleAttrDict(
+                    source=current_ea,
+                    branchStack=slvars.branchStack[0:],
+                    state=SimpleAttrDict(getState(advance_head = 1))
+                )
+                slvars2.previousHeads.append(head_dict)
+            # setglobal('previousHeads', slvars2.previousHeads)
 
         if new_ea:
-            CheckChunkChange(current_ea, new_ea)
+            ShouldAddChunk(current_ea, new_ea)
 
         #  return new_ea
 
-        slvars.insnCount += 1
 
         if new_ea:
-            if not vim and not noAppendChunks:
-                if debug: sprint("ShowAppendFchunk 767")
-                # TODO: should be SmartAddChunk
-                # dprint("[new_ea] new_ea")
-                if debug: sprint("[new_ea] new_ea:{:x}".format(new_ea))
-                # SmartAddChunk(new_ea, current_ea)
-                # ShowAppendFchunk(slvars.startLoc, new_ea, EndOfFlow(new_ea, soft=ignoreInt), current_ea)
             if debug: sprint("AdvanceHead is returning {} (new_ea specified as argument)".format(hex(new_ea)))
             return new_ea
 
 
+        # find next ea
         _next_insn = current_ea + IdaGetInsnLen(current_ea)
         _next_head = idc.next_head(current_ea)
         _next_not_tail = idc.next_not_tail(current_ea)
-        _next_mnem = idc.print_insn_mnem(_next_insn)
+        _next_mnem = IdaGetMnem(_next_insn)
         if isUnconditionalJmp(current_ea):
             raise RuntimeError("Should we be getting UnconditionalJmp's here?")
-        if not isUnconditionalJmp(current_ea) and not isRet(current_ea) and not IsCode_(_next_insn):
+        if not isRet(current_ea) and not IsCode_(_next_insn):
             if ida_ua.can_decode(_next_insn): # , idc.GENDSM_FORCE_CODE):
                 if idc.create_insn(_next_insn) or forceAsCode(_next_insn):
-                    if idc.is_flow(ida_bytes.get_flags(_next_insn)):
+                    if IsFlow((_next_insn)):
                         if debug: sprint("adding new code")
                         new_ea = _next_insn
-                        CheckChunkChange(current_ea, new_ea)
+                        ShouldAddChunk(current_ea, new_ea)
                         if debug: sprint("AdvanceHead is returning {} (created new code)".format(hex(new_ea)))
                         return new_ea
                     else:
@@ -1760,7 +1788,7 @@ def slowtrace2(ea=None,
                 printi("else3 (couldn't read valid insn {:x} from {:x})".format(_next_insn, current_ea))
                 raise RelocationUnpatchRequest()
 
-        if idc.is_flow(ida_bytes.get_flags(_next_head)) and not isFlowEnd(current_ea) and _next_head == _next_insn:
+        if IsFlow((_next_head)) and not isFlowEnd(current_ea) and _next_head == _next_insn:
             if GetChunkNumber(_next_head) > 0 and GetChunkEnd(current_ea) == _next_head:
                 #  sprint("Losing our chunk (AdvanceHead): GetChunkEnd(current_ea) == _next_head == 0x{:x}".format(_next_head))
                 #  if not IsSameFunc(current_ea, _next_head) and IsFunc_(_next_head):
@@ -1869,9 +1897,9 @@ def slowtrace2(ea=None,
             raise AdvanceFailure(msg)
         else:
             # if debug: sprint("considering extending function")
-            #  fnEnd = EndOfFlow(current_ea)
-            if nextHead >= fnEnd and idc.is_flow(ida_bytes.get_flags(nextHead)) and not isFlowEnd(current_ea):
-        #  if idc.is_flow(ida_bytes.get_flags(_next_head)) and not isFlowEnd(current_ea) and _next_head == _next_insn:
+            #  fnEnd = ExndOfFlow(current_ea)
+            if nextHead >= fnEnd and IsFlow((nextHead)) and not isFlowEnd(current_ea):
+        #  if IsFlow((_next_head)) and not isFlowEnd(current_ea) and _next_head == _next_insn:
                 #  sprint("0x%x: Adjusting fnEnd from 0x%x to 0x%x" % (current_ea, fnEnd, NextNotTail(nextHead)))
                 # TODO: should we be doing this, is this causing overspill?
                 if not vim:
@@ -1891,7 +1919,7 @@ def slowtrace2(ea=None,
             else:
                 # if debug: sprint("considering extending function.. nope")
                 pass
-            CheckChunkChange(current_ea, nextHead)
+            ShouldAddChunk(current_ea, nextHead)
             if debug: sprint("AdvanceHead is returning {}".format(hex(nextHead)))
             return nextHead
         if debug: sprint("AdvanceHead is returning None")
@@ -1903,9 +1931,9 @@ def slowtrace2(ea=None,
             ea = ea,
             prev_ea = prev_ea,
             addresses = list(slvars.addresses),
-            jumps = list(slvars.jumps),
-            nops = list(slvars.nops),
-            chunks = list(slvars.chunks),
+            #  jumps = list(slvars.jumps),
+            #  nops = list(slvars.nops),
+            # chunks = list(slvars.chunks),
             real = list(slvars.real),
             instructions = slvars2.instructions.copy(),
             mnem = mnem,
@@ -1982,6 +2010,11 @@ def slowtrace2(ea=None,
             reason[:] = [ _reason ]
             return True
 
+        if forceRemoveFuncs:
+            return False
+
+        if IsSameChunk(ea, funcea):
+            return setIsRealFunc("IsSameChunk")
         if idc.get_segm_name(funcea) == '.idata' and idc.get_type(funcea):
             return setIsRealFunc("0x%x: (.idata with Type) jmp <0x%x>" % (ea, target))
 
@@ -2000,8 +2033,9 @@ def slowtrace2(ea=None,
         target_flags = ida_bytes.get_flags(funcea)
         codeRefs = list(
             [x for x in list(idautils.CodeRefsTo(funcea, 0)) if idc.get_segm_name(x) == '.text'])
-        callRefs = list([x for x in list(CallRefsTo(funcea)) if idc.get_segm_name(x) == '.text' and IsFunc_(x) and not idc.get_func_name(x).startswith("do_") and IdaGetInsnLen(x) > 2])
-        jmpRefs = list([x for x in list(JmpRefsTo(funcea)) if idc.get_segm_name(x) == '.text' and IsFunc_(x) and not ida_funcs.is_same_func(slvars.startLoc, x) and not isConditionalJmp(x)])
+        allRefs = AllRefsTo(funcea)
+        callRefs = list([x for x in allRefs['callRefs'] if idc.get_segm_name(x) == '.text' and IsFunc_(x) and not idc.get_func_name(x).startswith("do_")])
+        jmpRefs = list([x for x in allRefs['jmpRefs'] if idc.get_segm_name(x) == '.text' and IsFunc_(x) and not ida_funcs.is_same_func(slvars.startLoc, x) and not isConditionalJmp(x)])
         jmpRefs.sort()
         currentStackDiff = GetSpd(ea)
         targetStackDiff = GetSpd(funcea)
@@ -2031,7 +2065,7 @@ def slowtrace2(ea=None,
         fnName = GetFunctionName(funcea)
 
         fnEnd = FindFuncEnd(funcea)
-        fnEndMnem = idc.print_insn_mnem(idc.prev_head(fnEnd))
+        fnEndMnem = IdaGetMnem(idc.prev_head(fnEnd))
 
         if debug: sprint(
             "0x%x: %s to (fnName: %s): %s" % (funcea, GetFunctionName(ea), fnName, GetDisasm(ea)))
@@ -2056,21 +2090,21 @@ def slowtrace2(ea=None,
         if c.exists("[ALLOW JMP]") or ct.exists("[ALLOW JMP]"):
             if debug: sprint((_file, 'is_real_func'), "allow jmp")
             isRealFunc = False
+        elif callRefs:
+            isRealFunc = setIsRealFunc("0x%x: legitimate function (callRefs): 0x%x: %s" % (ea, funcea, fnName))
         elif not noDenyJmp and (c.exists("[DENY JMP]") or ct.exists("[DENY JMP]")):
             isRealFunc = setIsRealFunc("[DENY JMP]")
         elif funcea == tmpLimit:
             isRealFunc = setIsRealFunc("0x%x: legitimate function (is in limit): 0x%x: %s" % ( ea, funcea, fnName))
-        elif funcea == tmpLimit:
-            isRealFunc = setIsRealFunc("0x%x: legitimate function (impl_addresses): 0x%x: %s" % ( ea, funcea, fnName))
-        elif len(callRefs) > 0:
-            isRealFunc = setIsRealFunc("0x%x: legitimate function (callRefs): 0x%x: %s" % (ea, funcea, fnName))
-        elif not noPdata and isPdata(funcea) and not ida_funcs.is_same_func(ea, funcea):
+        elif not noPdata and isPdata(funcea):
             isRealFunc = setIsRealFunc("0x%x: legitimate function (in .pdata): 0x%x: %s" % (ea, funcea, fnName))
-        elif idc.get_wide_byte(target) == 0xc3 and not isConditionalJmp(ea):
-            if debug: sprint((_file, 'is_real_func'), "target is retn")
-            nassemble(ea, 'retn', apply=1)
-        elif fnName.startswith("Arxan") and not isSameFunc:
-            isRealFunc = setIsRealFunc("fnName.startswith('Arxan')")
+        elif isRet(funcea): # idc.get_wide_byte(target) == 0xc3 and not isConditionalJmp(ea):
+            isRealFunc = False
+            #  if isJmp(ea):
+                #  nassemble(ea, 'retn', apply=1)
+            #  if debug: sprint((_file, 'is_real_func'), "target is retn")
+        elif fnName.startswith(("Arxan", "TheWitch", "TheCorpsegrinder", "TheInvestigator", "Balance")) and not isSameFunc:
+            isRealFunc = setIsRealFunc("fnName.startswith(StackObfuishThing)")
         elif funcea in slvars.justVisited:
             if debug: sprint((_file, 'is_real_func'), "justVisited")
             isRealFunc = False
@@ -2160,7 +2194,7 @@ def slowtrace2(ea=None,
             isRealFunc = False
         if isRealFunc and canInclude and include:
             isRealFunc = False
-        if isRealFunc:
+        if isRealFunc and not forceRemoveFuncs:
             codeRefsTo.add(funcea)
             if debug: sprint((_file, 'is_real_func'), "real func")
             if False:
@@ -2212,11 +2246,50 @@ def slowtrace2(ea=None,
                 #  if IsFuncHead(funcea):
                     #  ShowAppendFunc(ea, slvars.startLoc, funcea)
                 #  else:
-                    #  SmartAddChunk(funcea, ea)
+                    #  SxmartAddChunk(funcea, ea)
 
         return reason[0] if isRealFunc else False
 
-    if debug: sprint("0x%x: starting mnem::%s" % (ea, idc.print_insn_mnem(ea)))
+
+    ###
+    # ACTUAL DEF STARTS HERE
+    ###
+    if hasglobal('PerfTimer'):
+        sprint = PerfTimer.bind(sprint, 'slowtrace2.sprint')
+        VimEdit = PerfTimer.bind(VimEdit, 'slowtrace2.VimEdit')
+        output = PerfTimer.bind(output, 'slowtrace2.output')
+        SmartAddChunk = PerfTimer.bind(SmartAddChunk, 'slowtrace2.SmartAddChunk')
+        ShouldAddChunk = PerfTimer.bind(ShouldAddChunk, 'slowtrace2.ShouldAddChunk')
+        ChangeTarget = PerfTimer.bind(ChangeTarget, 'slowtrace2.ChangeTarget')
+        PopTarget = PerfTimer.bind(PopTarget, 'slowtrace2.PopTarget')
+        FollowTarget = PerfTimer.bind(FollowTarget, 'slowtrace2.FollowTarget')
+        ReverseHead = PerfTimer.bind(ReverseHead, 'slowtrace2.ReverseHead')
+        AdvanceHead = PerfTimer.bind(AdvanceHead, 'slowtrace2.AdvanceHead')
+        getState = PerfTimer.bind(getState, 'slowtrace2.getState')
+        pushState = PerfTimer.bind(pushState, 'slowtrace2.pushState')
+        pushBranch = PerfTimer.bind(pushBranch, 'slowtrace2.pushBranch')
+        popState = PerfTimer.bind(popState, 'slowtrace2.popState')
+        getIndent = PerfTimer.bind(getIndent, 'slowtrace2.getIndent')
+        getColor = PerfTimer.bind(getColor, 'slowtrace2.getColor')
+        nextColor = PerfTimer.bind(nextColor, 'slowtrace2.nextColor')
+        is_real_func = PerfTimer.bind(is_real_func, 'slowtrace2.is_real_func')
+
+        if popState.__name__ != 'bound':
+            raise RuntimeError('popState didn\'t bind correctly')
+
+        if idc.get_cmt.__name__ != 'bound':
+            PerfTimer.bindmethods(idc)
+            PerfTimer.bindmethods(ida_funcs)
+            PerfTimer.bindmethods(ida_auto)
+            PerfTimer.bindmethods(ida_bytes)
+            PerfTimer.bindmethods(ida_hexrays)
+            PerfTimer.bindmethods(ida_ida)
+            PerfTimer.bindmethods(ida_xref)
+            PerfTimer.bindmethods(ida_name)
+            PerfTimer.bindmethods(idautils)
+    # dprint("[slowtrace2] l")
+    
+    if debug: sprint("0x%x: starting mnem::%s" % (ea, IdaGetMnem(ea)))
     if not IsFunc_(ea):
         if debug: sprint('MAkeFunction112')
         if not MyMakeFunction(ea) and not ForceFunction(ea):  # , noMakeFunction):
@@ -2272,7 +2345,8 @@ def slowtrace2(ea=None,
     for cn in range(999999):
         if cn >= stop: raise Exception("Stop!")
         fatal = False
-        ShouldAddChunk(lastEa, ea)
+        if ea != lastEa:
+            ShouldAddChunk(lastEa, ea)
         if count and len(slvars.addresses) > count:
             printi("... count reached #2")
             return 0
@@ -2294,8 +2368,8 @@ def slowtrace2(ea=None,
 
                 if debug: sprint("no function name, dubiously calling called shouldaddchunk, IsFuncHead: {}, name: {}".format(IsFuncHead(ea), GetFuncName(ea)))
                 # ForceFunction(ea)
-                SmartAddChunk(ea, ea)
-                # ShouldAddChunk(lastEa, ea)
+                # SmartAddChunk(ea, ea)
+                ShouldAddChunk(lastEa, ea)
                 break
 
             if step == 0 or step == 2:
@@ -2368,7 +2442,7 @@ def slowtrace2(ea=None,
 
             lastEa = ea
 
-            mnem = idc.print_insn_mnem(ea)
+            mnem = IdaGetMnem(ea)
             #  with PerfTimer(mnem):
             decomp = de(ea)
             decomp = decomp[0] if len(decomp) else None
@@ -2408,7 +2482,7 @@ def slowtrace2(ea=None,
 
                 # disasm = kp.ida_get_disasm(ea, fixup=0)
                 disasm = diida(ea)
-                mnem = idc.print_insn_mnem(ea)
+                # mnem = IdaGetMnem(ea)
 
                 # nasty alternative to sti.multimatch.sti
                 if insn_match(ea, idaapi.NN_push, (idc.o_reg, 11), comment='push r11'):
@@ -2438,7 +2512,7 @@ def slowtrace2(ea=None,
                         Commenter(ea, "line").add(cmt)
 
                 skipObfu = False
-                if mnem == "nop" or Word(ea) == 0x9066 or isAnyJmp(mnem):
+                if mnem == "nop" or mnem.startswith('j'):
                     skipObfu = True
 
 
@@ -2463,16 +2537,14 @@ def slowtrace2(ea=None,
                     noSti = False
 
                 if not noSti:
-                    if slvars2.instructions and slvars2.instructions[-1].ea == ea:
-                        slvars2.instructions.pop()
-                    slvars2.instructions.append(FuncTailsInsn(disasm, ea, disasm, size=IdaGetInsnLen(ea), sp=slvars.rsp, spd=slvars.rsp_diff))
+                    if not slvars2.instructions or slvars2.instructions[-1].ea != ea:
+                        slvars2.instructions.append(FuncTailsInsn(disasm, ea, disasm, size=IdaGetInsnLen(ea), sp=slvars.rsp, spd=slvars.rsp_diff))
 
                     # (self, insn=None, ea=None, text=None, size=None,
                     # comments=None, sp=None, spd=None, warnings=None,
                     # errors=None, chunkhead=None, op=None, labels=[],
                     # refs_from={}, refs_to={}, flow_refs_from={},
                     # flow_refs_to={}):
-                    #  slvars2.instructions.append(disasm)
 
 
 
@@ -2859,18 +2931,19 @@ def slowtrace2(ea=None,
                         idaapi.set_item_color(ea, getColor(color))
 
             #  if debug: sprint("justVisited += {} ({})".format(hex(ea), len(slvars.justVisited)))
-            if ea in slvars.justVisited:
-                if debug: sprint("already in justVisited: {}".format(hex(ea)))
+            #  if ea in slvars.justVisited:
+                #  if debug: sprint("already in justVisited: {}".format(hex(ea)))
 
             # this check is just a formality (wtf? it's the only place that adds to justVisited)
             if ea not in slvars.justVisited:
                 slvars.justVisited.add(ea)
                 slvars.justVisitedRsp[ea] = slvars.rsp
 
-            refs = list(idautils.CodeRefsFrom(ea, 0))
-            num_refs = len(refs)
-            jump = 0
-            cond = 0
+            #  refs = list(idautils.CodeRefsFrom(ea, 0))
+            #  num_refs = len(refs)
+
+            #  jump = 0
+            #  cond = 0
 
             # A rather silly way to do things, we could just
             # read the diff directly into slvars.rsp without looking
@@ -2909,7 +2982,7 @@ def slowtrace2(ea=None,
                         c = idc.get_color(ea, idc.CIC_ITEM)
                         if not is_hldchk_msk(c):
                             idaapi.set_item_color(ea, getColor(color))
-                    #  if idc.is_flow(ida_bytes.get_flags(idc.next_head(ea))):
+                    #  if IsFlow((idc.next_head(ea))):
                     #  SetSpDiffEx(idc.next_head(ea), 0)
                     slvars.rsp_diff = 0
                 elif insn.itype == idaapi.NN_nop or (insn.size == 2 and Word(ea) == 0x9066):
@@ -2919,11 +2992,11 @@ def slowtrace2(ea=None,
                         c = idc.get_color(ea, idc.CIC_ITEM)
                         if not is_hldchk_msk(c):
                             idaapi.set_item_color(ea, color_darkest)
-                    if idc.is_flow(ida_bytes.get_flags(idc.next_head(ea))):
+                    if IsFlow((idc.next_head(ea))):
                         pass
                         # SetSpida_funcs.FIND_FUNC_OK:DiffEx(idc.next_head(ea), 0)
                     slvars.rsp_diff = 0
-                # elif idc.is_flow(ida_bytes.get_flags(idc.next_head(ea))):
+                # elif IsFlow((idc.next_head(ea))):
                 else:
                     # deal with any flow issues
                     _next_head = idc.next_head(ea)
@@ -2939,8 +3012,8 @@ def slowtrace2(ea=None,
                                 #  sprint("No instruction at {:x}".format(_next_insn))
                                 #  raise RelocationTerminalError('No instruction at {:x}'.format(_next_insn))
 
-                        if not idc.is_flow(ida_bytes.get_flags(_next_insn)):
-                            if debug: sprint("no flow to {:x}".format(_next_insn))
+                        if not IsFlow(_next_insn):
+                            sprint("no flow to {:x}".format(_next_insn))
                             # raise RelocationTerminalError('No flow')
 
                     for r in range(10):
@@ -2955,7 +3028,7 @@ def slowtrace2(ea=None,
                                 msg = sprint("Lost our own function")
                                 if MyMakeFunction(slvars.startLoc):
                                     LabelAddressPlus(slvars.startLoc, slvars.startFnName)
-                                raise AdvanceFailure(msg)
+                                raise RuntimeError(msg)
 
                         if not IsFunc_(_next_insn):
                             pph([x.ea for x in slvars2.instructions[-16:]])
@@ -2963,10 +3036,10 @@ def slowtrace2(ea=None,
                             raise AdvanceFailure(msg)
                             break
 
-                    if idc.is_flow(ida_bytes.get_flags(_next_insn)) and not isFlowEnd(ea):
+                    if IsFlow(_next_insn) and not isFlowEnd(ea):
                         if GetChunkEnd(ea) == idc.next_head(ea):
                             if debug: sprint("GetChunkEnd(ea) == idc.next_head(ea)")
-                            if idc.is_flow(ida_bytes.get_flags(idc.next_head(idc.next_head(ea)))):
+                            if IsFlow((idc.next_head(idc.next_head(ea)))):
                                 if isFlowEnd(ea):
                                     ida_auto.auto_recreate_insn(ea)
                                 else:
@@ -3001,10 +3074,10 @@ def slowtrace2(ea=None,
 
 
                             #  tmp = end = start = idc.next_head(ea)
-                            #  while idc.is_flow(ida_bytes.get_flags(tmp)):
+                            #  while IsFlow((tmp)):
                                 #  end = tmp
                                 #  tmp = idc.next_head(end)
-                            #  ShowAppendFchunk(slvars.startLoc, start, EndOfFlow(end + InsnLen(end, soft=ignoreInt)))
+                            #  ShowAppendFchunk(slvars.startLoc, start, ExndOfFlow(end + InsnLen(end, soft=ignoreInt)))
                             idc.auto_wait()
 
                         slvars.rsp_diff = GetSpDiff(idc.next_head(ea))
@@ -3025,7 +3098,7 @@ def slowtrace2(ea=None,
                                         forceCode(_chunk_owner, _chunk_owner + IdaGetInsnLen(_chunk_owner))
                                         idc.add_func(_chunk_owner, _chunk_owner + IdaGetInsnLen(_chunk_owner))
                                         if not _chunk_owners_include_us:
-                                            printi("idc.append_func_tail(0x{:x}, 0x{:x}, 0x{:x}".format(slvars.startLoc, _chunk_start, _chunk_end))
+                                            if debug: printi("not _chunk_owners_include_us: idc.append_func_tail(0x{:x}, 0x{:x}, 0x{:x}".format(slvars.startLoc, _chunk_start, _chunk_end))
                                             idc.append_func_tail(slvars.startLoc, _chunk_start, _chunk_end)
                                             # global_chunks[slvars.startLoc].update(idautils.Chunks(ea))
                                     if GetChunkNumber(_chunk_start, _chunk_owner) > 0:
@@ -3049,9 +3122,9 @@ def slowtrace2(ea=None,
                                     sprint("[bad chunk] slvars.rsp_diff was none between 0x%x and 0x%x: (%s, %s)" % (
                                         ea, idc.next_head(ea), GetDisasm(idc.next_head(ea)), dii(idc.next_head(ea))))
                                     result = 0
-                                    if SmartAddChunk(ea, ea):
+                                    if ShouldAddChunk(ea, ea):
                                         result += 1
-                                    if SmartAddChunk(idc.next_head(ea), ea):
+                                    if ShouldAddChunk(ea, idc.next_head(ea)):
                                         result += 1
                                     if result:
                                         printi("Added chunk")
@@ -3067,11 +3140,11 @@ def slowtrace2(ea=None,
                                 slvars.rsp_diff = 0
 
             # MakeCodeAndWait(ea)
-            mnem = idc.print_insn_mnem(ea)
+            # mnem = IdaGetMnem(ea)
             # disasm = GetDisasm(ea)
             #  disasm = kp.ida_get_disasm(ea, fixup=1)
-            disasm = diida(ea)
-            ida_disasm = string_between(';', '', idc.GetDisasm(ea), inclusive=1, repl='').rstrip()
+            # disasm = diida(ea)
+            #  ida_disasm = string_between(';', '', idc.GetDisasm(ea), inclusive=1, repl='').rstrip()
             inslen = MyGetInstructionLength(ea)
             bytes = []
             for i in range(inslen):
@@ -3281,8 +3354,8 @@ def slowtrace2(ea=None,
                 # ida_bytes.clr_op_type(ea, -1)
 
             # kp.ida_resolve(kp.ida_get_disasm(ERROREA()))
-            mnem = idc.print_insn_mnem(ea)
-            mnem_next = idc.print_insn_mnem(idc.next_head(ea))
+            mnem = IdaGetMnem(ea)
+            mnem_next = IdaGetMnem(idc.next_head(ea))
             ea_next = idc.next_head(ea)
             #  if reloc: line = output(disasm + "\n")
             #
@@ -3517,7 +3590,7 @@ def slowtrace2(ea=None,
                     # the actual Arxan meat. Grab the (seemingly always first) line that
                     # sets one of the return addresses on the stack, grab the function address
                     # from the offset it uses, and paste that over the original call, as a jmp.
-                    balanceCalls, balanceLoc, balanceName = CountConsecutiveCalls(ea)
+                    balanceCalls, balanceLoc, balanceName = _.values(_.pick(CountConsecutiveCalls(ea), 'count', 'ea', 'name'))
                     if debug:
                         # dprint("[setIsRealFunc] balanceCalls, balanceLoc, balanceName")
                         print("[balanceCheck] {:#x} balanceCalls:{}, balanceLoc:{}, balanceName:{}".format(ea, hex(balanceCalls), hex(balanceLoc), balanceName))
@@ -3589,7 +3662,7 @@ def slowtrace2(ea=None,
                                 _extra = None
 
                             addrs = []
-                            skipped_insn_count, callLoc, unused = AdvanceToMnem(new_ea, "call", addrs)
+                            skipped_insn_count, callLoc, unused = _.pluck(AdvanceToMnem(new_ea, "call", addrs), 'count', 'ea')
                             if skipped_insn_count > 1:
                                 if False:
                                     balanceSpd = idc.get_spd(GetChunkEnd(balanceLoc)-1) // -8
@@ -3670,11 +3743,11 @@ def slowtrace2(ea=None,
                                                     if not IsCode_(call_return):
                                                         forceCode(call_return)
 
-                                                    if idc.print_insn_mnem(call_return).startswith("ret"):
+                                                    if IdaGetMnem(call_return).startswith("ret"):
                                                         sprint("ArxanContinuation: " + str(call_num) + " (" + str(call_num - balanceSpd) + ") " + str(hex(call_return)) + ": ret")
                                                         null_count += 1
                                                     else:
-                                                        sprint("ArxanContinuation: " + str(call_num) + " (" + str(call_num - balanceSpd) + ") " + str(hex(call_return)) + ": " + str(idc.print_insn_mnem(call_return)))
+                                                        sprint("ArxanContinuation: " + str(call_num) + " (" + str(call_num - balanceSpd) + ") " + str(hex(call_return)) + ": " + str(IdaGetMnem(call_return)))
                                                         cont_count += 1
                                             except TypeError as e:
                                                 printi("Exception: {}: {}".format(e.__class__.__name__, str(e)))
@@ -3693,7 +3766,7 @@ def slowtrace2(ea=None,
                                                 if retn_loc is None:
                                                     printi("[arxan] retn_loc is None")
                                                 else:
-                                                    Commenter(ea).add("Arxan Return {}: {:x} {} {}".format(smth_count, retn_loc, idc.print_insn_mnem(SkipJumps(retn_loc)), idc.get_name(retn_loc)))
+                                                    Commenter(ea).add("Arxan Return {}: {:x} {} {}".format(smth_count, retn_loc, IdaGetMnem(SkipJumps(retn_loc)), idc.get_name(retn_loc)))
 
                                             smth_count = -1
                                             if cont_count == 0:
@@ -3725,7 +3798,7 @@ def slowtrace2(ea=None,
                                                         skip_next = 0
                                                         continue
 
-                                                    if idc.print_insn_mnem(SkipJumps(retn_loc)).startswith('ret'):
+                                                    if IdaGetMnem(SkipJumps(retn_loc)).startswith('ret'):
                                                         printi("[arxan] skipping retn_loc {} {:x} (call_loc {:x})".format(smth_count, retn_loc, call_loc))
                                                         # skip_next = 1
                                                         continue
@@ -3928,7 +4001,7 @@ def slowtrace2(ea=None,
                                                         #  patch_target = call_loc
     #
 
-        #  if idc.print_insn_mnem(SkipJumps(retn_loc)).startswith('ret'):
+        #  if IdaGetMnem(SkipJumps(retn_loc)).startswith('ret'):
                                                         #  printi("[arxan] skipping retn_loc {} {:x} (call_loc {:x})".format(smth_count, retn_loc, call_loc))
                                                         #  skip_next = 1
                                                         #  continue
@@ -4021,11 +4094,11 @@ def slowtrace2(ea=None,
                                                 #  if not IsCode_(call_return):
                                                     #  forceCode(call_return)
     #
-                                                #  if idc.print_insn_mnem(call_return).startswith("ret"):
+                                                #  if IdaGetMnem(call_return).startswith("ret"):
                                                     #  sprint(f"ArxanContinuation: {call_num} ({call_num - balanceSpd}) {hex(call_return)}: ret")
                                                     #  null_count += 1
                                                 #  else:
-                                                    #  sprint(f"ArxanContinuation: {call_num} ({call_num - balanceSpd}) {hex(call_return)}: {idc.print_insn_mnem(call_return)}")
+                                                    #  sprint(f"ArxanContinuation: {call_num} ({call_num - balanceSpd}) {hex(call_return)}: {IdaGetMnem(call_return)}")
                                                     #  cont_count += 1
 
 
@@ -4040,7 +4113,7 @@ def slowtrace2(ea=None,
                                                         #  skip_next = 0
                                                         #  continue
     #
-                                                    #  if idc.print_insn_mnem(SkipJumps(retn_loc)).startswith('ret'):
+                                                    #  if IdaGetMnem(SkipJumps(retn_loc)).startswith('ret'):
                                                         #  printi("[arxan] skipping retn_loc {} {:x} (call_loc {:x})".format(smth_count, retn_loc, call_loc))
                                                         #  skip_next = 1
                                                         #  continue
@@ -4073,7 +4146,7 @@ def slowtrace2(ea=None,
                                                     #  elif patch_target == 1:
                                                         #  patch_target = call_loc
     #
-                                                    #  if idc.print_insn_mnem(SkipJumps(retn_loc)).startswith('ret'):
+                                                    #  if IdaGetMnem(SkipJumps(retn_loc)).startswith('ret'):
                                                         #  printi("[arxan] skipping retn_loc {} {:x} (call_loc {:x})".format(smth_count, retn_loc, call_loc))
                                                         #  skip_next = 1
                                                         #  continue
@@ -4162,6 +4235,7 @@ def slowtrace2(ea=None,
                 if opType0 == o_near:
 
                     # if target not in later2 and not IsUnknown(target) and idc.get_func_attr(GetJumpTarget(ea), idc.FUNCATTR_FLAGS) & FUNC_LIB == 0:
+                    
                     possible_later_targets = SkipJumps(target, returnJumps=True, returnTarget=True)
                     if not _.any(possible_later_targets, lambda v, *a: v in later2):
                         later2.add(target)
@@ -4257,7 +4331,7 @@ def slowtrace2(ea=None,
                     Commenter(target, repeatable=1).add(add_comment)
 
             # added extra mnem = because retn keeps showing up as a jmp
-            new_mnem = idc.print_insn_mnem(ea)
+            new_mnem = IdaGetMnem(ea)
             if not new_mnem:
                 raise AdvanceFailure("Couldn't decode mnem for {:#x} (was {})".format(ea, mnem))
             mnem = new_mnem
@@ -4428,7 +4502,7 @@ def slowtrace2(ea=None,
             if not ignoreExtraStack and not IsStackOperand(ea, ignoreLeaDisplacement=0):
 
                 n = idc.get_sp_delta(ea_next)
-                if idc.is_flow(ida_bytes.get_flags(ea_next)) and not isFlowEnd(ea) and n:
+                if IsFlow((ea_next)) and not isFlowEnd(ea) and n:
                     ida_disasm_next = string_between(';', '', idc.GetDisasm(ea_next), inclusive=1, repl='').rstrip()
 
                     if not '__alloca_probe' in ida_disasm and not Commenter(ea, "line").match(r'\[.*SPD.?=', re.I): #  and not Commenter(ea_next, "line").match(r'\[.*SPD=', re.I):
@@ -4543,7 +4617,7 @@ def slowtrace2(ea=None,
                             if 'slvars' in globals(): sprint(RelocationInvalidStackError("0x%x: 18 stackop %s with incorrect SpDiff %i at 0x%x" % (ea, mnem, stk, ea_next)))
                             raise RelocationInvalidStackError("0x%x: 27 stackop %s with incorrect SpDiff %i at 0x%x" % (ea, mnem, stk, ea_next))
                         else:
-                            sprint("stackop %s with incorrect SpDiff 0x%x at 0x%x : 0x%x %s | %s" % (mnem, stk, ea_next, ea + IdaGetInsnLen(ea), idc.print_insn_mnem(ea), GetSpDiffEx(ea)))
+                            sprint("stackop %s with incorrect SpDiff 0x%x at 0x%x : 0x%x %s | %s" % (mnem, stk, ea_next, ea + IdaGetInsnLen(ea), IdaGetMnem(ea), GetSpDiffEx(ea)))
 
                         #  if mnem == "sub":
                         #  slvars.rsp_diff = 0 - GetOperandValue(ERROREA(), 1)
@@ -4984,9 +5058,9 @@ def slowtrace2(ea=None,
         _chunks = [x for x in idautils.Chunks(slvars.startLoc)]
         chunks = GenericRanger([GenericRange(x[0], trend=x[1])           for x in _chunks],            sort = 1)
         keep   = GenericRanger([GenericRange(a, trend=a + IdaGetInsnLen(a)) for a in slvars.justVisited], sort = 1)
+        remove = difference(chunks, keep)
         if debug: sprint("chunks: {}".format(keep))
         if debug: sprint("keep: {}".format(keep))
-        remove = difference(chunks, keep)
         globals()["_keep"] = keep
         globals()["_remove"] = remove
         globals()["__chunks"] = _chunks
@@ -4996,7 +5070,8 @@ def slowtrace2(ea=None,
             for ea1, ea2 in [x.chunk() for x in remove]:
                 sprint("remove: {:x}-{:x}".format(ea1, ea2))
 
-        modify_chunks(slvars.startLoc, chunks, keep, remove)
+        if keep or remove:
+            modify_chunks(slvars.startLoc, chunks, keep, remove)
 
 
 
@@ -5174,11 +5249,11 @@ def retrace_all():
 
 # store default arguments for slowtrace2
 try:
-    r2 = inspect.getfullargspec(slowtrace2)
-    slowtrace2.defaults = zip(r2[0], r2[3])
+    _slowtrace_tst_r2 = inspect.getfullargspec(slowtrace2)
+    slowtrace2.defaults = zip(_slowtrace_tst_r2[0], _slowtrace_tst_r2[3])
 except AttributeError:
-    r2 = inspect.getargspec(slowtrace2)
-    slowtrace2.defaults = zip(r2[0], r2[3])
+    _slowtrace_tst_r2 = inspect.getargspec(slowtrace2)
+    slowtrace2.defaults = zip(_slowtrace_tst_r2[0], _slowtrace_tst_r2[3])
 
 idc.set_inf_attr(INF_AF, 0xdfe6300d)
 
@@ -5192,3 +5267,6 @@ for ea in a[:]:
 retrace_list(a, redux=1)
 """
 
+if hasglobal('PerfTimer'):
+    __slowtrace2__ = [retrace]
+    PerfTimer.binditems(locals(), funcs=__slowtrace2__, name='slowtrace2')

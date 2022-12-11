@@ -44,14 +44,14 @@ def nasm_process_mapfile():
         except ValueError:
             pass
 
-nasm_cache = dict()
+nasm_cache = getglobal('_nasm._cache', type, dict, _set=True)
 def nasm64(ea, string, quiet=False):
     global nasm_cache
     input = list()
 
-    if len(string.splitlines()) == 1 and string.startswith(('j', 'call', 'ret')):
-        string = re.sub(r'\b0x([0-9a-fA-F]+)\b', r'\1h', string)
-        string = string.replace('retn', 'ret')
+    if len(string.splitlines()) == 1 and string.startswith(('j', 'call')):
+        # string = re.sub(r'\b0x([0-9a-fA-F]+)\b', r'\1h', string)
+        # string = string.replace('retn', 'ret')
         qr = qassemble(ea, string)
         if isinstance(qr, list):
             if nasm_debug: print("shunted to qassemble: {}".format(string))
@@ -159,9 +159,8 @@ def nasm64(ea, string, quiet=False):
             if os.name == 'nt':
                 startupinfo = subprocess.STARTUPINFO()
                 startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            with PerfTimer('nasm'):
                 #  try:
-                    ret = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True, startupinfo=startupinfo)
+                ret = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True, startupinfo=startupinfo)
                 #  except Exception as e:
                     #  print("{}: {}: executing {}".format(e.__class__.__name__, str(e), args))
                     #  return
@@ -204,14 +203,17 @@ def nasm64(ea, string, quiet=False):
                     # dprint("[nasm_debug] retry")
                     
                     if ori_string not in nasm_cache:
-                        if retry > 0 and ("0x" not in ori_string or "+0x" in ori_string or "-0x" in ori_string):
+                        
+                        # check if any RIP relative stuff is here -- can't cache it
+                        # if retry > 0
+                        if not _.any(deCode(bytes(assembled)), lambda v, *a: v.rawFlags & 0x80 or v.meta & 0xf in (1, 4, 5)):
                             if nasm_debug: print("[caching]\n{}".format(indent(8, ori_string)))
                             nasm_cache[ori_string] = True, {'output': assembled, 'input': input}
                         else:
                             if nasm_debug: print("[not caching]\n{}".format(indent(8, ori_string)))
 
                     
-                    if nasm_debug: print("assembled at 0x{:x}:\n{}".format(ea, indent(8, ori_string)))
+                    # if nasm_debug: print("assembled at 0x{:x}:\n{}".format(ea, indent(8, ori_string)))
                     return True, {'output': assembled, 'input': input}
                     #  r = True, assembled
                 else:

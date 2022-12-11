@@ -13,9 +13,10 @@ class GenericRange(object):
     endash = '\u2013'
     formatter = None
 
-    def __init__(self, start=None, sacrificial=None, last=None, trend=None, end=None, length=None):
+    def __init__(self, start=None, trend=None, sacrificial=None, last=None, end=None, length=None, ctx=None):
         self._start = start
         self._last = None
+        self._ctx = ctx
         args = {'sacrificial':sacrificial, 'last':last, 'trend':trend, 'end':end, 'length':length}
         argc = sum([x is not None for x in args.values()])
         if argc > 1 or end is not None or sacrificial is not None: # or (trend is None and length is None and last is None):
@@ -28,7 +29,7 @@ class GenericRange(object):
         elif length is not None:
             self._last = self._start + length - 1
         else:
-            if hasattr(start, 'start'):
+            if hasattr(start, 'start') or isinstance(start, tuple) and len(start) == 2:
                 self._start = get_start(start)
                 self._last = get_last(start)
             elif hasattr(start, '__iter__') and len(list(start)) > 1:
@@ -209,6 +210,9 @@ def GenericRanger(genericRange, sort, outsort=True, prefilter=None, iteratee=Non
         if not isinstance(genericRange, (list, set)):
             gr = GenericRange(genericRange)
             genericRange = list(range(gr.start, gr.trend))
+        else:
+            if _.all(genericRange, lambda v, *a: isinstance(v, tuple) and len(v) == 2):
+                genericRange = [GenericRange(*x) for x in genericRange]
 
     if input_filter is None:
         genericRange = flatten(genericRange)
@@ -222,6 +226,7 @@ def GenericRanger(genericRange, sort, outsort=True, prefilter=None, iteratee=Non
     start = None
     result = []
     group = GenericRange()
+
     if prefilter is None:
         prefilter = lambda x: x
 
@@ -339,3 +344,6 @@ def get_last(r):
         return r.stop - 1
     return r[1]
 
+if hasglobal('PerfTimer'):
+    PerfTimer.bindmethods(GenericRange)
+    PerfTimer.bindmethods(GenericRanger)

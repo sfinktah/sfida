@@ -54,7 +54,7 @@ except:
 _API_IDB = idc.get_idb_path()
 _API_FILE = __file__
 
-def static_vars(**kwargs):
+def ir_static_vars(**kwargs):
     def decorate(func):
         for k in kwargs:
             setattr(func, k, kwargs[k])
@@ -1441,7 +1441,7 @@ def idarest_main(*args):
         HTTPRequestHandler.delayed_call(test)
         return q
 
-    @static_vars(q=Queue())
+    @ir_static_vars(q=Queue())
     def tap(self, args):
         if BorrowStdOut.is_default_stdout(sys.stdout):
             sys.stdout = BorrowStdOut.IDARestStdOutTee(sys.stdout, BorrowStdOut.IDARestStdOutQueue(tap.q))

@@ -47,10 +47,10 @@ def _oget(obj, key, default=None, call=False):
     >>> oget(sys.modules['__main__'], 'oget')
     <function oget at 0x000001A9A1920378>
     """
-    if not isinstance(key, str):
-        raise TypeError("oget(): attribute ('{}') name must be string".format(key))
     r = None
 
+    if isinstance(key, int) and _isListlike(obj):
+        return list(list(zip(obj))[key])
     if isinstance(obj, dict):
         return obj.get(key, default)
     try:
@@ -58,6 +58,10 @@ def _oget(obj, key, default=None, call=False):
     except TypeError:
         # TypeError: 'module' object is not subscriptable
         r = getattr(obj, key, default)
+    except AttributeError:
+        if not isinstance(key, str):
+            raise TypeError("oget(): attribute ('{}') name must be string".format(key))
+        raise
 
     if call and callable(r):
         r = r()
@@ -65,9 +69,6 @@ def _oget(obj, key, default=None, call=False):
     return r
 
 def _pluck(obj, key):
-    if _.isInt(key):
-        return list(list(zip(*obj))[key])
-
     return [_oget(x, key, call=1) for x in obj]
 
 def _shuffleSize(array, size=None):
@@ -239,7 +240,7 @@ def _isDictlike(o):
     return hasattr(o, 'items') and hasattr(o, 'values') and hasattr(o, 'keys') and hasattr(o, 'get')
 
 def _isListlike(o):
-    return _.all(_.getmanyattr(o, 'append', 'remove', '__len__', None), lambda x, *a: callable(x))
+    return isinstance(o, tuple) or isinstance(o, list) or  _.all(_.getmanyattr(o, 'append', 'remove', '__len__', None), lambda x, *a: callable(x))
 
 def _values(o):
     """ Retrieve the values of an object's properties.
@@ -562,6 +563,8 @@ class underscore(object):
         """
         **Reduce** builds up a single result from a list of values,
         aka `inject`, or foldl
+
+        func takes arguments(memo, value, index) and returns memo
         """
         if memo is None:
             memo = []
@@ -790,24 +793,28 @@ class underscore(object):
                 return getattr(value, method)(*args)
         return self._wrap(self._clean.map(inv))
 
-    def pluck(self, key):
+    def pluck(self, *keys):
         """
         Convenience version of a common use case of
-        `map`: fetching a property.
+        `map`: fetching a property/properties.
         """
 
         # allow pluck to operate on numeric indexes to quickly
         # grab items from tuples and lists
-        if _.isInt(key):
-            return self._wrap(list(list(zip(*self.obj))[key]))
+        keys = self._flatten(_asList(keys))
+        if not keys:
+            return None
+        if len(keys) > 1:
+            # dprint("[pluck] keys")
+            print("[pluck] keys:{}".format(keys))
+            
+            return self._wrap(list(zip(*[_pluck(self.obj, x) for x in keys])))
 
-        if _isIterable(key):
-            return self._wrap(list(zip(*[_pluck(self.obj, x) for x in key])))
-
-        return self._wrap(_pluck(self.obj, key))
+        return self._wrap(_pluck(self.obj, keys[0]))
 
     def pluckAsObject(self, key):
         """
+        Might be the same as pick?
         """
 
         # allow pluck to operate on numeric indexes to quickly
@@ -846,10 +853,10 @@ class underscore(object):
     #    map(lambda x, *y: GetFunctionName(x)).filter(lambda x, *y: x.startswith('sub_')).
     #    invoke(lambda x, *y: LabelAddressPlus(LocByName( x ), 'allocsub_%s' % x[4:]))
     def ida_code_refs_to(self):
-        return self._wrap(self._flatten(_(asList(self.obj)).map(lambda x, *y: asList(idautils.CodeRefsTo(x, 0))), shallow=True))
+        return self._wrap(self._flatten(_(_asList(self.obj)).map(lambda x, *y: _asList(idautils.CodeRefsTo(x, 0))), shallow=True))
 
     def ida_func_start(self):
-        return self._wrap(self._flatten(_(asList(self.obj)).map(lambda x, *y: GetFuncStart(x)), shallow=True))
+        return self._wrap(self._flatten(_(_asList(self.obj)).map(lambda x, *y: GetFuncStart(x)), shallow=True))
 
     def ida_decompile(self):
         return self._wrap([str(idaapi.decompile(get_ea_by_any(e), hf=None, flags=idaapi.DECOMP_WARNINGS)) for e in self.obj])
@@ -878,7 +885,7 @@ class underscore(object):
         def by(val, *args):
             for key, value in attrs.items():
                 try:
-                    if attrs[key] != val[key]:
+                    if attrs[key] != _oget(val, key):
                         return False
                 except KeyError:
                     return False
@@ -971,7 +978,7 @@ class underscore(object):
         """ Sort the object's values by a criterion produced by an iterator.
         """
         if val is not None:
-                return self._wrap(sorted(self.obj, cmp=val))
+                return self._wrap(sorted(self.obj, key=val))
         else:
             return self._wrap(sorted(self.obj))
 
@@ -1122,16 +1129,23 @@ class underscore(object):
         """
         return self._wrap(len(self.obj))
 
-    def first(self, n=1):
+    def first(self, n=None):
         """
         Get the first element of an array. Passing **n** will return the
         first N values in the array. Aliased as `head` and `take`.
         The **guard** check allows it to work with `_.map`.
+
+        Note: not passing `n` will return the first item, passing `n=1`
+        will return a list containing only the first item. (as per underscore.js)
         """
-        keys = _.keys(self.obj)[0:n]
-        res = [self.obj[x] for x in keys]
-        if len(res) == 1:
-            res = res[0]
+        o = _asList(self.obj)
+        count = n if n is not None else 1
+
+
+        keys = _.keys(o)[0:count]
+        res = [o[x] for x in keys]
+        if n is None and res:
+            return self._wrap(res[0])
 
         #  keys = getattr(self.obj, 'keys', None)
         #  res = []
@@ -1141,6 +1155,17 @@ class underscore(object):
             #  res.append(v)
         return self._wrap(res)
     head = take = first
+
+    def firstOr(self, default):
+        """
+        Get the first element of an array, or `default` if empty.
+        """
+        count = 1
+        keys = _.keys(self.obj)[0:count]
+        res = [self.obj[x] for x in keys]
+        if not res:
+            return default
+        return self._wrap(res[0])
 
     def initial(self, n=1):
         """
@@ -1157,9 +1182,10 @@ class underscore(object):
         values in the array.
         The **guard** check allows it to work with `_.map`.
         """
-        keys = _.keys(self.obj)[-n:]
-        res = [self.obj[x] for x in keys]
-        if len(res) == 1:
+        o = _asList(self.obj)
+        keys = _.keys(o)[-n:]
+        res = [o[x] for x in keys]
+        if n == 1 and res:
             res = res[-1]
         return self._wrap(res)
 
@@ -1234,7 +1260,7 @@ class underscore(object):
             initial = _(ns.array).map(iterator)
 
         def by(memo, value, index):
-            if ((_.last(memo) != value or not len(memo)) if isSorted \
+            if ((_.last(memo, 1) != value or not len(memo)) if isSorted \
                     else not _.include(memo, value)):
                 memo.append(value)
                 ns.results.append(ns.array[index])
@@ -1626,7 +1652,7 @@ class underscore(object):
     def values(self):
         """ Retrieve the values of an object's properties.
         """
-        return self._wrap(_values(self.obj))
+        return self._wrap(list(_values(self.obj)))
 
     def pairs(self):
         """ Convert an object into a list of `[key, value]` pairs.
@@ -1709,8 +1735,8 @@ class underscore(object):
                 #  ns.result[key] = self.obj[key]
 
         def by(key, *args):
-            if _.get(self.obj, key, 'nop6690') != 'nop6690':
-                ns.result[key] = _.get(self.obj, key)
+            if _oget(self.obj, key, 'nop6690') != 'nop6690':
+                ns.result[key] = _oget(self.obj, key)
 
         _.each(self._flatten(args, True, []), by)
         return self._wrap(ns.result)
@@ -1837,6 +1863,8 @@ class underscore(object):
         long, or any implementation-defined extended integer types, including
         any signed, unsigned, and cv-qualified variants. Otherwise, value is
         equal to false.
+
+        Note: technically `bool` is already an instance of `int`
         """
         return self._wrap(isinstance(self.obj, (int,bool)))
 
@@ -2040,7 +2068,7 @@ class underscore(object):
         return _.all(_.getmanyattr(obj, 'append', 'remove', '__len__', None), lambda x, *a: callable(x))
 
     def isListlike(self):
-        return self._wrap(self._isListlike(self.obj))
+        return self._wrap(_isListlike(self.obj))
 
     def join(self, glue=" "):
         """ Javascript's join implementation
@@ -2382,8 +2410,8 @@ class underscore(object):
                             r = getattr(underscore(args[0]), a)(*rargs)
                         else:
                             r = getattr(underscore([]), a)()
-                        if r is None:
-                            print("makeStatic: failed: {}".format(m))
+                        #  if r is None:
+                            #  print("makeStatic failed: a:'{}', args:'{}' returned None".format(a, args))
                         return r
                     execute.__doc__ = "{}{}\n\n{}".format(
                             m,

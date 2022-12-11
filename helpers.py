@@ -261,7 +261,7 @@ def smartTraversalFactory(fn1, direction = -1):
                 fnName = GetFunctionName(ea)
                 fnStart = LocByName(fnName)
                 fnEnd = FindFuncEnd(ea)
-                instruction = GetMnem(ea)
+                instruction = IdaGetMnem(ea)
                 instructionStart = ItemHead(ea)
                 instructionSize = idaapi.get_item_size(instructionStart)
                 instructionEnd = instructionStart + instructionSize
@@ -314,7 +314,7 @@ def smartTraversalFactory(fn1, direction = -1):
 
 
             ####
-            mnem = GetMnem(ea)
+            mnem = IdaGetMnem(ea)
             flow = 1
             numRefs = -1
             if mnem == 'call':
@@ -485,7 +485,7 @@ def trace_forward(ea = idc.get_screen_ea(), fn1 = idc.next_not_tail):
     return ea
 
 def CheckCode(ea = idc.get_screen_ea()):
-    mnem = GetMnem(ea)
+    mnem = IdaGetMnem(ea)
     if mnem in ['in', 'out']:
         start = trace_back_to_label(ea)
         end = trace_forward(ea)
@@ -775,6 +775,62 @@ def FindPatchedBy():
 
     return pbs
 
+def FindCommentedPatches():
+    patchedBytes=[]
+
+    def get_patch_byte(ea, fpos, org_val, patch_val):
+        patchedBytes.append([ea, org_val])
+
+    idaapi.visit_patched_bytes(0, idaapi.BADADDR, get_patch_byte)
+    idc.auto_wait()
+
+    pbs = set()
+    unk = set()
+    bad_pbs = set()
+    bad_unk = set()
+    for ea, x in patchedBytes:
+        if IsTail(ea):
+            pbs.add(idc.get_item_head(ea))
+            continue
+        if IsHead(ea):
+            pbs.add(ea)
+            continue
+
+    for ea in pbs:
+        if idc.get_cmt(ea, False):
+            bad_pbs.add(ea)
+
+    return bad_pbs
+
+def FindPatchedAnonymousNop():
+    patchedBytes=[]
+
+    def get_patch_byte(ea, fpos, org_val, patch_val):
+        patchedBytes.append([ea, org_val])
+
+    idaapi.visit_patched_bytes(0, idaapi.BADADDR, get_patch_byte)
+    idc.auto_wait()
+
+    pbs = set()
+    unk = set()
+    bad_pbs = set()
+    bad_unk = set()
+    for ea, x in patchedBytes:
+        if IsTail(ea):
+            pbs.add(idc.get_item_head(ea))
+            continue
+        if IsHead(ea):
+            pbs.add(ea)
+            continue
+        else: # if IsUnknown(ea) or IsData(ea):
+            unk.add(ea)
+
+    for ea in pbs:
+        if isNop(ea) and not idc.get_cmt(ea, False):
+            bad_pbs.add(ea)
+
+    return bad_pbs, unk
+
 def unpatch_all():
     patchedBytes=[]
 
@@ -795,6 +851,19 @@ def unpatch_all():
             # idaapi.patch_byte(x, y)
     return patchedBytes
 
+def unpatch_all2():
+    patchedBytes=[]
+
+    def get_patch_byte(ea, fpos, org_val, patch_val):
+        patchedBytes.append([ea, patch_val])
+
+    idaapi.visit_patched_bytes(0, idaapi.BADADDR, get_patch_byte)
+    idc.auto_wait()
+    patchedBytes.sort()
+    count = 0
+
+    for r in GenericRanger(patchedBytes, sort=0): 
+        unpatch(r.start, r.trend)
 def GetFuncPatches(funcea=None):
     """
     GetFuncPatches
@@ -961,7 +1030,7 @@ def unpatch_func(ea):
 
         # ida_funcs.reanalyze_function(ea)
         break
-    #  for x, y in chunks: ida_auto.plan_and_wait(x, cend[x])
+    #  for x, y in chunks: Plan(x, cend[x])
     #  ida_auto.auto_make_proc(ea)
     #  ida_auto.auto_wait()
     if debug: printi("unpatched {} bytes".format(_unpatch_count))
@@ -1008,7 +1077,7 @@ def unpatch_func2(funcea=None):
                 msg = "EaseCode failed from {:x}".format(start)
                 print(msg)
                 # raise AdvanceFailure(msg)
-            ida_auto.plan_and_wait(start, end)
+            Plan(start, end, name='unpatch_func2')
             #  ida_auto.plan_range(start, end)  #
             # dprint("[debug] start, end")
             #  print("[debug] start:{:x}, end:{:x}".format(start, end))
@@ -1023,7 +1092,7 @@ def unpatch_func2(funcea=None):
     #  idc.auto_wait()
 
     # ida_funcs.reanalyze_function(ea)
-    #  for x, y in chunks: ida_auto.plan_and_wait(x, cend[x])
+    #  for x, y in chunks: Plan(x, cend[x])
     #  ida_auto.auto_make_proc(ea)
     #  ida_auto.auto_wait()
     idc.auto_wait()
@@ -1037,13 +1106,13 @@ def unpatch_func2(funcea=None):
     ea1 = ea
     ea2 = end
 
-    ida_auto.plan_and_wait(ea1, ea2),
+    Plan(ea1, ea2, name='unpatch_func2'),
     #  print("ida_auto results: {}".format([
         #  ida_auto.revert_ida_decisions(ea1, ea2), #
         #  [ida_auto.auto_recreate_insn(x) for x in Heads(ea1, ea2)],
         #  [ida_auto.plan_ea(x) for x in Heads(ea1, ea2)], #
         #  ida_auto.auto_wait_range(ea1, ea2),
-        #  ida_auto.plan_and_wait(ea1, ea2, True),
+        #  Plan(ea1, ea2, True),
         #  ida_auto.plan_range(ea1, ea2),  #
         #  ida_auto.auto_wait()
     #  ]))
@@ -1100,13 +1169,6 @@ def bestOf3(container, iteratee=None):
         if q[0]['count'] > q[1]['count'] / 2:
             return q[0]['ea']
     print("bestOf3: undecided: {}".format(q))
-
-def static_vars(**kwargs):
-    def decorate(func):
-        for k in kwargs:
-            setattr(func, k, kwargs[k])
-        return func
-    return decorate
 
 @static_vars(loc=0)
 def get_version_mb():
@@ -1898,7 +1960,7 @@ def pprev(ea=None, data=0, stop=None, depth=0, show=0, quiet=0):
             path_ea = path.ea
             ea = path.advance()
             # dprint("[pprev] path_ea, ea")
-            if not quiet: print("[pprev]{:3} path_ea: {}, ea: {} sub: {}".format(path.depth, hex(path_ea), hex(ea), ean(GetFuncStart(ea)) if IsFunc_(ea) else ''))
+            if not quiet: print("[pprev]{:3} path_ea: {}, ea: {:11}  col: #{:06x} sub: {}".format(path.depth, hex(path_ea), str(hex(ea)), 0xffffff & idc.get_color(path_ea, CIC_ITEM), ean(GetFuncStart(ea)) if IsFunc_(ea) else ''))
             if CallRefsTo(path_ea):
                 caller = _.first(A(CallRefsTo(path_ea)))
                 _diida = diida_cmts(caller)
@@ -1924,7 +1986,7 @@ def pprev(ea=None, data=0, stop=None, depth=0, show=0, quiet=0):
                     return ea
                     break
             if ea:
-                if idc.print_insn_mnem(ea) == 'call' and GetTarget(ea) in visited:
+                if IdaGetMnem(ea) == 'call' and GetTarget(ea) in visited:
                     tfn = GetFuncName(GetTarget(path_ea))
                     tgt = hex(GetTarget(path_ea))[2:]
                     if tgt in _diida.lower():

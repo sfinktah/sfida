@@ -76,10 +76,9 @@ class CircularList(object):
         if not self._data:
             raise IndexError("pop from empty list")
         try:
-            idx = (index + self.end) % len(self._data)
+            idx = (index + self.end) % self.size # len(self._data)
             result = self._data.pop(idx)
-            # self.size -= 1
-            self.end -= 1
+            self.end = (self.end - 1) % self.size
             return result
 
         except IndexError as ex:
@@ -87,12 +86,26 @@ class CircularList(object):
             print(("index", index, "size", len(self._data)))
             raise IndexError(ex)
 
+    def index(self, value):
+        try:
+            idx = self._data.index(value)
+            idx = (idx - self.end) % self.size
+        except ValueError:
+            idx = -1
+        return idx
+
+    def remove(self, value):
+        idx = self.index(value)
+        if ~idx:
+            self.pop(idx)
+
+
     def append(self, value):
         """Append an element"""
         if len(self._data) == self.size:
             self._data[self.end] = value
         else:
-            self._data.append(value)
+            self._data.insert(self.end, value)
         self.end = (self.end + 1) % self.size
 
     def __iter__(self):
