@@ -4063,6 +4063,7 @@ def ida_retrace_extend(ea, addrs=None, visited=None, done=None, call_queue=None,
 
 
     
+@static_vars(last_ea = getglobal('_ida_retrace_last_ea', None, set=1))
 def ida_retrace(funcea=None, extend=True, zero=True, calls=False, smart=True, plan=False, requeue=None, *args, **kwargs):
     """
     ida_retrace
@@ -4144,9 +4145,9 @@ def ida_retrace(funcea=None, extend=True, zero=True, calls=False, smart=True, pl
                     if rv > 0:
                         if first_ea not in requeue:
                             requeue.append(first_ea)
-                        # change to append to get faster initial result (but incomplete functions)
 
                         if ea not in queue:
+                        # change to append to get faster initial result (but incomplete functions)
                             queue.append(ea)
                             # queue.insert(0, ea)
                         # continue
@@ -4165,20 +4166,15 @@ def ida_retrace(funcea=None, extend=True, zero=True, calls=False, smart=True, pl
 
 
                 #  all_addrs.extend(addrs)
-                if calls:
-                    # dprint("[ida_retrace] call_queue")
-                    # print("[ida_retrace] call_queue:{}".format(call_queue))
-                    
-                    if call_queue:
-                        for r in call_queue:
-                            addr = _.first(r)
-                            if not is_in_later2(addr):
-                                later2.add(addr)
-                                later.add(addr)
-                            if addr not in queue:
-                                queue.append(r)
-                                # dprint("[ida_retrace] queue")
-                                #  print("[ida_retrace] queue:{}".format(queue))
+                if calls and call_queue:
+                    for r in call_queue:
+                        addr = _.first(r)
+                        if not is_in_later2(addr):
+                            later2.add(addr)
+                            later.add(addr)
+                        if addr not in queue:
+                            queue.insert(0, addr)
+                            # queue.append(r)
                                 
 
                 if addrs and kwargs.get('func', 0):
