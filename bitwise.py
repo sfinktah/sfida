@@ -48,10 +48,12 @@ class BitwiseMask(object):
                     self.add_list(value)
 
 
-    def _as_mask(self, _set, _clear):
+    @staticmethod
+    def _as_mask(_set, _clear):
         return 0xff & ~_clear ^ _set
 
-    def _as_clear(self, _set, _mask):
+    @staticmethod
+    def _as_clear(_set, _mask):
         return 0xff & ~_mask ^ _set
 
     @property
@@ -363,21 +365,21 @@ class BitwiseMask(object):
 
 
     # helpers
-    @staticmethod
-    def _hex_pattern(hex_list):
+    @classmethod
+    def _hex_pattern(cls, hex_list):
         def _hex_byte(string):
             m = re.match(r'(?:0b)?([01._?-]{8})$', string)
             if m: # 0b0011....
                 _set   = int(re.sub(r'[^01]', '0', m.group(1)), 2)
                 _clear = int(re.sub(r'[^01]', '1', m.group(1)), 2)
-                _mask  = self._as_mask(_set, _clear)
+                _mask  = cls._as_mask(_set, _clear)
                 return _set, _clear
 
             m = re.match(r'([0-9a-fA-F]{2})[/&]([0-9a-fA-F]{2})$', string)
             if m: # 70/F8 or 70&F8
                 _set   = int(m.group(1), 16)
                 _mask  = int(m.group(2), 16)
-                _clear = self._as_clear(_set, _mask)
+                _clear = cls._as_clear(_set, _mask)
                 return _set, _clear
 
             m = re.match(r'([0-9a-fA-F]{2})~([0-9a-fA-F]{2})$', string)

@@ -761,8 +761,9 @@ class Obfu(object):
 
                     # XXX: the `difference` probably isn't neccessary, as the two should be mutually exlusive
                     # YYY: it's necessary now, we're using the original target ranges!
-                    setglobal('oriTargetRanges', oriTargetRanges)
-                    setglobal('patchedRanges', patchedRanges)
+                    if obfu_debug:
+                        setglobal('oriTargetRanges', oriTargetRanges)
+                        setglobal('patchedRanges', patchedRanges)
 
                     d = difference(oriTargetRanges, patchedRanges, ordered=1) # usedRanges
                     # dprint("[process_replacement] difference")

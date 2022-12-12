@@ -78,7 +78,7 @@ if False:
     if not hasglobal('_called_fix_jmp_loc_ret'):
         refresh_slowtrace_helpers()
         FixJmpLocRet()
-        setglobal('_called_fix_jmp_loc_ret', True)
+        if debug: setglobal('_called_fix_jmp_loc_ret', True)
 if False:
     if not hasglobal('_called_fix_common_obfu_5'):
         debug=0
@@ -93,7 +93,7 @@ if False:
                 while obfu._patch(ea) and count > 0:
                     count -= 1
 
-        setglobal('_called_fix_common_obfu_5', True)
+        if debug: setglobal('_called_fix_common_obfu_5', True)
 
 check_for_update_1 = make_auto_refresh(os.path.abspath(__file__.replace('2', '_helpers')))
 check_for_update_2 = make_auto_refresh(os.path.abspath(__file__))
@@ -775,16 +775,16 @@ def retrace(address=None, color="#280c01", no_hash=False, _ida_retrace=False, no
                     _old_hash = GetFuncHash(ea)
                 patchResults = []
                 spdList = []
-                setglobal('spdList', spdList)
+                if debug: setglobal('spdList', spdList)
                 try:
                     #  print("count #{}/{}".format(count, count_limit))
                     spdList = []
-                    setglobal('spdList', spdList)
+                    if debug: setglobal('spdList', spdList)
                     rv = slowtrace2(ea, color=color, returnPatches=patchResults, returnOutput=traceOutput, spdList=spdList, **kwargs)
                 except AdvanceReverse as e:
                     raise
                     spdList = []
-                    setglobal('spdList', spdList)
+                    if debug: setglobal('spdList', spdList)
                     rv = slowtrace2(e.args[0], color=color, returnPatches=patchResults, returnOutput=traceOutput, spdList=spdList, **kwargs)
                 _new_hash = GetFuncHash(ea)
                 if not no_hash and _old_hash == _new_hash:
@@ -814,7 +814,7 @@ def retrace(address=None, color="#280c01", no_hash=False, _ida_retrace=False, no
                                 if kwargs.get('noSti', None) or kwargs.get('noObfu', None):
                                     printi("trying without noSti/noObfu")
                                     spdList = []
-                                    setglobal('spdList', spdList)
+                                    if debug: setglobal('spdList', spdList)
                                     rv = slowtrace2(ea, color=color, returnPatches=patchResults, returnOutput=traceOutput, spdList=spdList, **(_.omit(extra_args, 'noSti', 'noObfu')))
                             except AdvanceReverse as e:
                                 pass
@@ -1208,7 +1208,7 @@ def slowtrace2(ea=None,
     global later2
     global arxan_comments
     # later_pending = set()
-    setglobal('g_output', output)
+    if debug: setglobal('g_output', output)
     slvars = SimpleAttrDict()
     slvars2 = SimpleAttrDict()
     slvars.addresses = set()
@@ -1748,7 +1748,7 @@ def slowtrace2(ea=None,
                     state=SimpleAttrDict(getState(advance_head = 1))
                 )
                 slvars2.previousHeads.append(head_dict)
-            # setglobal('previousHeads', slvars2.previousHeads)
+            # if debug: setglobal('previousHeads', slvars2.previousHeads)
 
         if new_ea:
             ShouldAddChunk(current_ea, new_ea)
@@ -2794,7 +2794,7 @@ def slowtrace2(ea=None,
                         #  r'pop rcx',
                         #  r'mov byte.*'
                     #  ])
-                    # setglobal('sti', sti)
+                    # if debug: setglobal('sti', sti)
                     if False and True:
                         m = sti.multimatch([
                             # load r11 with stack adjustment: lea r11, [slvars.rsp+xxx]
@@ -2810,7 +2810,7 @@ def slowtrace2(ea=None,
                         if m:
                             print("matched: {}".format("   ".join([str(x) for x in sti.as_list()])))
                             #  sprint("*** found r11 spd shennanigans***")
-                            setglobal('_m', m)
+                            if debug: setglobal('_m', m)
                             sti.clear()
                             #  stack = string_between(
                                     #  ["[rsp+0x", "[rsp+" ],
@@ -3641,7 +3641,7 @@ def slowtrace2(ea=None,
                                     assert _extra, hex(balanceLoc)
                             if 'extra' in _extra and _extra['extra']:
                                 _extra = _extra['extra']
-                                setglobal('_extra', _extra)
+                                if debug: setglobal('_extra', _extra)
                                 Commenter(ea).add("{:16} {:x}".format("TheBalancerExtra", _extra[0].ea))
 
                                 for i, a in enumerate(balanceCalls):
@@ -3834,7 +3834,7 @@ def slowtrace2(ea=None,
                                                     cave_pos = cave_start
 
                                                     _locations = SkipJumps(_.pluck( _.sortBy(_stackMut, lambda x, *a: x['offset']), 'location'), skipNops=1)
-                                                    setglobal('_locations', _locations)
+                                                    if debug: setglobal('_locations', _locations)
                                                     _locations = _.uniq(_locations)
 
                                                     #  _locations = _.sortBy(_stackMut, lambda x, *a: x['offset'])
@@ -3856,10 +3856,10 @@ def slowtrace2(ea=None,
                                                         sections = [_extra]
                                                         printi("[Section-Extra] {}".format("; ".join(_extra.values())))
 
-                                                    setglobal('_sections', sections)
+                                                    if debug: setglobal('_sections', sections)
                                                     sections.extend([AdvanceToMnemEx(addr) for addr in _locations])
                                                     printi("[Sections] {}".format(pfh(_.pluck(sections, 'ea'))))
-                                                    setglobal('_sections', sections)
+                                                    if debug: setglobal('_sections', sections)
                                                     sizes = [getattr(x, 'byte_count') for x in _sections]
                                                     printi("[Target Sizes] {}".format(pfh(sizes)))
                                                     #    r2 = [
@@ -3873,7 +3873,7 @@ def slowtrace2(ea=None,
                                                     #    sizes = [len(x[1]) for x in r2]
 
                                                     _filtered = _.filter(_sections, lambda v, *a: v.insns)
-                                                    setglobal('_sections', sections)
+                                                    if debug: setglobal('_sections', sections)
                                                     sizes = [getattr(x, 'byte_count') for x in _sections]
                                                     printi("[Target Sizes] {}".format(pfh(sizes)))
                                                     if len(_filtered) == 1:
@@ -3895,7 +3895,7 @@ def slowtrace2(ea=None,
                                                         # _filler = _.filter(_filler, lambda x, *a: not re.match('\s*jmp \w*(locret|nullsub)', x))
                                                         printi("[Cave Assembling] {}".format(pfh(_filler)))
                                                         printi("[Cave Location] {:x}".format(cave_pos))
-                                                        setglobal('debug', 1)
+                                                        if debug: setglobal('debug', 1)
                                                         asm2 = nassemble(cave_pos, _filler, apply=0)
                                                         asm2_len = len(asm2)
                                                         idc.del_items(balanceLoc, idc.DELIT_EXPAND, asm_len + asm2_len)
@@ -3911,7 +3911,7 @@ def slowtrace2(ea=None,
                                                         # idc.auto_wait()
                                                         # EaseCode(balanceLoc)
                                                         # idc.auto_wait()
-                                                        setglobal('debug', 0)
+                                                        if debug: setglobal('debug', 0)
                                                         # PatchBytes(cave_start, _.flatten([x[1] for x in r2]), 'ArxanReturnCode')
                                                         # dprint("[cave_pos] cave_pos, sum_sizes_all, sizes")
                                                         cave_pos += asm_len
@@ -3925,7 +3925,7 @@ def slowtrace2(ea=None,
                                                         # _filler = _.filter(_filler, lambda x, *a: not re.match('\s*jmp \w*(locret|nullsub)', x))
                                                         printi("[Cave Assembling] {}".format(pfh(_filler)))
                                                         printi("[Cave Location] {:x}".format(cave_pos))
-                                                        setglobal('debug', 1)
+                                                        if debug: setglobal('debug', 1)
                                                         asm2 = nassemble(cave_pos, _filler, apply=0)
                                                         asm2_len = len(asm2)
                                                         idc.del_items(balanceLoc, idc.DELIT_EXPAND, asm_len + asm2_len)
@@ -3941,7 +3941,7 @@ def slowtrace2(ea=None,
                                                         # idc.auto_wait()
                                                         # EaseCode(balanceLoc)
                                                         # idc.auto_wait()
-                                                        setglobal('debug', 0)
+                                                        if debug: setglobal('debug', 0)
                                                         # PatchBytes(cave_start, _.flatten([x[1] for x in r2]), 'ArxanReturnCode')
                                                         # dprint("[cave_pos] cave_pos, sum_sizes_all, sizes")
                                                         cave_pos += asm_len
@@ -4569,7 +4569,7 @@ def slowtrace2(ea=None,
                                         print("*** need to disable 'noSti' option in order to find __alloca_probe ***")
                                     else:
                                         printi("*** can't find previous instruction for call __alloca_probe ***")
-                                        setglobal('_instructions', slvars2.instructions.copy())
+                                        if debug: setglobal('_instructions', slvars2.instructions.copy())
                                         
                             elif not stk:
                                 printi("[warn] {:x} instruction should affect stack: {}".format(ea, diida(ea)))

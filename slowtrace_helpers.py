@@ -96,6 +96,8 @@ def A(o):
     # list(o) will break up strings
     return [o]
 
+def S(o):
+    return set(A(o))
 
 
 class TraceDepth(object):
@@ -2710,18 +2712,25 @@ def insn_match(ea=None, itype=None, op0=None, op1=None, comment=None, verbose=Fa
     if isinstance(ea, list):
         return [insn_match(x) for x in ea]
 
-    ea = eax(ea)
-    
-    if itype is re.Pattern:
-        raise ValueError("Unimplemented")
-    elif isinstance(itype, str):
-        raise ValueError("Unimplemented")
-    elif isinstance(itype, int):
-        itype = asTuple(itype)
+    if isinstance(ea, ida_ua.insn_t):
+        insn = ea
+        insnlen = insn.size
+    else:
+        insn = ida_ua.insn_t()
+        insnlen = ida_ua.decode_insn(insn, eax(ea))
+        ida_ua.decode_insn(insn, ea)
 
-    insn = ida_ua.insn_t()
-    insnlen = ida_ua.decode_insn(insn, eax(ea))
-    ida_ua.decode_insn(insn, ea)
+    if isinstance(itype, int):
+        itype = asTuple(itype)
+    #  elif itype is re.Pattern:
+        #  raise ValueError("Unimplemented")
+    #  elif isinstance(itype, str):
+        #  raise ValueError("Unimplemented")
+    elif isinstance(itype, (tuple, list, set)) or isIterable(itype):
+        pass
+    else:
+        raise TypeError("argument of type '{}' ({}) is not iterable".format(type(itype).__name, itype))
+
 
     if itype and insn.itype not in itype:
         if verbose: print("insn.itype {} failed to match {}".format(insn.itype, itype))
@@ -3400,7 +3409,22 @@ def CountConsecutiveMnem(ea, mnem, sameChunk=False):
 
 
 @static_vars(break_after={}, break_before={}, skip={}, no_count={})
-def AdvanceToMnem(ea, mnem=None, count=pow(8,8), include=False, addrs=None, visited=None, rules=None, ignoreInt=False, skipNops=False):
+def AdvanceToMnem(ea, mnem=None, count=pow(8,8), include=False, addrs=None, visited=None, rules=None, ignoreInt=False):
+    """
+    Advance instruction until mnemonic is found or incapable of following
+
+    :param ea: linear address
+    :param mnem: mnemonic(s) that will terminate advancement (or None)
+    :param count: maximum number of instructions to advance (optional)
+    :param include: include terminating mnemonic (default: False)
+    :param addrs: list of addresses visited (optional)
+    :param visited: set of addresses that will terminate advancement; also used
+                    internally to avoid recursive loops (optional)
+    :param rules: specific rules (see source, optional)
+    :param ignoreInt: ignore int1, int3 etc (False)
+
+    :return: (count, final_ea, name(final_ea))
+    """
     if addrs is None:
         addrs = []
     if visited is None:
@@ -3413,6 +3437,10 @@ def AdvanceToMnem(ea, mnem=None, count=pow(8,8), include=False, addrs=None, visi
     if mnem is not None:
         mnem = A(mnem)
     while insn_count < count:
+        # dprint("[debug] insn_count, ea")
+        if debug: print("[debug] insn_count:{}, ea:{}".format(ahex(insn_count), ahex(ea)))
+        
+        
         insn_mnem = IdaGetMnem(ea)
         if mnem and not include and IsCode_(ea) and insn_mnem in mnem:
             break
@@ -3425,7 +3453,6 @@ def AdvanceToMnem(ea, mnem=None, count=pow(8,8), include=False, addrs=None, visi
             if not IsCode_(ea):
                 print(TypeError("!IsCode({:#x}) starting from {:#x}".format(ea, ori_ea)))
                 break
-
 
         visited.add(ea)
         addrs.append(ea)
@@ -3465,7 +3492,7 @@ def AdvanceToMnem(ea, mnem=None, count=pow(8,8), include=False, addrs=None, visi
                 or insn_match(ea, idaapi.NN_jmpni, (idc.o_displ, None), comment='jmp qword [reg+0x28]')
                 or insn_match(ea, idaapi.NN_jmpni, (idc.o_mem, 5), comment='jmp qword [rel UnhandledExceptionFilter]')
                 or insn_match(ea, idaapi.NN_jmpni, (idc.o_phrase, None), comment='jmp qword [rax+r8*8]')
-                or insn_match(ea, idaapi.NN_jmpni, (idc.o_reg, 0), comment='jmp rax')
+                or insn_match(ea, idaapi.NN_jmpni, (idc.o_reg, None), comment='jmp rax')
                 or not ignoreInt and (
                     insn_match(ea, idaapi.NN_int3, comment='int 3') or 
                     insn_match(ea, idaapi.NN_ud2,  comment='ud2'))
@@ -3473,11 +3500,8 @@ def AdvanceToMnem(ea, mnem=None, count=pow(8,8), include=False, addrs=None, visi
             break
 
         if mnem and include and IsCode_(ea) and insn_mnem in mnem:
-            GetDisasm(idc.next_not_tail(ea))
             ea = idc.next_not_tail(ea)
             break
-
-
 
         if isUnconditionalJmp(ea):
             ea = GetTarget(ea)
@@ -3876,6 +3900,7 @@ def is_in_later2(ea, **kwargs):
     return ea in later2
 
 
+@perf_timed()
 def ida_retrace_patch(chunkStart, chunkEnd=None, addressHistory=None, patchedAddresses=None, **kwargs):
     count = 0
     if kwargs.get('noObfu', 0):
@@ -3916,6 +3941,7 @@ def ida_retrace_patch(chunkStart, chunkEnd=None, addressHistory=None, patchedAdd
 
     return count
 
+@perf_timed()
 def ida_retrace_advance(start, queue, queue2, call_queue, visited, **kwargs):
     new_addrs = []
     def queueAppendTarget(q, ea):
@@ -3944,6 +3970,126 @@ def ida_retrace_advance(start, queue, queue2, call_queue, visited, **kwargs):
         )
     return new_addrs, end[1]
 
+NN_jcc = list(range(ida_allins.NN_ja, ida_allins.NN_jz + 1))
+NN_cmov = list(range(ida_allins.NN_cmova, ida_allins.NN_cmovz + 1))
+
+@perf_timed()
+def ida_retrace_comb(start, jmps=None, jccs=None, calls=None, combed=None,
+        new_addrs=None, insns=None, old_insns=None, block_addrs=None,
+        blocks=None, rewind_points=None, visited=None, ignore=None, **kwargs):
+
+    
+    jmps          = A(jmps)
+    jccs          = A(jccs)
+    calls         = A(calls)
+    combed        = A(combed)
+    new_addrs     = A(new_addrs)
+    insns         = A(insns)
+    old_insns     = A(old_insns)
+    block_addrs   = A(block_addrs)
+    blocks        = A(blocks)
+    rewind_points = A(rewind_points)
+    visited       = S(visited)
+    ignore        = A(ignore)
+
+    start = _.first(start)
+    ignore_is_container_list = isIterable(ignore) and isIterable(_.first(ignore, None))
+            
+    def append_helper(q, v):
+        if hasattr(q, 'add'):
+            q.add(v)
+        elif hasattr(q, 'append'):
+            q.append(v)
+        else:
+            raise TypeError("Don't know how to add/append to type {}".format(type(v).__name__))
+
+    def queueAppend(q, ea, ease=False):
+        if not IsValidEA(ea):
+            return
+        if ignore_is_container_list:
+            for il in ignore:
+                if ea in il:
+                    return
+        elif ea in ignore:
+            return
+        if ea in q:
+            return
+
+        if ease:
+            append_helper(q, (ea, EaseCode(ea, forceStart=1, noExcept=1)))
+        else:
+            append_helper(q, ea)
+
+
+
+    delayed = []
+
+    def next_block(*insn):
+        block_addrs.append(insns)
+        blocks.append((insns[0].ea, insns[-1].ea + insns[-1].size))
+
+
+        old_insns.extend(insns)
+        # delayed, so that any future functions can read from current insns before cleared
+        delayed.append(lambda: insns.clear())
+
+    def no_rewind(insn):
+        delayed.append(lambda: rewind_points.append(insn.ea))
+
+    def call_insn(insn):
+        target = insn.ops[0].addr
+        if IsValidEA(target):
+            queueAppend(calls, target, ease=0)
+        delayed.append(lambda: rewind_points.append(insn.ea))
+
+
+    def flex(ea):
+        insn = ida_ua.insn_t()
+        insnlen = ida_ua.decode_insn(insn, ea)
+        meta = 0
+        if insnlen:
+            if delayed: 
+                [x() for x in delayed]
+                delayed.clear()
+                
+
+            insns.append(insn)
+
+            if insn_match(insn, idaapi.NN_jmp, (idc.o_near, 0), comment='jmp loc_143A8E11B'):
+                queueAppend(jmps, insn.ops[0].addr, ease=1)
+                next_block(insn)
+                meta = 4
+            elif insn_match(insn, NN_jcc, (idc.o_near, 0), comment='jl loc_143A8E11B'):
+                queueAppend(jccs, insn.ops[0].addr, ease=1)
+                no_rewind(insn)
+                meta = 5
+            elif insn_match(insn, idaapi.NN_xchg, (idc.o_reg, 0), (idc.o_reg, 0), comment='nop') or \
+                    insn_match(insn, idaapi.NN_nop):
+                meta = 8
+            elif insn_match(insn, idaapi.NN_call, (idc.o_near, 0), comment='call sub_140CA5095'):
+                call_insn(insn)
+                meta = 1
+            elif insn_match(insn, NN_cmov, (idc.o_reg, None), (idc.o_reg, None), comment='cmovz rcx, rdx'):
+                meta = 7
+
+            #  CALL,  # 1
+            #  RET,  # 2
+            #  SYS,  # 3
+            #  UNC_BRANCH,  # 4
+            #  CND_BRANCH,  # 5
+            #  INT,  # 6
+            #  CMOV,  # 7
+            #  NOP,  # 8
+            combed.append((insn.ea, 1 << meta))
+
+    count, end, *a = AdvanceToMnem(start, include=True, addrs=new_addrs, visited=visited, rules=[(flex, None)],
+            **(_.pick(kwargs, 'ignoreInt')))
+
+    next_block()
+
+    return count, end
+
+@perf_timed()
 def ida_retrace_extend(ea, addrs=None, visited=None, done=None, call_queue=None, block_count=None, **kwargs):
     addrs = A(addrs)
     call_queue = A(call_queue)
@@ -4061,9 +4207,120 @@ def ida_retrace_extend(ea, addrs=None, visited=None, done=None, call_queue=None,
     return patches
     
 
+@perf_timed()
+def ida_retrace_pre_extend_yield_rewinds(addrs, rewind_points):
+    # dprint("[debug] addrs, rewind_points")
+    #  print("[debug] addrs:{}, rewind_points:{}".format(ahex(addrs), ahex(rewind_points)))
+    
+    addressList = []
+    for addr in addrs:
+        if addr in rewind_points:
+            yield addressList
+            addressList.clear()
+        addressList.append(addr)
+    if addressList:
+        yield addressList
+
+@perf_timed()
+def ida_retrace_pre_extend(queue, visited, master_queue, **kwargs):
+    visited = S(visited)
+    master_queue = A(master_queue)
+    while queue:
+        ea = _.first(queue.pop(0))
+        #  if not IsValidEA(ea):
+            #  continue
+        if ea in done2:
+            print('ida_retrace_pre_extend done2 {:#x}'.format(ea))
+            continue
+        if ea in later:
+            later.remove(ea)
+        if ea in visited:
+            print('ida_retrace_pre_extend visited {:#x}'.format(ea))
+            continue
+        while ea in queue:
+            print('ida_retrace_pre_extend removing duplicate from queue')
+            queue.remove(ea)
+        while ea in master_queue:
+            # print('ida_retrace_pre_extend removing duplicate from master-queue')
+            master_queue.remove(ea)
+        #  if is_in_later2(ea, **kwargs):
+            #  if debug: print('ida_retrace {:#x} in later2'.format(ea))
+            # continue
+        if IsTail(ea):
+            print('ida_retrace_pre_extend {:#x} is tail'.format(ea))
+            continue
+
+        start         = ea
+
+        patched = 0
+        while True:
+            jmps          = []
+            jccs          = []
+            calls         = []
+            combed        = []
+            new_addrs     = []
+            insns         = []
+            old_insns     = None
+            block_addrs   = None
+            blocks        = []
+            rewind_points = []
+            _visited       = set()
+            _ignore        = None
+        
+            if patched:
+                print("ida_retrace_pre_extend rewound to {}".format(ahex(start)))
+            ida_retrace_comb(start, jmps=jmps, jccs=jccs, calls=calls,
+                    combed=combed, new_addrs=new_addrs, insns=insns,
+                    old_insns=old_insns, block_addrs=block_addrs, blocks=blocks,
+                    rewind_points=rewind_points, visited=_visited, ignore=_ignore, **kwargs)
+
+            for addr in _visited.intersection(master_queue):
+                # dprint("[removing from master_queue/queue] addr")
+                print("[removing from master_queue/queue] addr:{}".format(addr))
+                master_queue.remove(addr)
+
+            r = list(ida_retrace_pre_extend_yield_rewinds(new_addrs, rewind_points))
+            # pph(r)
+            try:
+                start = r[0][0]
+            except IndexError:
+                print("r..."); pph(r); print("[debug] new_addrs:{}, rewind_points:{}".format(ahex(new_addrs), ahex(rewind_points)))
+                
+                raise
+            patched = 0
+            for addrs in r:
+                for addr in addrs:
+                    if addr in done2:
+                        # dprint("[debug] addr")
+                        print("[done2] addr:{}".format(ahex(addr)))
+                    if addr in visited:
+                        # dprint("[debug] addr")
+                        print("[visited] addr:{}".format(ahex(addr)))
+                    if addr in master_queue:
+                        # dprint("[debug] addr")
+                        print("[master_queue] addr:{}".format(ahex(addr)))
+                        master_queue.remove(addr)
+                            
+                    while IsCode_(addr) and obfu.patch(addr):
+                        patched += 1
+            if patched:
+                continue
+
+            print("ida_retrace_pre_extend finished ({}): {}".format(len(queue), ahex(start)))
+            done2.add(start)
+            done2.update(new_addrs)
+            break
+
+        queue.extend(calls)
+
+
+
+
+
 
     
-@static_vars(last_ea = getglobal('_ida_retrace_last_ea', None, set=1))
+@static_vars(last_ea = getglobal('_ida_retrace_last_ea', None, _set=1))
+@perf_timed()
 def ida_retrace(funcea=None, extend=True, zero=True, calls=False, smart=True, plan=False, requeue=None, *args, **kwargs):
     """
     ida_retrace
@@ -4086,15 +4343,19 @@ def ida_retrace(funcea=None, extend=True, zero=True, calls=False, smart=True, pl
     if not queue:
         queue = [eax(None)]
     funcea = eax(_.first(_.first(queue)))
+
+    queue[:] = [_.first(x) for x in queue]
     # dprint("[ida_retrace] funcea, _.first(queue)")
     print("[ida_retrace] funcea:{}, _.first(queue):{}".format(ahex(funcea), ahex(_.first(queue))))
-    
-    func = ida_funcs.get_func(funcea)
 
-    if not func:
-        funcea = funcea
+    if kwargs.get('func', 0):
+        func = ida_funcs.get_func(funcea)
+        if not func:
+            funcea = funcea
+        else:
+            funcea = func.start_ea
     else:
-        funcea = func.start_ea
+        funcea = funcea
 
     ea = funcea
     count = 0
@@ -4111,104 +4372,12 @@ def ida_retrace(funcea=None, extend=True, zero=True, calls=False, smart=True, pl
             rv = ZeroFunction(ea, **(_.pick(kwargs, 'total')))
             if debug: print("[ZeroFunction] returned {}".format(str(rv)))
         if extend:
-            #  all_addrs = []
             while queue:
-                ea = queue.pop(0)
-                first_ea = _.first(ea)
-                if first_ea in done2:
-                    if debug: print('ida_retrace done2 {:#x}'.format(first_ea))
-                    continue
-
-                if first_ea in later:
-                    later.remove(first_ea)
-                if first_ea in visited:
-                    if debug: print('ida_retrace visited {:#x}'.format(first_ea))
-                    continue
-                if first_ea in queue:
-                    print('ida_retrace removing duplicate from queue')
-                    queue.remove(first_ea)
-                #  if is_in_later2(first_ea, **kwargs):
-                    #  if debug: print('ida_retrace {:#x} in later2'.format(first_ea))
-                    # continue
-                if IsTail(first_ea):
-                    print('ida_retrace {:#x} is tail'.format(first_ea))
-                    continue
-
-                print('ida_retrace ({}): {}'.format(len(queue), ean(first_ea)))
-
-                addrs = []
-                call_queue = []
-                try:
-                    new_visited = set()
-                    new_done = set()
-                    rv = ida_retrace_extend(ea=ea, addrs=addrs, call_queue=call_queue, visited=new_visited, **kwargs)
-                    if rv > 0:
-                        if first_ea not in requeue:
-                            requeue.append(first_ea)
-
-                        if ea not in queue:
-                        # change to append to get faster initial result (but incomplete functions)
-                            queue.append(ea)
-                            # queue.insert(0, ea)
-                        # continue
-                    else:
-                        visited.update(new_visited)
-                        _removed = 0
-                        for addr in visited.union(addrs).intersection(queue):
-                            _removed += 1
-                            queue.remove(addr)
-                        done2.add(first_ea)
-                        if _removed: print("removed {} items from queue".format(_removed))
-
-                    if debug: print('ida_retrace call_queue: {}'.format(hex(call_queue)))
-                except AdvanceFailure as e:
-                    print("{}: {}".format(e.__class__.__name__, str(e)))
-
-
-                #  all_addrs.extend(addrs)
-                if calls and call_queue:
-                    for r in call_queue:
-                        addr = _.first(r)
-                        if not is_in_later2(addr):
-                            later2.add(addr)
-                            later.add(addr)
-                        if addr not in queue:
-                            queue.insert(0, addr)
-                            # queue.append(r)
-                                
-
-                if addrs and kwargs.get('func', 0):
-                    # dprint("[ida_retrace] addrs")
-                    if debug: print("[ida_retrace] addrs:{}".format(hex(addrs)))
-                    
-                    _chunks = [x for x in idautils.Chunks(ea)]
-                    chunks = GenericRanger([GenericRange(x[0], trend=x[1])           for x in _chunks],            sort = 1)
-                    keep = GenericRanger([GenericRange(a, trend=a + IdaGetInsnLen(a)) for a in addrs], sort = 1)
-                    # remove = difference(chunks, keep)
-                    add = difference(keep, chunks)
-                    #  if keep or remove:
-                        #  modify_chunks(ea, chunks, keep, remove)
-
-                    setglobal('_keep', keep)
-                    setglobal('_chunks', chunks)
-                    setglobal('_remove', remove)
-                    setglobal('_add', add)
-                    if True:
-                        
-                        for cs, ce in [(x.start, x.trend) for x in add]:
-                            # printi('append_func_tail({:#x}, {:#x}, {:#x})...'.format(ea, cs, ce))
-                            if not idc.append_func_tail(ea, cs, ce):
-                                printi('append_func_tail({:#x}, {:#x}, {:#x}) failed'.format(ea, cs, ce))
-                            else: 
-                                #  gc.add((cs, ce))
-                                count += 1
-                else:
-                    pass
-                    # dprint("[ida_retrace] addrs")
-                    # print("[ida_retrace] addrs:{}".format(addrs))
-                
-                idc.msg("[{}]".format(count))
-                idc.auto_wait()
+                new_queue = [_.first(queue.pop(0))]
+                print("ida_retrace: ({}) {:#x}".format(len(queue), new_queue[0]))
+                EaseCode(new_queue[0], forceStart=1)
+                ida_retrace_pre_extend(new_queue, visited, master_queue=queue, **kwargs)
+                queue.extend([x for x in new_queue if x not in q])
         if plan:
             # for cs, ce in idautils.Chunks(ea): ida_auto.plan_and_wait(cs, ce)
             for cs, ce in idautils.Chunks(ea): 
@@ -10842,12 +11011,12 @@ def process_balance(ea=None, compact=False):
         ea = here()
     ea = eax(ea)
     _list = AdvanceToMnemEx(ea, inclusive=True)
-    setglobal('_list', _list)
+    if debug: setglobal('_list', _list)
     if not _list:
         raise ValueError("empty list at {:#x}".format(ea))
     sti = CircularList(_list)
         # in func_tails(ea=ea, quiet=1, returnOutput='buffer', returnFormat=lambda o: o) if not x.insn.startswith(('nop', 'jmp'))])
-    setglobal('sti', sti)
+    if debug: setglobal('sti', sti)
     # sti = func_tails(returnOutput='buffer')
     #  if False:
         #  m = sti.multimatch([
@@ -10899,8 +11068,8 @@ def process_balance(ea=None, compact=False):
 
     if m:
         if compact:
-            setglobal('_m', m)
-            setglobal('sti', sti)
+            if debug: setglobal('_m', m)
+            if debug: setglobal('sti', sti)
             #  if len(m.get('extra', [])) == 1 and m.get('extra')[0].insn.startswith('ret'): m['extra'] = []
             if 'extra' in m and 'push' in m:
                 #  len(m.extra) == 1 and m.extra[0].strip() == 'retn':
@@ -11922,10 +12091,10 @@ def nop_unused_chunks(addrs=None, dryRun=False, put=False, nonfuncs=None):
     print("difference")
     kill = difference(rse1, rse2)
 
-    setglobal('rse1', rse1)
-    setglobal('rse2', rse2)
-    setglobal('_remove', remove)
-    setglobal('_keep', keep)
+    if debug: setglobal('rse1', rse1)
+    if debug: setglobal('rse2', rse2)
+    if debug: setglobal('_remove', remove)
+    if debug: setglobal('_keep', keep)
     if not dryRun:
         for d0 in kill:
             PatchNops(d0.start, len(d0), put=put, nop=0x00, comment="unused: {}".format(funcName or ean(funcea)))
@@ -12161,7 +12330,7 @@ def top():
             num /= 1024.0
         return "%.1f %s%s" % (num, 'Yi', suffix)
 
-    for name, size in sorted(((name, sys.getsizeof(value)) for name, value in locals().items()),
+    for name, size in sorted(((name, sys.getsizeof(value)) for name, value in globals().items()),
                              key= lambda x: -x[1])[:10]:
         print("{:>30}: {:>8}".format(name, sizeof_fmt(size)))
 
@@ -12180,7 +12349,7 @@ def Plan(*args, name='unknown'):
     return ida_auto.plan_and_wait(*args)
 
 if hasglobal('PerfTimer'):
-    __slowtrace_helpers__ = [ida_retrace_patch, ida_retrace_extend, ida_retrace_advance, _fix_spd, Plan, RebuildFuncAndSubs, RecurseCalled, func_rename_vtable_xref, isListOf, RecurseCalledRange, CheckChunks, GetAllChunks, NotHeads, TrimChunks, RemoveAllChunksAndFunctions, check_append_func_tail, FindBadJumps, FindJmpChunks, SkipJmpChunks, FixAllChunks, FixChunks, FixChunk, FixAdjoiningChunks, ZeroFunction, Decompile, DecompileAllAfter, RemoveLocName, RemoveRelocFunction, RemoveLoneNullSubs, IsSameChunk, IsSameFunc, PerformInSegments, DecodePrevInsn, CreateInsns, FindRvaOffsetsTo, FindOffsetsTo, FastFindRefsTo, ForceFindRefsTo, GetTarget, GetTarget7, opTypeAsName, insnITypeAsName, PickChunkOwner, GetChunkOwner, GetChunkOwners, GetChunkReferers, RemoveOtherChunkOwners, idc_append_func_tail, SmartAddChunkImpl, GetChunkStart, GetChunkStarts, GetChunkCount, GetChunkEnd, GetChunkNumber, FuncContains, RemoveChunkOwner, SetChunkOwner, GetChunkReferer, GetNumChunks, IsChunkEnd, IsChunk, IdaGetInsnLen, InsnRange, InsnRangePlusOne, InsnRangeIgnoreFirst, InsnRangePlusOneIgnoreFirst, GetRbp, GetSpDiffEx, SetSpDiffEx, ZeroCode, IsOffset64, IsHeadChunk, IsChunked, SetChunkStart, AppendFunc, FuncFindRetrace, FuncFindNopChunks, FuncFindTrailingChunks, FuncFindBadJumps, FuncFindApplySkipJumps, FuncFindUnusedChunks, FuncTidyJumps, FuncObfuPatch, SetChunkEnd, SetFuncOrChunkEnd, thing, GetChunk, GetChunkPP, IsNiceFunc, insn_opercount, insn_preview, insn_mpreview, di_insn_preview, insn_match, insn_mmatch, GetFuncInfo, GetFuncChunked, GetFuncChunkCount, FuncRefsTo, GetFuncName, RenameFunctionsRe, GetFuncSize, GetUnchunkedFuncSize, GetJumpTarget, MakeSigned, GetRawJumpTarget, SkipJumps, FuncSkipJumps, CountConsecutiveMnem, AdvanceToMnem, OldAdvanceToMnemEx, RemoveNativeRegistration, MutatorCombinations, hexf16, h16list, find_element_in_list, fixCallAndJmpObfu, fixRdata, fixAllRdata, SetSpd, colorSubs, ida_retrace, FixThunks, FixJmpLocRet, RecurseCallers, RecurseCallersChart, FindDestructs, _isUnlikely_mnem, perform, preprocessIsX, _isJmp_mnem, _isAnyJmpOrCall, _isUnconditionalJmp_mnem, _isUnconditionalJmpOrCall_mnem, _isPushPop_mnem, _isNop_mnem, _isInterrupt_mnem, isUnlikely, isFlowEnd, isAnyJmp, isOffset, isRet, isAnyJmpOrCall, isCall, isConditionalJmp, isJmp, isPushPop, isPop, isUnconditionalJmp, isUnconditionalJmpOrCall, isInterrupt, isObfuJmp, isJmpOrObfuJmp, isCallOrObfuCall, isCallOrObfuCallPatch, isNop, isOpaqueJmp, isCodeish, IsFlowEx, jmpTarget, CountConsecutiveCalls, first_iterable, last_iterable, all_xrefs_, all_xrefs_from, all_xrefs_to, external_refs_to, call_refs_from, jmp_refs_from, external_refs_from, external_refs_from_unique, jmp_refs_from, call_refs_to, skip_jmp_refs_to, XrefTypeNames, SkipJumpsTo, label_import_thunks, func_refs_to, shared_xrefs_to, xrefs_to_ex, xrefs_to, seg_refs_to, SegmentRefsTo, isSegmentInXrefsTo, GetFuncHeadsIter, GetFuncHeads, CheckFuncSpDiffs, GetDisasmFuncHeads, GetMinSpd, bad_as_none, GetSpds, GetAllSpds, RemoveLameFuncs, GetSpdsMinMax, GetAllSpdsMinMax, IsFuncSpdBalanced, IsFuncSpdZero, camelCase_snake, PascalCase, camelCase, camel_case_to_snake_case, camelcase, MakeUniqueLabel, shortName, compact, extract, is_prime, is_possible_cygwin_symlink, read_possible_cygwin_symlink, process_cygwin_symlinks, process_path, clean_path, dot_draw, is_nothing_sub, handle_function, traceBackwards, UnpatchUntilChunk, UnloadFunction, remove_func_or_chunk, CheckThunk, ForceFunction, listOfBytesAsHex, hex_byte_as_pattern_int, hex_string_as_list, hex_pattern, make_pattern_from_hex_list, swap32, swap64, patternAsHex, compare, matcher, cleanLine, exportFlags, exportDataNames, ShowAppendFunc, force_chunk, adjust_tails, ShowAppendFchunk, ShowAppendFchunkReal, GetInsnLenths, GetInsnCount, GetInsnRange, EndOfContig, EndOfFlow, MakeCodeEx, remake_func, reanal_func, fix_non_func, SetFuncStart, SetFuncEnd, rangesAsChunks, modify_chunks, chunk_remove_range, reloc_name, readObjectFile, color_here, int_to_rgb, lighten, make_transpose_fn, transpose, gradient, hex_to_rgb, hex_to_rgb_dword, hex_to_colorsys_rgb, colorsys_rgb_to_dword, colorsys_rgb_to_rgb, rgb_to_hex, rgb_to_int, call_everything, clone_items, read_everything, UnChunk, GetAllNames, FindAll, RefsTo, AllRefsTo, AllRefsFrom, find_function_callees, CallRefsTo, JmpRefsTo, GetChunks, MicroChunks, split_chunks, split_chunks_compact, OurGetChunkStart, OurGetChunkEnd, GetChunkAddresses, GetChunkAddressesZeroOffset, CheckAllChunkForMultipleOwners, RemoveChunk, RemoveThisChunk, RemoveGrannyChunks, RemoveAllChunkOwners, RemoveAllChunks, GetFuncType, MyGetType, get_dtype, get_create_data_func, testchunks, AddRelocSegment, _fix_spd_auto, generate_disasm_line_unspaced, fix_split_refs, fix_split_refs_2245, colwrap, join2, fix_split_segment_jump, fix_location_plus_2, FunctionsPdata, remove_crappy_funcs, populate_functions_from_pdata, get_pdata_fnStart, isPdata, fix_dualowned_chunk, fix_dualowned_chunks, name_priority, get_best_parent, find_database_errors, ChunkHeads, print_ip, make_ip, find_ips, EaseCode, some_rubbish, GetCodeHash, GetFuncHash, FixAllFixups, FindObfu, GetFunc, GetFuncStart, GetFuncStartOrEa, GetFuncEnd, hex_byte_as_pattern_int, MakeCodeAndWait, partial, return_value, return_value_lambda, return_value_lambda_args, setTimeout, ReinforceFunc, forceAllAsCode, forceAsCode, MakeUniqueLabel, LabelAddressPlus, LabelAddress, get_name_by_any, make_rtti_json, Chunk, get_ea_by_any, eax, IsValidEA, ValidateEA, get_cfunc_by_any, get_func_by_any, jump, fix_links_to_reloc, GetDisasmForce, escape_c, GetDisasmColor, isgenerator, isflattenable, genAsList, glen, dict_append, rename_functions, bt_prevhead_until_noflow, bt_prevhead_until_xref, MyGetOperandValue, MyGetOperandDisplacement, MyMakeUnknown, MyMakeUnkn, example_fixup_visitor, visit_fixups, SetFuncFlags, MakeThunk, FixFarFunc, IsThunk, MyMakeFunction, EnsureFunction, Find, findAndTrace, GetCodeRefsFromFunc, analyze, analyzePlan, RecreateFunction, dinjasm, oget, dotted, deep_get, getmanyattr, isDictlike, isListlike, isSliceable, hascallable, array_count, isIterable, isIterator, isIterableNotIterator, isByteArray, isInt, isIntString, isString, isStringish, isBytes, isByteish, asByteArray, asBytes, asString, asBytesRaw, asStringRaw, asRaw, asDict, asTuple, intAsBytes, bytesAsInt, MakeUniqueLabel, get_start, get_last, intersect, intersect_gap, overlaps, issubset, issuperset, issettest, adjoins, union, overlap2a, difference, overlap2, overlap3, iter_overlap_test, not_overlap3, format_chunk_range, describe_chunk, describe_target, auto_name_common_functions, bestOf3Names, name_common_function, diStripNatives, fix_func_tails, funcname, my_append_func_tail, xxd, GetBase64String, stacktrace, st1, st2, clear, get_nbits, read_all_emu, SuperJump, join_helper_functions, process_balance, call_if_callable, fix_sub_args, fix_sub_args_unknown, namesource, bin32, polymul, prngSeedNext, prngSeedPrev, prngSeedPrevCalc, prngNextCalc, rng_init, HIWORD, rng_twirl, rngtest, rng_test, codeguard, isgenerator, isflattenable, recursive_map, hexmap, hex_callback, ahex, listComp, asList, asHexList, addrAsVtable, rename_nullsub_offsets, label_time_vars, label_sign_extend_helpers, label_CreateThread_callers, fix_fat_jumps, big_chunks, fig, name_vtable_refs, make_patch, compact_spdlist, expand_spdlist, expand_chunklist, compact_chunklist, expand_chunklist, NotTails, add_xrefs, apply_xrefs, fuckoff_concurrency, nop_unused_chunks, test12, test13, chunkdenser, global_chunkdenser, re_match_array, truncate_arxan_leaders, find_call_nop_jumps, rename_native_helpers]
+    __slowtrace_helpers__ = [setglobal, getglobal, hasglobal, _fix_spd, Plan, RebuildFuncAndSubs, RecurseCalled, func_rename_vtable_xref, isListOf, RecurseCalledRange, CheckChunks, GetAllChunks, NotHeads, TrimChunks, RemoveAllChunksAndFunctions, check_append_func_tail, FindBadJumps, FindJmpChunks, SkipJmpChunks, FixAllChunks, FixChunks, FixChunk, FixAdjoiningChunks, ZeroFunction, Decompile, DecompileAllAfter, RemoveLocName, RemoveRelocFunction, RemoveLoneNullSubs, IsSameChunk, IsSameFunc, PerformInSegments, DecodePrevInsn, CreateInsns, FindRvaOffsetsTo, FindOffsetsTo, FastFindRefsTo, ForceFindRefsTo, GetTarget, GetTarget7, opTypeAsName, insnITypeAsName, PickChunkOwner, GetChunkOwner, GetChunkOwners, GetChunkReferers, RemoveOtherChunkOwners, idc_append_func_tail, SmartAddChunkImpl, GetChunkStart, GetChunkStarts, GetChunkCount, GetChunkEnd, GetChunkNumber, FuncContains, RemoveChunkOwner, SetChunkOwner, GetChunkReferer, GetNumChunks, IsChunkEnd, IsChunk, IdaGetInsnLen, InsnRange, InsnRangePlusOne, InsnRangeIgnoreFirst, InsnRangePlusOneIgnoreFirst, GetRbp, GetSpDiffEx, SetSpDiffEx, ZeroCode, IsOffset64, IsHeadChunk, IsChunked, SetChunkStart, AppendFunc, FuncFindRetrace, FuncFindNopChunks, FuncFindTrailingChunks, FuncFindBadJumps, FuncFindApplySkipJumps, FuncFindUnusedChunks, FuncTidyJumps, FuncObfuPatch, SetChunkEnd, SetFuncOrChunkEnd, thing, GetChunk, GetChunkPP, IsNiceFunc, insn_opercount, insn_preview, insn_mpreview, di_insn_preview, insn_match, insn_mmatch, GetFuncInfo, GetFuncChunked, GetFuncChunkCount, FuncRefsTo, GetFuncName, RenameFunctionsRe, GetFuncSize, GetUnchunkedFuncSize, GetJumpTarget, MakeSigned, GetRawJumpTarget, SkipJumps, FuncSkipJumps, CountConsecutiveMnem, AdvanceToMnem, OldAdvanceToMnemEx, RemoveNativeRegistration, MutatorCombinations, hexf16, h16list, find_element_in_list, fixCallAndJmpObfu, fixRdata, fixAllRdata, SetSpd, colorSubs, FixThunks, FixJmpLocRet, RecurseCallers, RecurseCallersChart, FindDestructs, _isUnlikely_mnem, perform, preprocessIsX, _isJmp_mnem, _isAnyJmpOrCall, _isUnconditionalJmp_mnem, _isUnconditionalJmpOrCall_mnem, _isPushPop_mnem, _isNop_mnem, _isInterrupt_mnem, isUnlikely, isFlowEnd, isAnyJmp, isOffset, isRet, isAnyJmpOrCall, isCall, isConditionalJmp, isJmp, isPushPop, isPop, isUnconditionalJmp, isUnconditionalJmpOrCall, isInterrupt, isObfuJmp, isJmpOrObfuJmp, isCallOrObfuCall, isCallOrObfuCallPatch, isNop, isOpaqueJmp, isCodeish, IsFlowEx, jmpTarget, CountConsecutiveCalls, first_iterable, last_iterable, all_xrefs_, all_xrefs_from, all_xrefs_to, external_refs_to, call_refs_from, jmp_refs_from, external_refs_from, external_refs_from_unique, jmp_refs_from, call_refs_to, skip_jmp_refs_to, XrefTypeNames, SkipJumpsTo, label_import_thunks, func_refs_to, shared_xrefs_to, xrefs_to_ex, xrefs_to, seg_refs_to, SegmentRefsTo, isSegmentInXrefsTo, GetFuncHeadsIter, GetFuncHeads, CheckFuncSpDiffs, GetDisasmFuncHeads, GetMinSpd, bad_as_none, GetSpds, GetAllSpds, RemoveLameFuncs, GetSpdsMinMax, GetAllSpdsMinMax, IsFuncSpdBalanced, IsFuncSpdZero, camelCase_snake, PascalCase, camelCase, camel_case_to_snake_case, camelcase, MakeUniqueLabel, shortName, compact, extract, is_prime, is_possible_cygwin_symlink, read_possible_cygwin_symlink, process_cygwin_symlinks, process_path, clean_path, dot_draw, is_nothing_sub, handle_function, traceBackwards, UnpatchUntilChunk, UnloadFunction, remove_func_or_chunk, CheckThunk, ForceFunction, listOfBytesAsHex, hex_byte_as_pattern_int, hex_string_as_list, hex_pattern, make_pattern_from_hex_list, swap32, swap64, patternAsHex, compare, matcher, cleanLine, exportFlags, exportDataNames, ShowAppendFunc, force_chunk, adjust_tails, ShowAppendFchunk, ShowAppendFchunkReal, GetInsnLenths, GetInsnCount, GetInsnRange, EndOfContig, EndOfFlow, MakeCodeEx, remake_func, reanal_func, fix_non_func, SetFuncStart, SetFuncEnd, rangesAsChunks, modify_chunks, chunk_remove_range, reloc_name, readObjectFile, color_here, int_to_rgb, lighten, make_transpose_fn, transpose, gradient, hex_to_rgb, hex_to_rgb_dword, hex_to_colorsys_rgb, colorsys_rgb_to_dword, colorsys_rgb_to_rgb, rgb_to_hex, rgb_to_int, call_everything, clone_items, read_everything, UnChunk, GetAllNames, FindAll, RefsTo, AllRefsTo, AllRefsFrom, find_function_callees, CallRefsTo, JmpRefsTo, GetChunks, MicroChunks, split_chunks, split_chunks_compact, OurGetChunkStart, OurGetChunkEnd, GetChunkAddresses, GetChunkAddressesZeroOffset, CheckAllChunkForMultipleOwners, RemoveChunk, RemoveThisChunk, RemoveGrannyChunks, RemoveAllChunkOwners, RemoveAllChunks, GetFuncType, MyGetType, get_dtype, get_create_data_func, testchunks, AddRelocSegment, _fix_spd_auto, generate_disasm_line_unspaced, fix_split_refs, fix_split_refs_2245, colwrap, join2, fix_split_segment_jump, fix_location_plus_2, FunctionsPdata, remove_crappy_funcs, populate_functions_from_pdata, get_pdata_fnStart, isPdata, fix_dualowned_chunk, fix_dualowned_chunks, name_priority, get_best_parent, find_database_errors, ChunkHeads, print_ip, make_ip, find_ips, EaseCode, some_rubbish, GetCodeHash, GetFuncHash, FixAllFixups, FindObfu, GetFunc, GetFuncStart, GetFuncStartOrEa, GetFuncEnd, hex_byte_as_pattern_int, MakeCodeAndWait, partial, return_value, return_value_lambda, return_value_lambda_args, setTimeout, ReinforceFunc, forceAllAsCode, forceAsCode, MakeUniqueLabel, LabelAddressPlus, LabelAddress, get_name_by_any, make_rtti_json, Chunk, get_ea_by_any, eax, IsValidEA, ValidateEA, get_cfunc_by_any, get_func_by_any, jump, fix_links_to_reloc, GetDisasmForce, escape_c, GetDisasmColor, isgenerator, isflattenable, genAsList, glen, dict_append, rename_functions, bt_prevhead_until_noflow, bt_prevhead_until_xref, MyGetOperandValue, MyGetOperandDisplacement, MyMakeUnknown, MyMakeUnkn, example_fixup_visitor, visit_fixups, SetFuncFlags, MakeThunk, FixFarFunc, IsThunk, MyMakeFunction, EnsureFunction, Find, findAndTrace, GetCodeRefsFromFunc, analyze, analyzePlan, RecreateFunction, dinjasm, oget, dotted, deep_get, getmanyattr, isDictlike, isListlike, isSliceable, hascallable, array_count, isIterable, isIterator, isIterableNotIterator, isByteArray, isInt, isIntString, isString, isStringish, isBytes, isByteish, asByteArray, asBytes, asString, asBytesRaw, asStringRaw, asRaw, asDict, asTuple, intAsBytes, bytesAsInt, MakeUniqueLabel, get_start, get_last, intersect, intersect_gap, overlaps, issubset, issuperset, issettest, adjoins, union, overlap2a, difference, overlap2, overlap3, iter_overlap_test, not_overlap3, format_chunk_range, describe_chunk, describe_target, auto_name_common_functions, bestOf3Names, name_common_function, diStripNatives, fix_func_tails, funcname, my_append_func_tail, xxd, GetBase64String, stacktrace, st1, st2, clear, get_nbits, read_all_emu, SuperJump, join_helper_functions, process_balance, call_if_callable, fix_sub_args, fix_sub_args_unknown, namesource, bin32, polymul, prngSeedNext, prngSeedPrev, prngSeedPrevCalc, prngNextCalc, rng_init, HIWORD, rng_twirl, rngtest, rng_test, codeguard, isgenerator, isflattenable, recursive_map, hexmap, hex_callback, ahex, listComp, asList, asHexList, addrAsVtable, rename_nullsub_offsets, label_time_vars, label_sign_extend_helpers, label_CreateThread_callers, fix_fat_jumps, big_chunks, fig, name_vtable_refs, make_patch, compact_spdlist, expand_spdlist, expand_chunklist, compact_chunklist, expand_chunklist, NotTails, add_xrefs, apply_xrefs, fuckoff_concurrency, nop_unused_chunks, test12, test13, chunkdenser, global_chunkdenser, re_match_array, truncate_arxan_leaders, find_call_nop_jumps, rename_native_helpers]
     PerfTimer.binditems(locals(), funcs=__slowtrace_helpers__, name='slowtrace_helpers')
 # b0
 # r = read_emu_glob(['lobby_idaho_alert', 'total_bleed_alan', 'scent_seek_alive', 'drain_novel_alert', 'gun_fear_alert'])
