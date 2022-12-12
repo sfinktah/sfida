@@ -294,6 +294,8 @@ class BitwiseMask(object):
         #  print("[add_list] pat: {}".format(pat))
         if isinstance(pat, str):
             return self.add_string(pat)
+        if isinstance(pat, int):
+            raise TypeError("bad arg {} ({})".format(pat, type(pat).__name__))
         if self._options.get('store', None):
             self._store.append(BitwiseMask(pat))
         if len(pat) > self._reserved:
@@ -361,7 +363,8 @@ class BitwiseMask(object):
 
 
     # helpers
-    def _hex_pattern(self, hex_list):
+    @staticmethod
+    def _hex_pattern(hex_list):
         def _hex_byte(string):
             m = re.match(r'(?:0b)?([01._?-]{8})$', string)
             if m: # 0b0011....
@@ -612,17 +615,17 @@ if False and __name__ == "__main__":
 
                 
     if 0:
-        #  with BitwiseMask() as bm:
-            #  for r in r64: 
-                #  if r == 'rsp':
-                    #  continue
-    #  
-                #  # search      = hex_pattern([re.sub(r' de ad ff 08', ' f8 ff ff ff', listAsHex(kassemble(search_asm)))])
-                #  search_asm  = "lea rsp, [rsp-8]; mov [rsp], {0}".format(r)
-                #  search      = nassemble(search_asm)
-                #  bm.add_list(search)
-    #  
-            #  print(bm.pattern)
+        with BitwiseMask() as bm:
+            for r in r64: 
+                if r == 'rsp':
+                    continue
+    
+                # search      = hex_pattern([re.sub(r' de ad ff 08', ' f8 ff ff ff', listAsHex(kassemble(search_asm)))])
+                search_asm  = "lea rsp, [rsp-8]; mov [rsp], {0}".format(r)
+                search      = nassemble(search_asm)
+                bm.add_list(search)
+    
+            print(bm.pattern)
 
         movlealistpush = [
                 # MOV [RSP-0x8], RAX; LEA RSP, [RSP-0x8]
@@ -643,30 +646,29 @@ if False and __name__ == "__main__":
                 [["4c 89 74 24 f8", "48 8d 64 24 f8"], ["48 8d 64 24 f8", "4c 89 34 24 90"], "r14"],
                 [["4c 89 7c 24 f8", "48 8d 64 24 f8"], ["48 8d 64 24 f8", "4c 89 3c 24 90"], "r15"]
         ]
+    def hex_byte_as_pattern_int(string):
+        return -1 if '?' in string else int(string, 16)
 
-        def hex_byte_as_pattern_int(string):
-            return -1 if '?' in string else int(string, 16)
+    def hex_pattern(hexLists):
+        result = [ ]
+        # Convert a string into a list, just so we can process it
+        if not isinstance(hexLists, list):
+            hexLists = [hexLists]
+        for l in hexLists:
+            result.extend([hex_byte_as_pattern_int(item) for item in l.split(" ")])
+        return result
 
-        def hex_pattern(hexLists):
-            result = [ ]
-            # Convert a string into a list, just so we can process it
-            if not isinstance(hexLists, list):
-                hexLists = [hexLists]
-            for l in hexLists:
-                result.extend([hex_byte_as_pattern_int(item) for item in l.split(" ")])
-            return result
+    from underscoretest import _
+    with BitwiseMask(store=1) as bm1:
+        with BitwiseMask(store=1) as bm2:
+            for x, y, z in movlealistpush:
+                bm1.add_list(hex_pattern(x))
+                bm2.add_list(hex_pattern(y))
 
-        from underscoretest import _
-        with BitwiseMask(store=1) as bm1:
-            with BitwiseMask(store=1) as bm2:
-                for x, y, z in movlealistpush:
-                    bm1.add_list(hex_pattern(x))
-                    bm2.add_list(hex_pattern(y))
+            bm3 = bm1.diff(bm2)
 
-                bm3 = bm1.diff(bm2)
-
-                # dprint("[debug] bm1, bm2, bm3")
-                print("[debug] \nbm1:{}, \nbm2:{}, \nbm3:{}".format(bm1.pattern, bm2.pattern, bm3.pattern))
+            # dprint("[debug] bm1, bm2, bm3")
+            print("[debug] \nbm1:{}, \nbm2:{}, \nbm3:{}".format(bm1.pattern, bm2.pattern, bm3.pattern))
                 
     #  48~4c 89    44~7c 24    f8    48    8d    64    24    f8,
     #  48    8d    64    24    f8    48~4c 89    04~3c 24    90,
@@ -694,40 +696,43 @@ if False and __name__ == "__main__":
     #  4c 89 74 24 f8 48 8d 64 24 f8        48 8d 64 24 f8 4c 89 34 24 90
     #  4c 89 7c 24 f8 48 8d 64 24 f8        48 8d 64 24 f8 4c 89 3c 24 90
     #  
-"""
-Search:  mov {}, [rsp]; lea rsp, [rsp+8]
-         48 8b 04&c7 24 48 8d 64 24 08
-         01001000 10001011 00...100 00100100 01001000 10001101 01100100 00100100 00001000
-         ........ ........ ..abc... ........ ........ ........ ........ ........ ........
-         &00      &00      &38      &00      &00      &00      &00      &00      &00
- 
-Replace: push {}
-         01011... | abc
-         01011abc
 
-[0x58 | (c[2] & 0x38) >> 3]
+if False and __name__ == "__main__":
+    movlealistpop2  = [
+        [["48 8d 64 24 08", "48 8b 44 24 f8"], ["48 8b 04 24", "48 8d 64 24 08"], "rax"],
+        [["48 8d 64 24 08", "48 8b 4c 24 f8"], ["48 8b 0c 24", "48 8d 64 24 08"], "rcx"],
+        [["48 8d 64 24 08", "48 8b 54 24 f8"], ["48 8b 14 24", "48 8d 64 24 08"], "rdx"],
+        [["48 8d 64 24 08", "48 8b 5c 24 f8"], ["48 8b 1c 24", "48 8d 64 24 08"], "rbx"],
+        [["48 8d 64 24 08", "48 8b 64 24 f8"], ["48 8b 24 24", "48 8d 64 24 08"], "rsp"],
+        [["48 8d 64 24 08", "48 8b 6c 24 f8"], ["48 8b 2c 24", "48 8d 64 24 08"], "rbp"],
+        [["48 8d 64 24 08", "48 8b 74 24 f8"], ["48 8b 34 24", "48 8d 64 24 08"], "rsi"],
+        [["48 8d 64 24 08", "48 8b 7c 24 f8"], ["48 8b 3c 24", "48 8d 64 24 08"], "rdi"],
+        [["48 8d 64 24 08", "4c 8b 44 24 f8"], ["4c 8b 04 24", "48 8d 64 24 08"], "r8"],
+        [["48 8d 64 24 08", "4c 8b 4c 24 f8"], ["4c 8b 0c 24", "48 8d 64 24 08"], "r9"],
+        [["48 8d 64 24 08", "4c 8b 54 24 f8"], ["4c 8b 14 24", "48 8d 64 24 08"], "r10"],
+        [["48 8d 64 24 08", "4c 8b 5c 24 f8"], ["4c 8b 1c 24", "48 8d 64 24 08"], "r11"],
+        [["48 8d 64 24 08", "4c 8b 64 24 f8"], ["4c 8b 24 24", "48 8d 64 24 08"], "r12"],
+        [["48 8d 64 24 08", "4c 8b 6c 24 f8"], ["4c 8b 2c 24", "48 8d 64 24 08"], "r13"],
+        [["48 8d 64 24 08", "4c 8b 74 24 f8"], ["4c 8b 34 24", "48 8d 64 24 08"], "r14"],
+        [["48 8d 64 24 08", "4c 8b 7c 24 f8"], ["4c 8b 3c 24", "48 8d 64 24 08"], "r15"]
+    ]
 
-[xxxx] 01001.001000101100...100001001000100100010001101011001000010010000001000  unk1: [5, 18, 19, 20]
-[yyyy] 0100000.01011...                                                          unk2: [7, 13, 14, 15]
 
-solution: [7, 13, 14, 15] = (5, 18, 19, 20)
-    mov rax, [rsp] == pop rax   48 8b 04 24 48 8d 64 24 08 == 40 58
-    mov rcx, [rsp] == pop rcx   48 8b 0c 24 48 8d 64 24 08 == 40 59
-    mov rdx, [rsp] == pop rdx   48 8b 14 24 48 8d 64 24 08 == 40 5a
-    mov rbx, [rsp] == pop rbx   48 8b 1c 24 48 8d 64 24 08 == 40 5b
-    mov rsp, [rsp] == pop rsp   48 8b 24 24 48 8d 64 24 08 == 40 5c
-    mov rbp, [rsp] == pop rbp   48 8b 2c 24 48 8d 64 24 08 == 40 5d
-    mov rsi, [rsp] == pop rsi   48 8b 34 24 48 8d 64 24 08 == 40 5e
-    mov rdi, [rsp] == pop rdi   48 8b 3c 24 48 8d 64 24 08 == 40 5f
-    mov r8,  [rsp] == pop r8    4c 8b 04 24 48 8d 64 24 08 == 41 58
-    mov r9,  [rsp] == pop r9    4c 8b 0c 24 48 8d 64 24 08 == 41 59
-    mov r10, [rsp] == pop r10   4c 8b 14 24 48 8d 64 24 08 == 41 5a
-    mov r11, [rsp] == pop r11   4c 8b 1c 24 48 8d 64 24 08 == 41 5b
-    mov r12, [rsp] == pop r12   4c 8b 24 24 48 8d 64 24 08 == 41 5c
-    mov r13, [rsp] == pop r13   4c 8b 2c 24 48 8d 64 24 08 == 41 5d
-    mov r14, [rsp] == pop r14   4c 8b 34 24 48 8d 64 24 08 == 41 5e
-    mov r15, [rsp] == pop r15   4c 8b 3c 24 48 8d 64 24 08 == 41 5f
-"""
+    from underscoretest import _
+    with BitwiseMask(store=1) as bm1:
+        with BitwiseMask(store=1) as bm2:
+            for x, y, z in movlealistpop2:
+                # dprint("[] x, y, z")
+                print("x:{}, y:{}, z:{}".format(x, y, z))
+                
+                bm1.add_string(x)
+                bm2.add_string(y)
+
+            bm3 = bm1.diff(bm2)
+
+            # dprint("[debug] bm1, bm2, bm3")
+            print("[debug] \nbm1:{}, \nbm2:{}, \nbm3:{}".format(bm1.pattern, bm2.pattern, bm3.pattern))
+                
 
 if False and __name__ == "__main__":
     # xmms = braceexpand('xmm{0..15}')

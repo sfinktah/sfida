@@ -129,7 +129,7 @@ class PerfTimer(object):
                 if length:
                     total = sum(counts) / (10 ** 6)
                     avg = total / length
-                    results.append((avg, total, length, "{:60}  {:10,.2f}  {:10,.3f}  {:8}".format(name, total, avg, length)))
+                    results.append((avg, total, length, "{:60}  {:14,.2f}  {:14,.3f}  {:11}".format(name, total, avg, length)))
 
         group_results = []
 

@@ -462,11 +462,11 @@ def CheckChunks(funcea=None):
     else:
         funcea = func.start_ea
 
-    chunk_starts = set([])
+    _chunk_starts = set([])
     chunk_ends = set([])
     _chunks = idautils.Chunks(funcea)
     for (start_ea, end_ea) in _chunks:
-        chunk_starts.add(start_ea)
+        _chunk_starts.add(start_ea)
         chunk_ends.add(end_ea)
         for _head in idautils.Heads(start_ea, end_ea):
             _owners = GetChunkOwners(_head)
@@ -474,8 +474,8 @@ def CheckChunks(funcea=None):
                 printi("[warn] function {:x}, chunk {:x}, owned by: {}".format(funcea, hex(_owners_)))
                 return False
 
-    if not chunk_starts.isdisjoint(chunk_ends):
-        printi("[warn] function {:x} has adjoining chunks at {}".format(funcea, hex(list(chunk_starts.intersection(chunk_ends)))))
+    if not _chunk_starts.isdisjoint(chunk_ends):
+        printi("[warn] function {:x} has adjoining chunks at {}".format(funcea, hex(list(_chunk_starts.intersection(chunk_ends)))))
 
 
     return True
@@ -3887,39 +3887,31 @@ def ida_retrace_patch(chunkStart, chunkEnd=None, addressHistory=None, patchedAdd
     addressHistory = A(addressHistory)
     lastAddress = False
     if chunkEnd > chunkStart and IsValidEA((chunkStart, chunkEnd)) and chunkEnd - chunkStart < 8192:
-        reflow = True
-        while reflow:
-            reflow = False
-            addrs = list(idautils.Heads(chunkStart, chunkEnd))
-            if lastAddress == False:
-                lastAddress = _.last(addrs)
-            for ea in addrs:
-                if isJmp(ea) or isCall(ea) or isNop(ea):
-                    continue
-                try:
-                    # TODO: have patch alter our queue/visited addresses 
-                    patches = []
+        addrs = list(idautils.Heads(chunkStart, chunkEnd))
+        if lastAddress == False:
+            lastAddress = _.last(addrs)
+        for ea in addrs:
+            if isJmp(ea) or isCall(ea) or isNop(ea):
+                continue
+            try:
+                # TODO: have patch alter our queue/visited addresses 
+                patches = []
+                tmp = obfu.patch(ea)
+                while tmp:
+                    patches.extend(A(tmp))
+                    # obfu.combed.clear()
                     tmp = obfu.patch(ea)
-                    while tmp:
-                        patches.extend(A(tmp))
-                        obfu.combed.clear()
-                        tmp = obfu.patch(ea)
-                    
-                    for p in patches:
-                        count += 1
-                        patchedAddresses.update(deep_get(p, 'result.result.patchedAddresses', set()))
-                        #  for addr in deep_get(p, 'result.result.patchedAddresses', set()):
-                            #  addressHistory.remove(addr)
+                
+                for p in patches:
+                    count += 1
+                    patchedAddresses.update(deep_get(p, 'result.result.patchedAddresses', set()))
+            except TypeError as e:
+                print('[Exception] {}: {}'.format(e.__class__.__name__, str(e)))
 
-                        #  if deep_get(p, 'pat.options.reflow', '') == 'reflow':
-                            #  reflow = True
-                except TypeError as e:
-                    print('[Exception] {}: {}'.format(e.__class__.__name__, str(e)))
-
-                #  if ea == lastAddress and count:
-                    #  lastAddress = True
-                    #  reflow = True
-                    #  idc.auto_wait()
+            #  if ea == lastAddress and count:
+                #  lastAddress = True
+                #  reflow = True
+                #  idc.auto_wait()
 
 
     return count
@@ -3933,7 +3925,7 @@ def ida_retrace_advance(start, queue, queue2, call_queue, visited, **kwargs):
         else:
             q.append((target, EaseCode(target, forceStart=1, noExcept=1)))
 
-    end = AdvanceToMnem(start, mnem='jmp', include=True, addrs=new_addrs, visited=visited, rules=[
+    end = AdvanceToMnem(start, include=True, addrs=new_addrs, visited=visited, rules=[
         (
             lambda ea: insn_match(ea, idaapi.NN_jmp, (idc.o_near, 0), comment='jmp loc_143A8E11B'),
             lambda ea: queueAppendTarget(queue, ea)
@@ -3952,27 +3944,33 @@ def ida_retrace_advance(start, queue, queue2, call_queue, visited, **kwargs):
         )
     return new_addrs, end[1]
 
-def ida_retrace_extend(ea, addrs=None, visited=None, call_queue=None, block_count=None, **kwargs):
+def ida_retrace_extend(ea, addrs=None, visited=None, done=None, call_queue=None, block_count=None, **kwargs):
     addrs = A(addrs)
     call_queue = A(call_queue)
     if visited is None:
         visited = set()
+    if done is None:
+        done = set()
     patch_queue = []
     ignoreInt = ignoreInt=kwargs.get('ignoreInt', 0)
     noLater = kwargs.get('noLater', 0)
-    chunk_starts = [ea]
+    ignoreChunks = kwargs.get('ignoreChunks', 0)
     #  r = func_tails(ea, quiet=1, returnErrorObjects=1, ignoreInt=ignoreInt)
     #  if debug: print("{} issues...".format(len(r)))
     #  if not r:
         #  if debug: print("{} issues... returning".format(len(r)))
         #  return
-    revisit = set()
     if isInt(ea):
-        queue = [(ea, EaseCode(ea, forceStart=1))]
-    elif _.isTuple(ea):
-        queue = [ea]
-        ea = ea[0]
+        initial_start, initial_end =  ea, EaseCode(ea, forceStart=1)
+    elif len(ea) == 2:
+        initial_start, initial_end = ea[0], ea[1]
+    if ea is None:
+        raise TypeError("Unhandled type: {} ({})".format(type(ea).__name__, ea))
+
+    ea = initial_start
     
+    queue = [(initial_start, initial_end)]
+    chunks = [(initial_start, initial_end)]
     queue2 = []
     addressHistory = CircularList(40)
 
@@ -3984,58 +3982,32 @@ def ida_retrace_extend(ea, addrs=None, visited=None, call_queue=None, block_coun
             #  if debug: print("[ida_retrace] x.to.ea:{:#x}".format(x.to.ea))
             #  queue.append(x.to.ea)
     count = 0
-    did_chunk_starts = False
-    while queue or queue2 or chunk_starts and not did_chunk_starts and not kwargs.get('noObfu', 0):
+    patches = 0
+    while queue or queue2:
         if block_count is not None:
             block_count += 1
-        if not queue:
-            if queue2:
-                # printi("swapping queue and queue2")
-                # queue, queue2 = queue2, queue
-                queue.append(queue2.pop(0))
-            elif chunk_starts and not did_chunk_starts and kwargs.get('noObfu', 0):
-                for first in _.reverse(chunk_starts):
-                    end = EaseCode(first)
-                    queue.append((first, end))
-                    revisit.add(first)
-                #  print('queue empty')
-                #  for first, end in _.reverse(patch_queue):
-                    #  patches = ida_retrace_patch(first, end, **kwargs)
-                    #  if patches:
-                        #  # dprint("[ida_retrace_extend] patches")
-                        #  print("[ida_retrace_extend] queue_patches:{}".format(patches))
-                        #  end = EaseCode(first)
-                        #  queue.append((first, end))
-                        #  revisit.add(first)
-                #  patch_queue.clear()
-            if not queue:
-                break
+        if not queue: queue.append(queue2.pop(0))
 
         # print("{}, {}, {}, {:#x}".format(len(queue), len(queue2), len(patch_queue))
         count += 1
-        start, *a = queue.pop(0)
-        if not IsValidEA(start):
+        start, end = queue.pop(0)
+        if not IsValidEA((start, end)):
+            print("[ida_retrace] invalidea ({}, {})".format(ahex(start), ahex(end)))
             continue
         if start in visited:
-            if start in revisit:
-                revisit.remove(start)
-            else:
-                print("[ida_retrace] already visited: hex(start):{}".format(hex(start)))
-                continue
-        if count > 1 and not kwargs.get('ignoreChunks', 0) and IsFunc_(start): #  and not ida_funcs.is_same_func(start, funcea):
+            if debug: print("[ida_retrace] already visited: hex(start):{}".format(hex(start)))
+            continue
+        if count > 1 and not ignoreChunks and IsFunc_(start): #  and not ida_funcs.is_same_func(start, funcea):
             if not ida_funcs.is_same_func(ea, start) and kwargs.get('forceRemoveFuncs', 0):
                 RemoveChunk(start)
             else:
                 print("[ida_retrace] {:#x} chunk-start owned by us/other func; us? {}".format(start, ida_funcs.is_same_func(ea, start)))
                 continue
-        if a:
-            end = a[0]
-        else:
-            end = EaseCode(start, forceStart=True, ignoreInt=ignoreInt)
+
         if debug: print("[ida_retrace] from queue: {} - {}".format(ahex(start), ahex(end)))
         # if _.any(NotTails(start, end), lambda ea, *a: IsFunc_(ea) and not ida_funcs.is_same_func(ea, funcea)):
         try:
-            if not kwargs.get('ignoreChunks', 0) and \
+            if not ignoreChunks and \
                     _.any(list(NotTails(start, end)), lambda addr, *a: IsFunc_(addr) and not ida_funcs.is_same_func(ea, addr)):
                 print("[ida_retrace] {:#x}-{:#x} chunk-part owned by func other than {:#x}".format(start, end, ea))
                 continue
@@ -4045,34 +4017,25 @@ def ida_retrace_extend(ea, addrs=None, visited=None, call_queue=None, block_coun
             raise
             
 
-        new_visited = set() # visited.copy()
-        new_addrs, end = ida_retrace_advance(start, queue, queue2, call_queue, new_visited, ignoreInt=ignoreInt)
+        new_addrs, end = ida_retrace_advance(start, queue, queue2, call_queue, visited, ignoreInt=ignoreInt)
         # dprint("[debug] queue")
         if debug: print("[debug] queue:{}".format(ahex(queue)))
         
-        visited.update(new_visited)
         addressHistory.extend(new_addrs)
         if debug:
             # dprint("[ida_retrace_extend] new_addrs")
             print("[ida_retrace_extend] advance: new_addrs:{}".format(hex(new_addrs)))
             
-
-
         first = _.firstOr(new_addrs, 0)
         
-        if first: #  and first not in visited:
-            #  if first in visited:
-                #  print('[ida_retrace_extend] old first: {}'.format(ahex(first)))
-
+        if first: 
             # dprint("[ida_retrace_extend] first")
             if debug: print("[ida_retrace_extend] first:{}".format(hex(first)))
                 
-            chunk_starts.append(first)
             # addrs.extend(new_addrs)
 
             #  end = idc.next_not_tail(_.last(new_addrs))
             patchedAddresses = set()
-            patches = 0
             tmp = ida_retrace_patch(first, end, addressHistory=addressHistory, patchedAddresses=patchedAddresses, **kwargs)
             while tmp:
                 patches += tmp
@@ -4081,90 +4044,26 @@ def ida_retrace_extend(ea, addrs=None, visited=None, call_queue=None, block_coun
             #  later2.difference_update(patchedAddresses)
             #  later.difference_update(patchedAddresses)
 
-            if False and patches:
-                if True:
-                    rcount = 0
-                    src = len(chunk_starts)
-                    if not src:
-                        dst = 0
-                    else:
-                        dst = src - 1
-                        while dst and rcount < 16:
-                            count = AdvanceToMnem(chunk_starts[dst], mnem='jmp', include=True, rules=[
-                                    (
-                                        isUnconditionalJmp,
-                                        AdvanceToMnem.no_count
-                                    ),
-                                    (
-                                        isNop,
-                                        AdvanceToMnem.no_count
-                                    ),
-                            ])[0]
-                            # dprint("[ida_retrace_extend] count, dst")
-                            # print("[ida_retrace_extend] count:{}, dst:{}".format(count, dst))
-                            dst = dst - 1
-                            rcount += count
-                    
-
-                    # dst = len(chunk_starts) - 8
-                    # if dst < 0: dst = 0
-                    if block_count is not None:
-                        print('***FOUND*** {} {}'.format(block_count, ahex(chunk_starts[dst])))
-                    print('***CONTINUE*** {} {}'.format(src - dst, ahex(chunk_starts[dst])))
-                    _blocks = [Block(x) for x in patchedAddresses.union(addressHistory) if IsCode_(x)]
-                    blockRanges = GenericRanger(_blocks, sort = 1)
-                    blockRangesExpanded = _.reduce(blockRanges, lambda memo, value, index: memo + list(value), [])
-                    visited.difference_update(list(blockRangesExpanded))
-                    done2.difference_update(list(blockRangesExpanded))
-                    for _addr in chunk_starts[dst:]:
-                        if _addr in visited:
-                            visited.remove(_addr)
-                    ida_retrace_extend(chunk_starts[dst], addrs=addrs, visited=visited, call_queue=call_queue, block_count=0, **kwargs)
-                    return
-                else:
-                    _blocks = [Block(x) for x in patchedAddresses.union(addressHistory) if IsCode_(x)]
-                    blockRanges = GenericRanger(_blocks, sort = 1)
-                    # dprint("[ida_retrace_extend] blockRanges")
-                    #  print("[ida_retrace_extend] blockRanges:{}".format(blockRanges))
-                    blockRangesExpanded = _.reduce(blockRanges, lambda memo, value, index: memo + list(value), [])
-                    #  if not noLater: 
-                        #  later2.difference_update(list(blockRangesExpanded))
-                        #  later.difference_update(list(blockRangesExpanded))
-                    visited.difference_update(list(blockRangesExpanded))
-                    done2.difference_update(list(blockRangesExpanded))
-
-                    historyRanges = GenericRanger([Block(x) for x in addressHistory if IsCode_(x)], sort=1)
-                    historyRangesExpanded = _.reduce(historyRanges, lambda memo, value, index: memo + [(value.start, value.trend)], [])
-                    for _addr in historyRangesExpanded:
-                        if _addr[0] not in patchedAddresses:
-                            #  print("inserting {:#x}-{:#x}".format(_addr[0], _addr[1]))
-                            queue.insert(0, _addr)
-                # dprint("[ida_retrace_extend] queue")
-                #  print("[ida_retrace_extend] queue:{}".format(ahex(queue)))
-                continue
-                
-                
         elif not first:
             if debug: print('[ida_retrace_extend] no first: {}'.format(ahex(first)))
 
-        visited.update(new_visited)
-
 
     if debug: print('cleaning up')
-    for start in chunk_starts:
-        start = _.first(start)
-        for addr in idautils.Heads(start, EaseCode(start)):
-            addrs.append(addr)
+    #  for start in chunk_starts:
+        #  start = _.first(start)
+        #  for addr in idautils.Heads(start, EaseCode(start)):
+            #  addrs.append(addr)
 
 
     # dprint("[ida_retrace_extend] addrs")
     if debug: print("done")
     #  print("[ida_retrace_extend] addrs:{}".format(hex(addrs)))
+    return patches
     
 
 
     
-def ida_retrace(funcea=None, extend=True, zero=True, calls=False, smart=True, plan=False, *args, **kwargs):
+def ida_retrace(funcea=None, extend=True, zero=True, calls=False, smart=True, plan=False, requeue=None, *args, **kwargs):
     """
     ida_retrace
 
@@ -4182,11 +4081,12 @@ def ida_retrace(funcea=None, extend=True, zero=True, calls=False, smart=True, pl
         return
 
     queue = A(funcea)
+    requeue = A(requeue)
     if not queue:
         queue = [eax(None)]
     funcea = eax(_.first(_.first(queue)))
     # dprint("[ida_retrace] funcea, _.first(queue)")
-    print("[ida_retrace] funcea:{:#x}, _.first(queue):{:#x}".format(funcea, _.first(queue)))
+    print("[ida_retrace] funcea:{}, _.first(queue):{}".format(ahex(funcea), ahex(_.first(queue))))
     
     func = ida_funcs.get_func(funcea)
 
@@ -4198,12 +4098,13 @@ def ida_retrace(funcea=None, extend=True, zero=True, calls=False, smart=True, pl
     ea = funcea
     count = 0
     noLater = kwargs.get('noLater', 0)
+    visited = set()
     # gc = global_chunks[ea]
     # gc.update(idautils.Chunks(ea))
     # with InfAttr(idc.INF_AF, lambda v: v | 0):
     with InfAttr(idc.INF_AF, lambda v: v | (0xdfe67f1d if smart else 0)):
         # return ida_funcs.reanalyze_function(GetFunc(ea), *args)
-        if not IsFunc_(funcea) and kwargs.get('func', 0):
+        if kwargs.get('func', 0) and not IsFunc_(funcea):
             idc.add_func(funcea)
         if zero:
             rv = ZeroFunction(ea, **(_.pick(kwargs, 'total')))
@@ -4214,14 +4115,14 @@ def ida_retrace(funcea=None, extend=True, zero=True, calls=False, smart=True, pl
                 ea = queue.pop(0)
                 first_ea = _.first(ea)
                 if first_ea in done2:
-                    print('ida_retrace done2 {:#x}'.format(first_ea))
+                    if debug: print('ida_retrace done2 {:#x}'.format(first_ea))
                     continue
 
                 if first_ea in later:
                     later.remove(first_ea)
-                #  if first_ea in visited:
-                    #  print('ida_retrace visited {:#x}'.format(first_ea))
-                    #  continue
+                if first_ea in visited:
+                    if debug: print('ida_retrace visited {:#x}'.format(first_ea))
+                    continue
                 if first_ea in queue:
                     print('ida_retrace removing duplicate from queue')
                     queue.remove(first_ea)
@@ -4231,26 +4132,37 @@ def ida_retrace(funcea=None, extend=True, zero=True, calls=False, smart=True, pl
                 if IsTail(first_ea):
                     print('ida_retrace {:#x} is tail'.format(first_ea))
                     continue
+
                 print('ida_retrace ({}): {}'.format(len(queue), ean(first_ea)))
+
                 addrs = []
                 call_queue = []
                 try:
-                    rv = ida_retrace_extend(ea=ea, addrs=addrs, call_queue=call_queue, **kwargs)
-                    if rv == -1:
-                        queue.insert(0, ea)
-                        continue
+                    new_visited = set()
+                    new_done = set()
+                    rv = ida_retrace_extend(ea=ea, addrs=addrs, call_queue=call_queue, visited=new_visited, **kwargs)
+                    if rv > 0:
+                        if first_ea not in requeue:
+                            requeue.append(first_ea)
+                        # change to append to get faster initial result (but incomplete functions)
+
+                        if ea not in queue:
+                            queue.append(ea)
+                            # queue.insert(0, ea)
+                        # continue
+                    else:
+                        visited.update(new_visited)
+                        _removed = 0
+                        for addr in visited.union(addrs).intersection(queue):
+                            _removed += 1
+                            queue.remove(addr)
+                        done2.add(first_ea)
+                        if _removed: print("removed {} items from queue".format(_removed))
 
                     if debug: print('ida_retrace call_queue: {}'.format(hex(call_queue)))
                 except AdvanceFailure as e:
                     print("{}: {}".format(e.__class__.__name__, str(e)))
-                done2.add(first_ea)
-                _removed = 0
-                for addr in addrs:
-                    if addr in queue:
-                        _removed += 1
-                        queue.remove(addr)
-                    if not noLater: later2.add(addr)
-                if _removed: print("removed {} items from queue".format(_removed))
+
 
                 #  all_addrs.extend(addrs)
                 if calls:
@@ -9024,7 +8936,17 @@ def FixAllFixups():
 def FindObfu():
     import time
     patterns = [
-                "48 05 f8 ff ff ff"
+                "55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24 55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24 c3", 
+                "48 89 e0 48 05 f8 ff ff ff 48 89 c4 48 89 1c 24", 
+                "55 48 bd ?? ?? ?? ?? ?? ?? 00 00 48 87 2c 24 ?? ?? 48 8b ?? 24 10 48 ?? ?? ?? ?? ?? ?? ?? 00 00 48 0f ?? ?? 48 89 ?? 24 10 ?? ?? c3", 
+                "55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24", 
+                "48 89 6c 24 f8 48 8d 64 24 f8", 
+                "48 8d 64 24 f8 48 89 2c 24", 
+                "48 89 5c 24 f8 48 8d 64 24 f8", 
+                "48 8d 64 24 f8 48 89 1c 24", 
+                "55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24 c3",
+                "48 8d 64 24 08 ff 64 24 f8", 
+                "48 05 f8 ff ff ff",
                 "48 87 ?? 24", 
                 "48 89 ?? 24", 
                 "48 89 c4",

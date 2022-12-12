@@ -568,12 +568,30 @@ class Obfu(object):
             # if obfu_debug: printi("targetRanges", targetRanges)
 
             if isinstance(_repl, list):
+                if getattr(pat.options, 'exact', 0) and isinstance(_repl[0], int):
+                    targetRanges = GenericRanger(addressList[0:_end], sort=0, outsort=0)
+                    oriTargetRanges = targetRanges.copy()
+                    _targetRanges = str(targetRanges)
+                    while _repl: #  and targetRanges:
+                        r = targetRanges[0]
+                        # spread reversed asm to beginning and start of range where possible
+                        length = min(len(_repl), r.length)
+                        print("exact copy at {:#x}".format(r.start))
+                        PatchBytes(r.start, _repl[0:length], code=1, comment="{} {}".format(patternComment, _targetRanges))
+                        patchedAddresses.update(list(range(r.start, r.start + length)))
+                        _repl = _repl[length:]
+                        if _repl and len(targetRanges) < 2:
+                            raise ObfuFailure("Not enough targetRanges for exact replacement")
+                        targetRanges = targetRanges[1:]
+                    return {'patchedAddresses': patchedAddresses}
+
                 if isinstance(_repl[0], int):
                     # dprint("[process_replacement] _repl")
                     if obfu_debug: printi("[process_replacement] _repl:{}".format(_repl))
                     
                     _repl = [(bytearray().fromhex(x[3])) for x in diInsnsIter(_repl)]
                     assemble = bytepatch
+
                 if isinstance(_repl[0], (str, bytearray)):
                     #  for asm in _repl:
                     #  length = assemble(asm, address)
@@ -783,7 +801,7 @@ class Obfu(object):
             return False
 
         for i in range(searchLen):
-            if not (idc.get_wide_byte(addressList[i]) & mask[i] == search[i]):
+            if idc.get_wide_byte(addressList[i]) & mask[i] != search[i]:
                 return False
 
         if obfu_debug: printi("[replace_pattern_bitwise] matched {} [{}]".format(pat.bitmask.pattern if pat.bitmask else 'no_bitmask', type(pat).__name__))
@@ -792,7 +810,7 @@ class Obfu(object):
             repl = replFunc(search, [], original, ea, addressList, brief,
                             addressListWithNops=addressListWithNops, addressListFull=addressListFull)
             if repl:
-                if debug: printi("Replace bitwise with {}:".format(pfh(repl)))
+                if obfu_debug: printi("Replace bitwise with {}:".format(pfh(repl)))
                 # pp(repl)
                 # (9, [89])
                 r = self.process_replacement(search, repl, addressList, brief, addressListWithNops, addressListFull, pat=pat, context=context)
@@ -876,152 +894,6 @@ class Obfu(object):
             printi("repl but could not process_replacement")
             return False
             #  requiredLen = len(repl)
-        #
-        #  if 1: # not safe:
-        #  translatedAddressList = []
-        #  for i in range(searchLen):
-        #  translatedAddressList.append(addressList[i])
-        #
-        #  if obfu_debug:
-        #  printi("requiredLen: %i\nsearchLen: %i" % (requiredLen, searchLen))
-        #  printi(listAsHexWith0x(translatedAddressList))
-        #
-        #  target = BADADDR
-        #  r = searchLen - requiredLen + 1
-        #  if obfu_debug:
-        #  printi("range: %i" % r)
-        #  for i in range(r):
-        #  if (addressList[i + requiredLen - 1] - addressList[i] == requiredLen - 1):
-        #  target = i
-        #  break
-        #
-        #  if obfu_debug:
-        #  printi("target: %i" % target)
-        #
-        #  if target == BADADDR:
-        #  printi("0x%x: %i contiguous bytes not found at target with addressList for %s" % (ea, requiredLen, patternComment))
-        #  printi("requiredLen: %i\nsearchLen: %i" % (requiredLen, searchLen))
-        #  printi(listAsHexWith0x(translatedAddressList))
-        #  return False
-        #
-        #  if i:
-        #  result = []
-        #  if obfu_debug: printi("Making %i nops" % i)
-        #  nopAddresses = [addressList[n] for n in range(i)]
-        #  nopRanges = GenericRanger(nopAddresses)
-        #  for r in nopRanges:
-        #  if obfu_debug: printi("%i nops" % r.length)
-        #  result += MakeNops(r.length)
-        #
-        #  result.extend(repl)
-        #  repl = result
-        #  replaceLen = len(repl)
-
-        if obfu_debug: printi(("0x%x: %s: repl: %s" % (ea, patternComment, listAsHex(repl))))
-        replaceLen = len(repl)
-
-        #  printi("0x%x: XXX: %s [%s]" % (ea, GetDisasm(ea), patternComment))
-        #  GetDisasm(ea)
-
-        replace_locs = []
-        for i in range(replaceLen):
-            replace_locs.append(addressList[i])
-            if idc.is_code(idc.get_full_flags(ItemHead(addressList[i]))):
-                if obfu_debug: printi("[debug] MyMakeUnknown({:x}, {}, DELIT_EXPAND | DELIT_NOTRUNC".format(addressList[i],
-                                                                                                      InsnLen(
-                                                                                                          addressList[
-                                                                                                              i])))
-                MyMakeUnknown(addressList[i], InsnLen(addressList[i]), DELIT_EXPAND | DELIT_NOTRUNC)
-            # SetSpDiff(addressList[i], 0)
-            idaapi.patch_byte(addressList[i], repl[i])
-        gr = GenericRanger(replace_locs, sort=0)
-        printi("replace_locs: {}".format(pf(gr)))
-        MakeCode(addressList[0])
-
-        if obfu_debug: printi(("0x%x: Making %i comments" % (addressList[0], replaceLen)))
-        commentAddresses = [addressList[n] for n in range(replaceLen)]
-        commentRanges = GenericRanger(commentAddresses, sort=0, outsort=0)
-        if obfu_debug: printi(("commentRanges: %s" % str(commentRanges)))
-        for r in commentRanges:
-            if obfu_debug: printi(("commentRange: %s" % str(r)))
-            if obfu_debug: printi(("0x%x: %i comments" % (r.start, r.length)))
-            lastHead = BADADDR
-
-            for a in range(r.start, r.start + r.length):
-                h = ItemHead(a)
-                if h != lastHead:
-                    lastHead = h
-                    Commenter(ea, "line").add("[PATCH] %s" % patternComment)
-
-        if False:
-            d = {}
-            for i in range(replaceLen):
-                d[i] = addressList[i]
-
-            patchAddresses = [v for k, v in list(d.items())]
-            rangeLookup = {v: k for k, v in list(d.items())}
-            addressRanges = GenericRanger(patchAddresses, sort=0, outsort=0)
-            for r in addressRanges:
-                l = []
-                for i in range(r.start, r.start + r.length):
-                    l.append(repl[rangeLookup[i]])
-                PatchBytes(r.start, l, patternComment, code=1)
-            # printi("0x%x: 0x%x: Patched %i bytes: %s for %s" % (ea, r.start, r.length, hex(l), patternComment))
-
-            # MyMakeUnknown(addressList[i], 1, 0)
-
-        #  Wait()
-        #  Commenter(addressList[0]).add("[PATCH] %i bytes: %s" % (replaceLen, patternComment))
-        #  Commenter(addressList[i], 'line').add("[PATCH] %i bytes: %s" % (replaceLen, patternComment))
-        #  Wait()
-
-        ## We can fill the unused space with 0xCC, but if there are multiple xrefs to
-        ## a location within the patch, we want to be able to detect them later.
-        # fillAddresses = [lambda x: addressList[x], xrange(replaceLen, searchLen)]
-
-        Wait()
-        MakeCodeAndWait(ea, comment=GetFunctionName(ea))
-        #  printi("0x%x: patched %i bytes: %s" % (ea, replaceLen, patternComment))
-        #  printi("0x%x: XXX: %s [%s]" % (ea, GetDisasm(ea), patternComment))
-        GetDisasm(ea)
-        Commenter(ea, "line").remove("[PATCH] %s" % patternComment)
-        Commenter(ea, "line").add("[PATCH] %i bytes: %s" % (replaceLen, patternComment))
-
-        # How MakeNops writes comments (no problems with these comments)
-        #  PatchBytes(nopStart, MakeNops(contigCount))
-        #  MyMakeUnknown(nopStart, contigCount, 0)
-        #  Wait()
-        #  MakeCodeAndWait(nopStart)
-        #  Wait()
-        #  Commenter(nopStart).add("[PATCH-NOP] %i bytes: %s" % (contigCount, patternComment))
-        #  Wait()
-
-        nopping = replaceLen
-        while nopping < searchLen:
-            for i in range(nopping, searchLen):
-                if i == nopping:
-                    contigCount = 1
-                elif addressList[i] - addressList[i - 1] == 1:
-                    contigCount += 1
-                else:
-                    break
-
-            ## Nop contigCount bytes
-            nopStart = addressList[nopping]
-            nopLength = contigCount
-            nopping += contigCount
-            if contigCount > 0:
-                ## ZeroCode(nopStart, nopLength)
-                PatchNops(nopStart, nopLength, patternComment, trailingRet=None)
-                Wait()
-                #  MakeCodeAndWait(addressList[nopping], force = 1)
-                #  Commenter(addressList[nopping], 'line').add("[PATCH-NOP] %i bytes: %s" % (contigCount, patternComment))
-
-        Wait()
-        #  self.comb(addressList[0], replaceLen)
-
-        # return not safe
-        return True
 
     def AnalyzeArea(self, start, end):
         self.AnalyzeQueue.append([start, end])
@@ -1374,7 +1246,7 @@ class Obfu(object):
             length = self.default_comb_len
         if not isInt(ea):
             raise ValueError("ea is {}".format(ea))
-        if not IsCode_(ea):
+        if not IsCode_(ea) or isJmp(ea) or isFlowEnd(ea):
             return []
 
         # obfu_read_patches()
@@ -1409,99 +1281,106 @@ class Obfu(object):
         results = []
         matched = []
         patchedAddresses = []
-        for pattern in self.patterns_bitwise:
-            # self.patterns_bitwise.append([search, mask, replFunc, notes, safe])
-            # result = self.replace_pattern_bitwise(pattern[0], pattern[1], pattern[2], pattern[3], list(addressList), ea, list(addressListWithNops), pattern[4], pattern[5])
-            result = self.replace_pattern_bitwise(pattern, ea, list(addressList), list(addressListWithNops), list(addressListFull))
-            pattern.tried += 1
-            if result:
-                pattern.used += 1
-                if 'result' in result and 'patchedAddresses' in result['result']:
-                    patchedAddresses.extend(result['result']['patchedAddresses'])
-                matched.append(pattern.brief)
-                # self.combed.clear()
-                self.update_combed(patchedAddresses)
-                count += 1
-                if obfu_debug: printi("found bitwise pattern")
-                #  Jump(ea)
-                return PatternResult(pattern, result)
+        with PerfTimer('obfu.patch.patterns_bitwise'):
+            for pattern in self.patterns_bitwise:
+                # self.patterns_bitwise.append([search, mask, replFunc, notes, safe])
+                # result = self.replace_pattern_bitwise(pattern[0], pattern[1], pattern[2], pattern[3], list(addressList), ea, list(addressListWithNops), pattern[4], pattern[5])
+                result = self.replace_pattern_bitwise(pattern, ea, list(addressList), list(addressListWithNops), list(addressListFull))
+                pattern.tried += 1
+                if result:
+                    pattern.used += 1
+                    if 'result' in result and 'patchedAddresses' in result['result']:
+                        patchedAddresses.extend(result['result']['patchedAddresses'])
+                    matched.append(pattern.brief)
+                    # self.combed.clear()
+                    self.update_combed(patchedAddresses)
+                    count += 1
+                    if obfu_debug: printi("found bitwise pattern")
 
-        searches = 0
-        groups_matched = 0
-
-        if obfu_debug: printi("[_patch] {:x}".format(ea))
-
-
-        addrLen = len(addressList)
-        for group in self.groups:
-            if count:
-                break
-            if addrLen < len(group):
-                #  if obfu_debug: printi("{}: addrLen < len(group)".format(group.pattern))
-                continue
-            if not group.match_addresses(addressList):
-                #  if obfu_debug: printi("{}: not group.match_addresses".format(group.pattern))
-                continue
-
-            groups_matched += 1
-            if obfu_debug: printi("[Obfu::_patch] group:    {} group._size: {}".format(group, group._size))
-            for pat in _.sortBy(self.groups[group], 'priority'):
-                if obfu_debug: printi("[Obfu::_patch] checking: {}".format(pat.brief))
-                searches += 1
-
-                q = [pat]
-                results = []
-                while q and not count:
-                    pat = q.pop(0)
-                    if obfu_debug: printi("addressList[{}]: {}".format(addrLen, hex(GenericRanger(addressList, sort=0))))
-
-                    result = self.replace_pattern_ex(tuple(pat.search), tuple(pat.repl), pat.replFunc, pat.searchIndex, pat.brief,
-                                                     list(addressList), ea, list(addressListWithNops), list(addressListFull), pat.safe, pat=pat, context=context)
-                    pat.tried += 1
-                    if result:
-                        pat.used += 1
-                        if 'result' in result and 'patchedAddresses' in result['result']:
-                            patchedAddresses.extend(result['result']['patchedAddresses'])
-                        count += 1
-                        if obfu_debug:
-                            printi("result! count: {}".format(count))
-                        #  self.combed.clear()
-                        results.append(PatternResult(pat, result))
-                        matched.append(pat)
-                        then = getattr(pat.options, 'then', None)
-                        if not then:
-                            break
-                        _q = []
-                        for p in asList(then):
-                            if not p in self.labels:
-                                printi("[_patch] then-label '{}' not found in {})".format(p, self.labels.keys()))
-                                break
-                            for nextpat in self.labels[p]:
-                                #  printi("[_patch] then-label '{}' found in {})".format(p, self.labels.keys()))
-                                _q.append(nextpat)
-                        if _q:
-                            q.extend(_.sortBy(_q, 'priority'))
-                    
-                if count:
-                    #  self.combed.clear()
                     self.update_combed(patchedAddresses)
                     return results
-                    #  Jump(ea)
-                # only perform 1 matching pattern
-                # TODO: relax this if all patterns were marked 'resume'
-                #  break  # continue
-                # continue
+                    return PatternResult(pattern, result)
 
-                        # forceAsCode(ea, len(pattern[0]))
-                        # end = ea + len(pattern[0])
-                        # forceAsCode(ea, end - ea)
-                        # AnalyzeArea(ea, end)
-                        # while ea < end and idc.is_code(idc.get_full_flags(ea)):
-                        # ea = idc.next_head(ea)
-                        # if Byte(ea) == 0xcc and not idc.is_code(idc.get_full_flags(ea)):
-                        # hideRepeatedBytes(ea)
-                        # forceAsCode(start, ea - start, hard = 1)
-                        # return 1
+        with PerfTimer('obfu.patch.groups'):
+            searches = 0
+            groups_matched = 0
+
+            if obfu_debug: printi("[_patch] {:x}".format(ea))
+
+
+            addrLen = len(addressList)
+            for group in self.groups:
+                if count:
+                    break
+                if addrLen < len(group):
+                    #  if obfu_debug: printi("{}: addrLen < len(group)".format(group.pattern))
+                    continue
+                if not group.match_addresses(addressList):
+                    #  if obfu_debug: printi("{}: not group.match_addresses".format(group.pattern))
+                    continue
+
+                groups_matched += 1
+                with PerfTimer('obfu.patch.groups_matches'):
+                    if obfu_debug: printi("[Obfu::_patch] group:    {} group._size: {}".format(group, group._size))
+                    for pat in _.sortBy(self.groups[group], 'priority'):
+                        if obfu_debug: printi("[Obfu::_patch] checking: {}".format(pat.brief))
+                        searches += 1
+
+                        q = [pat]
+                        results = []
+                        while q and not count:
+                            pat = q.pop(0)
+                            if obfu_debug: printi("addressList[{}]: {}".format(addrLen, hex(GenericRanger(addressList, sort=0))))
+
+                            with PerfTimer('obfu.patch.pattern.{}'.format(pat.brief)):
+                                result = self.replace_pattern_ex(tuple(pat.search), tuple(pat.repl), pat.replFunc, pat.searchIndex, pat.brief,
+                                                                 list(addressList), ea, list(addressListWithNops), list(addressListFull), pat.safe, pat=pat, context=context)
+                            pat.tried += 1
+                            if result:
+                                with PerfTimer('obfu.patch.pattern_used.{}'.format(pat.brief)):
+                                    pat.used += 1
+                                    if 'result' in result and 'patchedAddresses' in result['result']:
+                                        patchedAddresses.extend(result['result']['patchedAddresses'])
+                                    count += 1
+                                    if obfu_debug:
+                                        printi("result! count: {}".format(count))
+                                    #  self.combed.clear()
+                                    results.append(PatternResult(pat, result))
+                                    matched.append(pat)
+                                    then = getattr(pat.options, 'then', None)
+                                    if not then:
+                                        break
+                                    _q = []
+                                    for p in asList(then):
+                                        if not p in self.labels:
+                                            printi("[_patch] then-label '{}' not found in {})".format(p, self.labels.keys()))
+                                            break
+                                        for nextpat in self.labels[p]:
+                                            #  printi("[_patch] then-label '{}' found in {})".format(p, self.labels.keys()))
+                                            _q.append(nextpat)
+                                    if _q:
+                                        q.extend(_.sortBy(_q, 'priority'))
+                            
+            if count:
+                #  self.combed.clear()
+                self.update_combed(patchedAddresses)
+                return results
+                    #  Jump(ea)
+                    # only perform 1 matching pattern
+                    # TODO: relax this if all patterns were marked 'resume'
+                    #  break  # continue
+                    # continue
+
+                            # forceAsCode(ea, len(pattern[0]))
+                            # end = ea + len(pattern[0])
+                            # forceAsCode(ea, end - ea)
+                            # AnalyzeArea(ea, end)
+                            # while ea < end and idc.is_code(idc.get_full_flags(ea)):
+                            # ea = idc.next_head(ea)
+                            # if Byte(ea) == 0xcc and not idc.is_code(idc.get_full_flags(ea)):
+                            # hideRepeatedBytes(ea)
+                            # forceAsCode(start, ea - start, hard = 1)
+                            # return 1
         if obfu_debug and (searches or groups_matched):
             printi("searches: {} groups_matched: {}".format(searches, groups_matched));
             printi("matched: {}".format([x.brief for x in matched]));
