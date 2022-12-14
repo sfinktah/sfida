@@ -477,6 +477,144 @@ def read_emu(fn=None, dryRun=False, skipFuncs=False, put=False):
 
     return fn.split('_', 3)[3], base, -2
 
+def read_emu_fn_split(fn):
+    bn = os.path.basename(fn)
+    _prefix       = string_between('', '_', bn)
+    _addr,  bn    = string_between_splice('_',   '_', bn, repl='')
+    _size, bn     = string_between_splice('__',  '_', bn, repl='')
+    _packer, bn   = string_between_splice('___', '.', bn, repl='', greedy=1)
+    _packer_addr  = string_between('_', '', _packer)
+    _packer_words = long_to_words(-ida_ida.cvar.inf.min_ea + int(_packer_addr, 16))
+    return SimpleAttrDict(
+            prefix = _prefix,
+            addr = _addr,
+            size = _size,
+            packer = _packer,
+            packer_addr = _packer_addr,
+            packer_words = _packer_words
+    )
+
+def read_emu_id(fn=None, nulls=None, patches=None):
+    """ 
+    read_emu_id: attempt to uniquely identify a patch file(s)
+    eg: read_emu_id(glob('r:/data/memcpy/*_PackerFunction_140000000.bin'))
+
+    @param fn: filename or [fn1, fn2, ...]
+
+    """
+    patches = A(patches)
+    nulls = A(nulls)
+    if isinstance(fn, list):
+        # print(fn)
+        [read_emu_id(x, nulls=nulls, patches=patches) for x in fn]
+        return
+
+    base = parseHex(string_between('_', '_', os.path.basename(fn)))
+
+    bn = os.path.basename(fn)
+    _prefix       = string_between('', '_', bn)
+    _addr,  bn    = string_between_splice('_',   '_', bn, repl='')
+    _size, bn     = string_between_splice('__',  '_', bn, repl='')
+    _packer, bn   = string_between_splice('___', '.', bn, repl='', greedy=1)
+    _packer_addr  = string_between('_', '', _packer)
+    _packer_words = long_to_words(-ida_ida.cvar.inf.min_ea + int(_packer_addr, 16))
+
+    nulls = []
+    if ida_ida.cvar.inf.min_ea <= base < ida_ida.cvar.inf.max_ea:
+        b = file_get_contents_bin_spread(fn)
+        if b and len(b) > 3 and _.all(b, lambda v, *a: v == 0):
+            nulls.append(len(b))
+        elif b:
+            patches.append(b)
+
+def read_emu_id_walk(subdir='balance', path=None):
+    work = defaultdict(list)
+    for root, dirs, files in os.walk(os.path.join(match_emu._path, subdir) if path is None else path):
+        for _file in files:
+            if _file.endswith('.bin'):
+                _fnb = os.path.join(root, _file)
+                _spl = read_emu_fn_split(_fnb)
+                work[_spl.packer_words].append(_fnb)
+
+    results = []
+    for ofn, files in work.items():
+        nulls = []
+        patches = []
+        # dprint("[read_emu_id_walk] ofn, files")
+        #  print("[read_emu_id_walk] ofn:{}, files:{}".format(ofn, files))
+        
+        read_emu_id(files, nulls=nulls, patches=patches)
+        v = _.uniq(_.sort(_.filter([di_generic(p) for p in patches])))
+        print("{}: {}; {}".format(ofn.strip('*_'), '', v))
+        #  for p in patches:
+            # v = _.uniq(_.sort([hash(di_generic(x)) & 0xffffffffffffffff for x in p]))
+            # v = patches
+        results.append((ofn, v))
+    return results
+
+def read_emu_id_match(a, b):
+    b = _.filter(b, lambda v: v[1])
+    r = _.object(_.map(a, lambda x, *a: (x[0], set(x[1]))))
+    w = _.object(_.map(b, lambda x, *a: (x[0], set(x[1]))))
+    best_matches = dict()
+    for ka, a in r.items():
+        best_match = None, 0, 8**8, 0.0
+        for kb, b in w.items():
+            matched = len(set.intersection(a, b))
+            unmatched = len(set.symmetric_difference(a, b))
+            total = matched + unmatched
+            match_percent = matched / total
+            if match_percent > best_match[3]:
+                best_match = kb, matched, unmatched, match_percent
+        best_matches[ka] = best_match
+
+    return best_matches
+
+
+
+def read_emu_id_glob(fn, subdir='*', path=None, **kwargs):
+    if path is None and match_emu._path is None:
+        guess = os.path.abspath(os.path.dirname(get_idb_path()))
+        print("Guessing database path as {}".format(guess))
+        path = guess
+
+    if path is not None:
+        match_emu._files.clear()
+        emu_path(path)
+
+    if isinstance(fn, list):
+        return [read_emu_id_glob(x, subdir=subdir, **kwargs) for x in fn]
+
+    if not match_emu._path:
+        print("No path set")
+        return
+
+    ofn = fn
+    uhw = unhashword(fn)
+    try:
+        if ida_ida.cvar.inf.min_ea <= int(uhw, 16) < ida_ida.cvar.inf.max_ea:
+            fn = '*_{}*'.format(uhw)
+    except ValueError:
+        raise
+        pass
+    try:
+        fns = os.path.normpath(os.path.join(match_emu._path, subdir, '*', '*', fn))
+    except TypeError as e:
+        print("{}: {}: {}".format(e.__class__.__name__, str(e), str([match_emu._path, subdir, '*', '*', fn])))
+        raise
+    globbed = list(glob(fns))
+    print('globbed {} files. kwargs: {}'.format(len(globbed), kwargs))
+    nulls = []
+    patches = []
+    read_emu_id(globbed, nulls=nulls, patches=patches)
+    v = _.uniq(_.sort(_.filter([di_generic(p) for p in patches])))
+    print("{}: {}; {}".format(ofn.strip('*_'), '', v))
+    #  for p in patches:
+        # v = _.uniq(_.sort([hash(di_generic(x)) & 0xffffffffffffffff for x in p]))
+        # v = patches
+    return ofn, v
+
+
 def emu_path(pn=None):
     if pn is not None:
         match_emu._files.clear()
