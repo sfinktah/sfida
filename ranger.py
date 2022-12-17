@@ -2,6 +2,7 @@
 
 import os
 from exectools import make_refresh
+from sortedcontainers import SortedList
 refresh_ranger = make_refresh(os.path.abspath(__file__))
 refresh = make_refresh(os.path.abspath(__file__))
 """ 
@@ -67,6 +68,9 @@ class GenericRange(object):
 
     def issuperset(self, other):
         return issuperset(self, other)
+
+    def asTuple(self):
+        return (self.start, self.last + 1)
 
     def __key(self):
         return (self.start, self.last)
@@ -234,6 +238,8 @@ def GenericRanger(genericRange, sort, outsort=True, prefilter=None, iteratee=Non
     if sort:
         genericRange.sort()
 
+    #  genericRange = _.uniq(genericRange)
+
     for n in prefilter(genericRange):
         if n == end:
             continue
@@ -342,7 +348,131 @@ def get_last(r):
         return r.last
     if hasattr(r, 'stop'):
         return r.stop - 1
-    return r[1]
+    return r[-1] - 1
+
+
+class GenericRanges:
+    """Collection of GenericRange(s)"""
+
+    def __init__(self, genericRanges=None):
+        self.genericRanges = SortedList() if genericRanges is None else SortedList([(get_start(x), get_last(x) + 1) for x in genericRanges])
+        self.optimize()
+
+    def __len__(self):
+        return self.genericRanges.__len__()
+    
+    def __getitem__(self, key):
+        return self.genericRanges.__getitem__(key)
+    
+    def __setitem__(self, key, value):
+        self.genericRanges.__setitem__(key, value)
+    
+    def __delitem__(self, key):
+        self.genericRanges.__delitem__(key)
+    
+    def __iter__(self):
+        return self.genericRanges.__iter__()
+    
+    def __reversed__(self):
+        return self.genericRanges.__reversed__()
+    
+    def __contains__(self, item):
+        for r in self.genericRanges:
+            if get_start(r) <= item <= get_last(r):
+                return True
+        return False
+    
+    def append(self, object):
+        object = (get_start(object), get_last(object) + 1)
+
+        if isinstance(self.genericRanges, list):
+            idx = indexOfSet(self.genericRanges, object, adjoins)
+            if ~idx:
+                    self.genericRanges[idx] = union(self.genericRanges[idx], object)
+                    #
+                    # XXX: the new range may join two existing ranges
+                    if len(self.genericRanges) > idx and adjoins(self.genericRanges[idx], self.genericRanges[idx+1]):
+                        self.genericRanges[idx] = union(self.genericRanges[idx], self.genericRanges[idx+1])
+                        self.genericRanges.pop(idx+1)
+                    return
+        else:
+            overlapping = filterSet(self.genericRanges, object, adjoins)
+            if overlapping:
+                new = object
+                for r in overlapping:
+                    new = union(r, object)
+                    self.genericRanges.remove(r)
+                self.genericRanges.add(new)
+                return
+
+        # self.genericRanges.append(object)
+        self.genericRanges.add(object)
+        # TODO: replace with lowerbounds insert
+        self.sort()
+
+    def clear(self):
+        self.genericRanges.clear()
+    
+    def copy(self):
+        return (type(self))(self.genericRanges.copy())
+    
+    def count(self):
+        return self.genericRanges.count()
+    
+    def extend(self, iterable):
+        for item in iterable:
+            self.append(item)
+
+    update = extend
+    
+    def index(self, value, start=0, stop=9223372036854775807):
+        return self.genericRanges.index(value, start, stop)
+    
+    #  def insert(self):
+        #  self.genericRanges.insert()
+    
+    def pop(self):
+        self.genericRanges.pop()
+    
+    def remove(self):
+        self.genericRanges.remove()
+    
+    def reverse(self):
+        self.genericRanges.reverse()
+    
+    def sort(self):
+        return
+        self.genericRanges.sort()
+    
+    #  def insert(self, index, object):
+        #  self.genericRanges.insert(index, object)
+    
+    def pop(self, index=-1):
+        return self.genericRanges.pop(index)
+    
+    def remove(self, value):
+        self.genericRanges.remove(value)
+    
+    def asTuples(self):
+        for r in self.genericRanges:
+            yield r
+
+    def optimize(self):
+        self.sort()
+        def by(memo, r, i):
+            if memo:
+                last = memo[-1]
+                if adjoins(last, r):
+                    memo[-1] = union(last, r)
+                    return memo
+            memo.append(r)
+            return memo
+
+        self.genericRanges = SortedList(_.reduce(self.genericRanges, by, []))
+
+def GenericRangesAsTuples(gr):
+    for r in gr:
+        yield r.start, r.trend
 
 if hasglobal('PerfTimer'):
     PerfTimer.bindmethods(GenericRange)
