@@ -658,8 +658,8 @@ def unpatch(start, end = None):
         while start < end:
             if start in obfu.combed:
                 obfu.combed.clear()
-            if idc.get_cmt(start, 0):
-                idc.set_cmt(start, '', 0)
+            #  if idc.get_cmt(start, 0):
+            idc.set_cmt(start, '', 0)
             if ida_bytes.revert_byte(start):
                 count += 1
             start += 1
@@ -850,6 +850,27 @@ def unpatch_all():
             ida_bytes.revert_byte(x)
             # idaapi.patch_byte(x, y)
     return patchedBytes
+
+def unpatch_all_count():
+    patchedBytes=[]
+
+    def get_patch_byte(ea, fpos, org_val, patch_val):
+        patchedBytes.append([ea, patch_val])
+
+    idaapi.visit_patched_bytes(0, idaapi.BADADDR, get_patch_byte)
+    idc.auto_wait()
+    patchedBytes.sort()
+    count = 0
+
+    for x, y in patchedBytes: 
+        #  if idc.get_segm_name(x) == '.text2':
+            #  break
+        if IsValidEA(x):
+            count += 1
+            # ida_bytes.revert_byte(x)
+            # idaapi.patch_byte(x, y)
+    return count
+
 
 def unpatch_all2():
     patchedBytes=[]
@@ -1060,15 +1081,13 @@ def unpatch_func2(funcea=None):
     RemoveAllChunks(ea)
     idc.del_func(ea)
     for start, end in chunks:
-        while not IsFunc_(idc.next_not_tail(end)):
-            end = idc.next_not_tail(end)
-        if isNop(idc.next_not_tail(end)):
-            printi("Possibly NOP overflow at {:#x}".format(idc.next_not_tail(end)))
+        # while not IsFunc_(idc.next_not_tail(end)): end = idc.next_not_tail(end)
+        # if isNop(idc.next_not_tail(end)): printi("Possibly NOP overflow at {:#x}".format(idc.next_not_tail(end)))
         ida_auto.revert_ida_decisions(start, end)
         _unpatch_count += unpatch(start, end)
 
     #  EaseCode(ea)
-    idc.add_func(ea)
+    idc.add_func(ea, EaseCode(ea, forceStart=1))
     LabelAddressPlus(ea, func_name)
     for start in last_chunks:
         if start != ea:
@@ -1082,7 +1101,7 @@ def unpatch_func2(funcea=None):
             # dprint("[debug] start, end")
             #  print("[debug] start:{:x}, end:{:x}".format(start, end))
             
-            if isinstance(end, integer_types):
+            if IsValidEA(end):
                 #  ida_auto.auto_apply_tail(start, ea)
                 if not IsChunk(start) and not IsFunc_(start):
                     idc.append_func_tail(ea, start, end)
@@ -1765,7 +1784,7 @@ def graph_results(results, links):
     subprocess.getstatusoutput('start pprev.svg')
 
 
-def pprev(ea=None, data=0, stop=None, depth=0, show=0, quiet=0):
+def pprev(ea=None, data=0, stop=None, depth=0, show=0, quiet=0, short=0, count=8**8, iteratee=None):
     results = []
     if not getattr(pprev, 'history', None):
         pprev.history = []
@@ -1936,7 +1955,13 @@ def pprev(ea=None, data=0, stop=None, depth=0, show=0, quiet=0):
 
     def diida_cmts(ea):
         _diida = diida(ea)
-        _comments = idc.get_cmt(ea, 0)
+        try:
+            _comments = idc.get_cmt(ea, 0)
+        except UnicodeDecodeError:
+            # dprint("[debug] ea")
+            print("[debug] ea: {}".format(ahex(ea)))
+            raise
+
         if _comments:
             _diida += " " + str(_comments).replace("\n", "; ")
         return _diida
@@ -1951,7 +1976,25 @@ def pprev(ea=None, data=0, stop=None, depth=0, show=0, quiet=0):
     deadpaths = []
 
     if not quiet: print("start: {:3} {:32} {:x} {}".format(0, GetFuncName(ea), ea, diida_cmts(ea)))
+    short_return = None
 
+    if short:
+        if IsFunc_(ea):
+            while count > 0 and not IsFuncHead(ea) and IsCode_(ea):
+                if isNop(ea):
+                    ea = idc.prev_head(ea)
+                    continue
+                if isJmp(ea):
+                    return ea
+                if iteratee: iteratee(SimpleAttrDict(ea = ea))
+                if not IsFlow(ea):
+                    return ea
+                count -= 1
+                ea = idc.prev_head(ea)
+
+            return ea if IsCode_(ea) else start_ea
+
+    i = 0
     while len(paths):
         # print("viable {}/dead {}".format(len(paths), len(deadpaths)))
         # for path in paths:
@@ -1960,13 +2003,25 @@ def pprev(ea=None, data=0, stop=None, depth=0, show=0, quiet=0):
             path_ea = path.ea
             ea = path.advance()
             # dprint("[pprev] path_ea, ea")
-            if not quiet: print("[pprev]{:3} path_ea: {}, ea: {:11}  col: #{:06x} sub: {}".format(path.depth, hex(path_ea), str(hex(ea)), 0xffffff & idc.get_color(path_ea, CIC_ITEM), ean(GetFuncStart(ea)) if IsFunc_(ea) else ''))
+            if short and IsFuncHead(path_ea):
+                return path_ea
+            if isNop(path_ea) or isUnconditionalJmp(path_ea): #  or path.terminated in ('deadend', ):
+                pass
+            else: # if path.terminated in (0, 'branch'):
+                i += 1
+                short_return = path_ea
+                if iteratee and iteratee(SimpleAttrDict(ea=path_ea)) == "stop":
+                    return short_return
+                if i > count:
+                    return short_return
+            if not quiet: print("[pprev]{:3} path_ea: {}, ea: {:11} {} col: #{:06x} sub: {}".format(path.depth, hex(path_ea), str(hex(ea)), path.terminated, 0xffffff & idc.get_color(path_ea, CIC_ITEM), ean(GetFuncStart(ea)) if IsFunc_(ea) else ''))
             if CallRefsTo(path_ea):
                 caller = _.first(A(CallRefsTo(path_ea)))
                 _diida = diida_cmts(caller)
                 if not quiet: print("call:  {:3} {:32} {:x} {}".format(path.depth, GetFuncName(caller)[0:32], caller, _diida))
                 if not show:
-                    return path_ea
+                    short_return = path_ea
+                    return short_return
             
             if ea is None:
                 ea = path_ea
@@ -2039,6 +2094,8 @@ def pprev(ea=None, data=0, stop=None, depth=0, show=0, quiet=0):
             
     if show:
         graph_results(results, links)
+    elif short:
+        return short_return
     else:
         return results or terminated
 

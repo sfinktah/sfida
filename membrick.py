@@ -639,6 +639,49 @@ def fix_old_balances():
     fix_obfu_scan()
 
 
+def find_judges(count=3, notcode=None):
+    # pattern = '55 48 83 ec 20 48 8d 6c 24 20 48 89 4d 10 48 89 55 18 44 89 45 20 8b 45 20 83 f8 04 0f 82 ?? ?? ?? ?? e9 ?? ?? ?? ??'
+    # pattern = '48 89 85 ?? ?? 00 00 48 8b 85 ?? ?? 00 00 0f b6 00 48 0f be c0 85 c0 0f 84'
+    patterns = [
+        "6a 10 48 f7 c4 0f 00 00 00 0f 85 ?? ?? ?? ?? e9",
+        "68 10 00 00 00 48 f7 c4 0f 00 00 00 0f 85 ?? ?? ?? ?? e9",
+        "6a 10 e8 ?? ?? ?? ?? 48 8d 64 24 08 0f 1f 00 e9"
+    ]
+    notcode = A(notcode)
+    results = []
+    for pattern in patterns:
+        for ea in [e for e in FindInSegments(pattern, 'any')]:
+            if not IsCode_(ea) or not IsCode_(idc.prev_not_tail(ea)):
+                print("not code: {:#x}".format(ea))
+                notcode.append(ea)
+                continue
+            while IsFlow(ea):
+                ea = idc.prev_not_tail(ea)
+            n = 0
+            prev = prev_insn_match(ea, idaapi.NN_call, (idc.o_near, 0), comment='call Balance_')
+            while prev:
+                ea = prev
+                n += 1
+                prev = prev_insn_match(ea, idaapi.NN_call, (idc.o_near, 0), comment='call The*')
+
+            # dprint("[debug] ea, n")
+            print("[debug] ea: {}, n: {}".format(ahex(ea), ahex(n)))
+            if n == count:
+                results.append(ea)
+
+    return results
+
+def process_notcode(l):
+    for ea in l:
+        ea = idc.prev_not_tail(ea)
+        while not IsCode_(ea):
+            ea = idc.prev_not_tail(ea)
+        try:
+            EaseCode(idc.next_not_tail(ea), forceStart=1)
+        except AdvanceFailure:
+            pass
+
+
 
 def find_checksummers_from_balances():
     # pattern = '55 48 83 ec 20 48 8d 6c 24 20 48 89 4d 10 48 89 55 18 44 89 45 20 8b 45 20 83 f8 04 0f 82 ?? ?? ?? ?? e9 ?? ?? ?? ??'
@@ -649,6 +692,7 @@ def find_checksummers_from_balances():
         "6a 10 e8 ?? ?? ?? ?? 48 8d 64 24 08 0f 1f 00 e9"
     ]
     results = []
+    balances = []
     for pattern in patterns:
         for ea in [e for e in FindInSegments(pattern, 'any')]:
             try:
@@ -672,33 +716,25 @@ def find_checksummers_from_balances():
                     #  r'retn?',
                     #  r'(.*)**',
                     r'call ({call}\w+)',
-                ])
-                if not m:
-                    m = sti.multimatch([
+                ]) or sti.multimatch([
                         #  r'(.*)**?',
                         r'push 0x10',
                         r'call ({call}\w+)',
                         #  r'lea rsp, \[rsp[+]8\]',
                         #  r'(.*)**',
-                    ])
+                ])
                 target = None
-                if m:
-                    target = m['call'][0]
-                    # print("matched: target: {}, {}".format(m['call'], "   ".join([str(x) for x in sti.as_list()])))
-
-                else:
+                if not m:
                     print("no multimatch: {}".format("   ".join([str(x) for x in sti.as_list()])))
-                    #  r = AdvanceToMnemEx(ea, term='call', inclusive=1, ease=1)
+                else:
+                    target = m['call'][0]
+                    print("find_checksummers_from_balances.multimatch: {}".format(target))
 
                 if target or r and r.insns:
-                    if not target:
-                        insns = _.pluck(r.insns, 'insn')
-                        if not (5 < len(insns) < 12):
-                            print("{:x} [find_checksummers_from_balances] len(insns): {}".format(ea, len(insns)))
-                            continue
-                        insn = insns[-1]
-                        target = string_between('', ' ', insn, greedy=1, inclusive=1, repl='')
-                    print("found check: {:x} {}".format(eax(target), target))
+                    if r.insns:
+                        print("find_checksummers_from_balances.r.insns: {}".format(r.insns[-1]))
+                        insns_target = string_between(' ', '', str(r.insns[-1]))
+                    print("found check: {} {}".format(ahex(eax(target)), ahex(eax(insns_target))))
                     if not IsCode_(target):
                         EaseCode(ea, forceStart=1)
                     if isUnconditionalJmpOrCall(eax(target)):
@@ -707,10 +743,19 @@ def find_checksummers_from_balances():
                     results.append(eax(target))
                     if not HasUserName(eax(target)):
                         LabelAddressPlus(eax(target), "ArxanCheck_{}".format(long_to_words(eax(target) - ida_ida.cvar.inf.min_ea)))
-                    # LabelAddressPlus(GetChunkStart(ea), "Balance_{}".format(long_to_words(eax(target) - ida_ida.cvar.inf.min_ea)), force=1)
+
+                    # Find start of balance
+                    while IsFlow(ea):
+                        ea = idc.prev_not_tail(ea)
+                    prev = prev_insn_match(ea, idaapi.NN_call, (idc.o_near, 0), comment='call Balance_')
+                    if prev:
+                        # if IsFunc_(ea) and IsFuncHead(GetChunkStart(ea)):
+                        LabelAddressPlus(ea, "Balance_{}".format(long_to_words(eax(target) - ida_ida.cvar.inf.min_ea)), force=1)
+                        balances.append(ea)
             except AdvanceFailure:
                 pass
-    return results
+    ida_retrace(balances, zero=1, smart=1, extend=0, noDone=1, func=1)
+    return results # , balances
 
 def find_rbp_frame():
     patterns = ["55 48 81 ec ?? ?? 00 00 48 8d 6c 24 ??",
@@ -1726,7 +1771,7 @@ class membrick_memo(object):
 
     #  ti = idaapi.tinfo_t()
     #  ti.deserialize(None, t[0], t[1])
-    def type(self, type=False):
+    def type(self, type=False, noExcept=True):
         if self.in_error():
             return self.error_return()
         if type == False:
@@ -1743,16 +1788,17 @@ class membrick_memo(object):
         r = idc.SetType(self.val(), type)
         if r is None:
             if '(' in type:
-                if idc.SetType(self.val(), type.replace('(', ' mbfunc(')):
+                r = idc.SetType(self.val(), type.replace('(', ' mbfunc('))
+                if r:
                     print("[membrick::info] set type of {:x} to {} by adding 'mbfunc' before '('".format(self.val(), type))
                 else:
-                    print("[memberick::warn] " + e)
+                    print("[membrick::warn1] " + e)
                     return self.error_return_chained(e)
             else:
-                print("[memberick::warn] " + e)
+                print("[memberick::warn2] " + e)
                 return self.error_return_chained(e)
         elif r is False:
-            print("[memberick::warn] " + e)
+            print("[memberick::warn3] " + e)
             return self.error_return_chained(e)
         return self
 

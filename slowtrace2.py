@@ -171,6 +171,7 @@ def indent(n, s, skipEmpty=True, splitWith='\n', joinWith='\n', n2plus=None, ski
     return result
 
 debug = getglobal('debug', 0)
+emu_stacks_fail = getglobal('emu_stacks_fail', type, set)
 
 def itypes(pattern):
     keys = [k for k in ida_allins.__dict__ if re.match(r'(?:NN_)?' + pattern, k, re.I)]
@@ -1079,6 +1080,7 @@ class RelocationAssemblerError(ObfuError):
 later = globals().get('later', set())
 later2 = globals().get('later2', set())
 done2 = globals().get('done2', set())
+done3 = globals().get('done3', GenericRanges())
 global_chunks = globals().get('global_chunks', defaultdict(set))
 if 'arxan_comments' not in globals():
     arxan_comments = dict()
@@ -2014,7 +2016,8 @@ def slowtrace2(ea=None,
             return False
 
         if IsSameChunk(ea, funcea):
-            return setIsRealFunc("IsSameChunk")
+            if debug: print("IsSameChunk: not is_real_func hack")
+            return False
         if idc.get_segm_name(funcea) == '.idata' and idc.get_type(funcea):
             return setIsRealFunc("0x%x: (.idata with Type) jmp <0x%x>" % (ea, target))
 
@@ -3401,7 +3404,7 @@ def slowtrace2(ea=None,
                     func = idc.get_func_name(ea)[-16:],
                     hex = bytesHex,
                     label = '',
-                    disasm = disasm,
+                    disasm = disasm or dinjasm(ea),
                     cmt = comment
                 ))
                 #  line = output(lineFmt % (
@@ -3662,7 +3665,7 @@ def slowtrace2(ea=None,
                                 _extra = None
 
                             addrs = []
-                            skipped_insn_count, callLoc, unused = _.pluck(AdvanceToMnem(new_ea, "call", addrs), 'count', 'ea')
+                            skipped_insn_count, callLoc, unused = AdvanceToMnem(new_ea, "call", addrs)
                             if skipped_insn_count > 1:
                                 if False:
                                     balanceSpd = idc.get_spd(GetChunkEnd(balanceLoc)-1) // -8
@@ -3694,12 +3697,18 @@ def slowtrace2(ea=None,
                                     Commenter(GetFuncStart(ea), "func").add("Checker: {}".format(long_to_words(mainLoc - ida_ida.cvar.inf.min_ea)))
                                     Commenter(ea).add(sprint("ArxanFunction " + str(idc.get_name(mainLoc)) + " at " + hex(mainLoc)[2:] + ", " + str(skipped_insn_count + 1) + " calls away"))
                                     _stackMut = None
-                                    if HasUserName(mainLoc) and idc.get_func_name(mainLoc).startswith('Arxan') \
-                                            and IsFuncSpdBalanced(mainLoc):
+                                    if 'emu_stacks' in globals() and mainLoc in emu_stacks and emu_stacks[mainLoc]:
+                                        printi("**FOUND IN EMU_STACKS**")
+                                        _stackMut = FindStackMutators(mainLoc)
+                                    else:
+                                        emu_stacks_fail.add(mainLoc)
+                                        printi("not found in emu_stacks {:#x}".format(mainLoc))
+                                        if HasUserName(mainLoc) and idc.get_func_name(mainLoc).startswith('Arxan') \
+                                                and IsFuncSpdBalanced(mainLoc):
 
-                                                _stackMut = FindStackMutators(mainLoc, depth=depth+1, path=[slvars.startLoc, ea]+balanceCalls)
-                                                if not len(_stackMut) > 2:
-                                                    _stackMut = None
+                                                    _stackMut = FindStackMutators(mainLoc, depth=depth+1, path=[slvars.startLoc, ea]+balanceCalls)
+                                                    if not len(_stackMut) > 2:
+                                                        _stackMut = None
                                     if not _stackMut:
                                         printi("Tracing ArxanCheck: {:x}".format(mainLoc))
                                         retrace(mainLoc, depth=depth+1, max_depth=max_depth, once=1)
@@ -3727,7 +3736,7 @@ def slowtrace2(ea=None,
                                         if balanceCallCount > len(_stackMut):
                                             printi("[Arxan] balanceCalls > return adjustments ({} > {})".format(hex(balanceCalls), len(_stackMut)))
                                         for r in _stackMut:
-                                            call_num, call_return, stkvar1, stkvar2 = r.offset, r.location, r.arg, r.align
+                                            call_num, call_return = r.offset, r.location
                                             try:
                                                 if ida_ida.cvar.inf.min_ea < call_return < ida_ida.cvar.inf.max_ea and 2 < call_num < 64:
                                                     #  consec_calls, targ, unused = CountConsecutiveCalls(call_return, isUnconditionalJmpOrCall)
@@ -3860,7 +3869,7 @@ def slowtrace2(ea=None,
                                                     sections.extend([AdvanceToMnemEx(addr) for addr in _locations])
                                                     printi("[Sections] {}".format(pfh(_.pluck(sections, 'ea'))))
                                                     if debug: setglobal('_sections', sections)
-                                                    sizes = [getattr(x, 'byte_count') for x in _sections]
+                                                    sizes = [getattr(x, 'byte_count') for x in sections]
                                                     printi("[Target Sizes] {}".format(pfh(sizes)))
                                                     #    r2 = [
                                                     #            (addr, nassemble(addr, "\n".join(AdvanceToMnemEx(addr).insns)))
@@ -3872,9 +3881,9 @@ def slowtrace2(ea=None,
                                                     #            'location')]
                                                     #    sizes = [len(x[1]) for x in r2]
 
-                                                    _filtered = _.filter(_sections, lambda v, *a: v.insns)
+                                                    _filtered = _.filter(sections, lambda v, *a: v.insns)
                                                     if debug: setglobal('_sections', sections)
-                                                    sizes = [getattr(x, 'byte_count') for x in _sections]
+                                                    sizes = [getattr(x, 'byte_count') for x in sections]
                                                     printi("[Target Sizes] {}".format(pfh(sizes)))
                                                     if len(_filtered) == 1:
                                                         printi("[ArxanQuickFix] {:x} -> {:x}".format(ea, _filtered[0].ea))
@@ -4210,13 +4219,13 @@ def slowtrace2(ea=None,
                 if _sktarget != _target and _sktarget != ea:
                     if applySkipJumps:
                         SkipJumps(ea, apply=1)
-                    _target = SkipJumps(_target)
-                    if IsValidEA(_target) and idc.get_segm_name(_target) == '.text':
-                        possible_later_targets = SkipJumps(_target, returnJumps=True, returnTarget=True)
-                        if not _.any(possible_later_targets, lambda v, *a: v in later2):
-                            later2.add(_target)
-                            later.add(_target)
-                            printi("later2: adding {}".format(diida(ea)))
+
+                if IsValidEA(_target) and idc.get_segm_name(_target) == '.text':
+                    possible_later_targets = SkipJumps(_target, returnJumps=True, returnTargets=True)
+                    if not _.any(possible_later_targets, lambda v, *a: v in later2):
+                        later2.add(_target)
+                        later.add(_target)
+                        printi("later2: adding {}".format(diida(ea)))
 
             if applySkipJumps and isAnyJmpOrCall(ea):
                 SkipJumps(ea, apply=1, skipNops=1)
@@ -4236,7 +4245,7 @@ def slowtrace2(ea=None,
 
                     # if target not in later2 and not IsUnknown(target) and idc.get_func_attr(GetJumpTarget(ea), idc.FUNCATTR_FLAGS) & FUNC_LIB == 0:
                     
-                    possible_later_targets = SkipJumps(target, returnJumps=True, returnTarget=True)
+                    possible_later_targets = SkipJumps(target, returnJumps=True, returnTargets=True)
                     if not _.any(possible_later_targets, lambda v, *a: v in later2):
                         later2.add(target)
                         later.add(target)

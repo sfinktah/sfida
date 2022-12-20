@@ -1,5 +1,13 @@
 def FindStackMutators(ea=None, skipRetrace=False, path=None, **kwargs):
     ea = eax(ea)
+    if 'emu_stacks' in globals():
+        if ea in emu_stacks and emu_stacks[ea]:
+            results = []
+            for i, r in enumerate(emu_stacks[ea]):
+                # used by slowtrace2: r.offset, r.location
+                results.append(SimpleAttrDict({ 'offset': i + 0x20, 'location': r}))
+            return results
+
     b = asBytes(GetFuncCodeNoJunk(ea))
     i = GetFuncCodeIndexNoJunk(ea)
 
@@ -124,6 +132,7 @@ def FindStackMutators(ea=None, skipRetrace=False, path=None, **kwargs):
                 ForceFunction(location)
                 _insn = 'retn'
             _vals = [align, idc.get_qword(offset), location, arg, IdaGetMnem(location), _insn, _ori_location]
+            # used by slowtrace2: r.offset, r.location
             row = _.zipObject(['align', 'offset', 'location', 'arg', 'mnem', 'insn', 'ori_location'], _vals)
             results.append( row )
         #  c.addRow(row)

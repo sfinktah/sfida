@@ -12,6 +12,7 @@ import re, random
 import functools
 import random
 import time
+import types
 from threading import Timer
 from collections import Sequence
 import six
@@ -70,6 +71,47 @@ def _oget(obj, key, default=None, call=False):
 
 def _pluck(obj, key):
     return [_oget(x, key, call=1) for x in obj]
+
+def _uniq(seq, iteratee=None):
+    """
+    fast order-preserving unique iterable processor
+    https://www.peterbe.com/plog/uniqifiers-benchmark
+    """
+    # order preserving
+    if iteratee is None:
+         def iteratee(x): return x
+    seen = {}
+    result = []
+    for item in seq:
+         marker = iteratee(item)
+         # in old Python versions:
+         # if seen.has_key(marker)
+         # but in new ones:
+         if marker in seen: continue
+         seen[marker] = 1
+         result.append(item)
+    return result
+
+def _uniq_mutate(seq, iteratee=None):
+    """
+    fast order-preserving unique iterable processor
+    https://www.peterbe.com/plog/uniqifiers-benchmark
+    (adapted for in-place uniqing by me)
+    """
+    # order preserving
+    if iteratee is None:
+         def iteratee(x): return x
+    seen = {}
+    remove = []
+    for item in seq:
+         marker = iteratee(item)
+         # in old Python versions:
+         # if seen.has_key(marker)
+         # but in new ones:
+         if marker in seen: remove.append(item)
+         seen[marker] = 1
+    for item in remove:
+        seq.remove(item)
 
 def _shuffleSize(array, size=None):
     """
@@ -236,6 +278,9 @@ def _isIterable(o):
 def _isIterableWithLength(o):
     return hasattr(o, '__iter__') and hasattr(o, '__len__')
 
+def _isIterator(o):
+    return hasattr(o, '__next__')
+
 def _isDictlike(o):
     return hasattr(o, 'items') and hasattr(o, 'values') and hasattr(o, 'keys') and hasattr(o, 'get')
 
@@ -245,6 +290,10 @@ def _isListlike(o):
 def _values(o):
     """ Retrieve the values of an object's properties.
     """
+    if isinstance(o, types.GeneratorType):
+        return list(o)
+    #  if _isIterator(o):
+        #  return [x for x in o]
     if _isIterable(o) and _isDictlike(o):
         return o.values()
     return _asList(o)
@@ -1213,11 +1262,11 @@ class underscore(object):
             ns.output = []
 
         def by(value, *args):
-            if _.isList(value) or _.isTuple(value):
+            if _isIterable(value):
                 if shallow:
-                    ns.output = ns.output + value
+                    ns.output = ns.output + _values(value)
                 else:
-                    self._flatten(value, shallow, ns.output)
+                    self._flatten(_values(value), shallow, ns.output)
             else:
                 ns.output.append(value)
 
@@ -1246,34 +1295,74 @@ class underscore(object):
 
         return self._wrap([pass_list, fail_list])
 
-    def uniq(self, isSorted=False, iterator=None, val=None):
+    def uniq(self, isSorted=False, iterator=None):
         """
         Produce a duplicate-free version of the array. If the array has already
         been sorted, you have the option of using a faster algorithm.
         Aliased as `unique`.
         """
-        ns = self.Namespace()
-        ns.results = []
-        ns.array = self.obj
-        initial = self.obj
-        if iterator is not None:
-            initial = _(ns.array).map(iterator)
+        #return self._wrap(_uniq(self.obj))
+        if iterator is None:
+             def iterator(x, *a): return x
 
-        def by(memo, value, index):
-            if ((_.last(memo, 1) != value or not len(memo)) if isSorted \
-                    else not _.include(memo, value)):
-                memo.append(value)
-                ns.results.append(ns.array[index])
+        try:
+            seen = {}
+            result = []
+            for item in self.obj:
+                 marker = iterator(item)
+                 # in old Python versions:
+                 # if seen.has_key(marker)
+                 # but in new ones:
+                 if marker in seen: continue
+                 seen[marker] = 1
+                 result.append(item)
+            return self._wrap(result)
+        except TypeError: # unhashable type: 'list'
+            ns = self.Namespace()
+            ns.results = []
+            ns.array = self.obj
+            initial = self.obj
+            if iterator is not None:
+                initial = _(ns.array).map(iterator)
 
-            return memo
+            def by(memo, value, index):
+                if ((_.last(memo, 1) != value or not len(memo)) if isSorted \
+                        else not _.include(memo, value)):
+                    memo.append(value)
+                    ns.results.append(ns.array[index])
 
-        ret = _.reduce(initial, by)
-        return self._wrap(ret)
+                return memo
+
+            ret = _.reduce(initial, by)
+            return self._wrap(ret)
+
+
         # seen = set()
         # seen_add = seen.add
         # ret = [x for x in seq if x not in seen and not seen_add(x)]
         # return self._wrap(ret)
     unique = uniq
+
+    def uniq_mutate(self, iterator=None):
+        """
+        Produce a duplicate-free version of the array (inplace). 
+        Note, due to way .remove works in python, the earlier duplicates 
+        will be removed, not the later ones.
+        """
+        #return self._wrap(_uniq(self.obj))
+        if iterator is None:
+             def iterator(x): return x
+        seen = {}
+        result = []
+        for item in self.obj:
+             marker = iterator(item)
+             # in old Python versions:
+             # if seen.has_key(marker)
+             # but in new ones:
+             if marker in seen: continue
+             seen[marker] = 1
+             result.append(item)
+        return self._wrap(result)
 
     def sum(self, iterator=None, initial=0):
         """

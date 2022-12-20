@@ -6,7 +6,7 @@ from exectools import execfile, make_refresh
 refresh_bitwise = make_refresh(os.path.abspath(__file__))
 refresh = make_refresh(os.path.abspath(__file__))
 
-def listAsHex(l):
+def _listAsHex(l):
     try:
         return " ".join(map(lambda x: ("%02x" % x), _.flatten(list(l))))
     except TypeError as e:
@@ -112,6 +112,42 @@ class BitwiseMask(object):
         bit = 7 - (position % 8)
         return self._set[byte] & (1 << bit) != 0
 
+    def asBitset(self):
+        result = []
+        for position in range(len(self._set) * 8):
+            result.append(self.bitget(position))
+        return result
+
+    def __getitem__(self, key):
+        """get specific bit(s)"""
+
+        # https://stackoverflow.com/questions/2936863/implementing-slicing-in-getitem
+        if isinstance(key, slice):
+            # Get the start, stop, and step from the slice
+            return [self.bitget(i) for i in range(*key.indices(len(self._set)*8))]
+
+        return self.bitget(key)
+
+    def __setitem__(self, key, value):
+        """set specific bit(s)"""
+
+        # https://stackoverflow.com/questions/2936863/implementing-slicing-in-getitem
+        if isinstance(key, slice):
+            if isinstance(value, list):
+                for i in range(*key.indices(len(self._set)*8)):
+                    self.bitset(i, value[i]) 
+            elif isinstance(value, int):
+                lr = len(range(*key.indices(len(self._set)*8)))
+                # pad value, incase it isn't large enough
+                value = [False] * lr + [True if x == '1' else False for x in bin(value)[2:]]
+                value = value[-lr:]
+                
+                for i in range(*key.indices(len(self._set)*8)):
+                    self.bitset(i, value[i]) 
+            return
+
+        self.bitset(key, value)
+
     def __eq__(self, other):
         return isinstance(other, type(self)) and self.tri == other.tri
     
@@ -153,15 +189,26 @@ class BitwiseMask(object):
         # _.indexOf([bm1.match_addresses(ea) for ea in range(ms(), me())], True) + ms()
 
     def match(self, b):
-        value = self.value
-        mask = self.mask
-        if len(b) < len(self):
-            if obfu_debug:
-                print("len(b)<len(self)")
-            return False
-        for i in range(len(self)):
-            if not b[i] & mask[i] == value[i]:
+        if isinstance(b, (bytes, bytearray, list)):
+            value = self.value
+            mask = self.mask
+            if len(b) < len(self):
+                if obfu_debug:
+                    print("len(b)<len(self)")
                 return False
+            for i in range(len(self)):
+                if not b[i] & mask[i] == value[i]:
+                    return False
+
+        elif type(b) == type(self):
+            # TODO: perform check similar to above before doing eval
+            if self.eval:
+                for stmt in self.eval:
+                    res = eval(stmt, globals(), {'x': self, 'y': b})
+                    if debug: printi("eval: {} -> {}".format(stmt, res))
+                    if not res:
+                        return False
+
         return True
 
     def dword(self, places=4):
@@ -257,7 +304,7 @@ class BitwiseMask(object):
             
             
             for lhs, rhs, d in zip(self._store, other._store, _diff):
-                print("{:6} {:32} {:32} {:32}".format(rhs == r.sub(lhs), listAsHex(lhs), listAsHex(r.sub(lhs)), listAsHex(rhs)))
+                print("{:6} {:32} {:32} {:32}".format(rhs == r.sub(lhs), _listAsHex(lhs), _listAsHex(r.sub(lhs)), _listAsHex(rhs)))
         return r
 
 
@@ -607,7 +654,7 @@ if False and __name__ == "__main__":
 
                 results = []
                 for l, r in zip(s1, s2):
-                    results.append("    {} == {}   {} == {}".format('; '.join(diInsnsPretty(l)), '; '.join(diInsnsPretty(r)), listAsHex(l), listAsHex(r)))
+                    results.append("    {} == {}   {} == {}".format('; '.join(diInsnsPretty(l)), '; '.join(diInsnsPretty(r)), _listAsHex(l), _listAsHex(r)))
                 print("\n".join(_.uniq(results)))
                 break
 
@@ -622,7 +669,7 @@ if False and __name__ == "__main__":
                 if r == 'rsp':
                     continue
     
-                # search      = hex_pattern([re.sub(r' de ad ff 08', ' f8 ff ff ff', listAsHex(kassemble(search_asm)))])
+                # search      = hex_pattern([re.sub(r' de ad ff 08', ' f8 ff ff ff', _listAsHex(kassemble(search_asm)))])
                 search_asm  = "lea rsp, [rsp-8]; mov [rsp], {0}".format(r)
                 search      = nassemble(search_asm)
                 bm.add_list(search)

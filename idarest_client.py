@@ -202,9 +202,9 @@ class IdaRestClient(IdaRestConfiguration, object):
             LabelAddressPlus(EA(), p[row][1])
 
     def GetTypes2(self, types='Hash', ask=False, flags=None):
-        # names = _.flatten(irc.get_json('names', 'http://192.168.1.123:2012/ida/api/v1.0/').json()['data'], 1)
-        # pph([(x, ean(x), y) for x, y in names if ean(x) != y and not re_match_array(r'^(NATIVE|The|Arxan|Balance|\w+Bunny|.*stack_align|.*Concurrency)', [ean(x), y])])
+        # names = _.flatten(irc.get_json('names', 'http://192.168.1.123:2007/ida/api/v1.0/').json()['data'], 1)
         # [LabelAddressPlus(x, y) for x, y in names if ean(x) != y and not re_match_array(r'^(NATIVE|The|Arxan|Balance|\w+Bunny|.*stack_align|.*Concurrency)', [ean(x), y])];
+        # pph([(x, ean(x), y) for x, y in names if ean(x) != y and not re_match_array(r'^(NATIVE|The|Arxan|Balance|\w+Bunny|.*stack_align|.*Concurrency)', [ean(x), y])])
         if flags is not None:
             results = self.get_json('get_type', type=types, flags=flags)
         else:

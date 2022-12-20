@@ -554,6 +554,12 @@ def get_tinfo_by_parse(name):
     tinfo.deserialize(idaapi.cvar.idati, tp, fld, None)
     return tinfo
 
+def get_tinfo_magic(name):
+    tif = get_tinfo_by_parse(name + '*')
+    if not tif:
+        return
+    return tif.get_pointed_object()
+
 def get_tinfo_brute(name):
     idati = ida_typeinf.get_idati()
     ti = ida_typeinf.tinfo_t()
@@ -587,6 +593,19 @@ def get_tinfo_elegant(name):
     #  except TypeError:
         #  return None
 
+def get_tinfo_settype(name, ea):
+    ea = eax(ea)
+    if idc.SetType(ea, name):
+        return ida_typeinf.idc_get_type_raw(ea)
+    return None
+
+def get_tinfo_test(name):
+    f = [get_tinfo_by_parse, get_tinfo_elegant, get_tinfo_brute, get_tinfo_mega, get_tinfo_lame]
+    results = {}
+    for fn in f:
+        results[fn.__name__] = fn(name)
+    return results
+
 def get_tinfo_mega(name):
     r = idc.parse_decl("""
         struct membrick_decl_test {{
@@ -605,7 +624,7 @@ def get_tinfo_mega(name):
     tif = tif[0]
     typename = tif.get_type_name()
     if not typename:
-        print("[debug] not a 'real' type")
+        print("[get_intof_mega [debug]] not a 'real' type")
     typename = str(tif)
     if typename == name:
         return tif

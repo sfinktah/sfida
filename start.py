@@ -97,18 +97,19 @@ refresh = make_refresh(os.path.abspath(__file__))
 debug = 0
 
 filenames = [
+            "static_vars.py",
             "idc695.py",
             "attrdict1.py",
             "superglobals.py",
             "circularlist.py",
             "bitwise.py",
+            "perftimer.py",
             "slowtrace_helpers.py",
             "sfida/sf_is_flags.py",
             "iced.py",
             "di.py",
             "nasm.py",
             "sfida/sf_common.py",
-            "perftimer.py",
             "braceexpand.py",
             "JsonStoredList.py",
             "keypatch.py",

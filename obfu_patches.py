@@ -1409,6 +1409,31 @@ def obfu_append_patches():
     #  48 81 ec 08 00 00 00                 sub rsp, 8
     #  e8 ?? ?? ?? ??                       call ArxanMutator_7
 
+    obfu.append(
+        """
+       (52                                   push rdx)
+        6a 10                                push 0x10          **   nop
+        48 f7 c4 0f 00 00 00                 test rsp, 0xf      *    nop
+        0f 85 b7 65 0e 00                    jnz loc_143BCCA72  *    nop
+        6a 18                                push 0x18          **   nop
+        48 83 ec 08                          sub rsp, 8
+        """, 
+        "short stack-alignment obfu",
+            hex_pattern([
+                        "6a 10",                # 2  push 0x10
+                        "48 f7 c4 0f 00 00 00", # 7  test rsp, 0xf
+                        "0f 85 ?? ?? ?? ??",    # 6  jnz label1
+                        "6a 18",                # 2  push 0x18
+                        "48 83 ec 08",          # 4  sub rsp, 8
+            ]),
+            safe=1,
+            resume=1,
+            exact=1,
+            repl = _.flatten([MakeNops(x) for x in [2, 7, 6, 2, 4]], 1)
+
+            #  group=bm,
+            #  reflow=1
+    )
 
 
     if False:
@@ -1473,14 +1498,15 @@ def obfu_append_patches():
             safe=1, reflow=1
     )
 
-    obfu.append(
-            brief    = "jmp locret",
-            search   = PatternGroup(nassemble("retn"), nassemble("retn 0")),
-            replFunc = lambda _search, replace, original, ea, addressList, patternComment, addressListWithNops, **kwargs: \
-                    [] if kwargs['addressListFull'][0] == ea else ["retn"],
-            safe=1, reflow=1
+    if False:
+        obfu.append(
+                brief    = "jmp locret",
+                search   = PatternGroup(nassemble("retn"), nassemble("retn 0")),
+                replFunc = lambda _search, replace, original, ea, addressList, patternComment, addressListWithNops, **kwargs: \
+                        [] if kwargs['addressListFull'][0] == ea else ["retn"],
+                safe=1, reflow=1
 
-    )
+        )
 
 
 
@@ -1733,31 +1759,37 @@ def obfu_append_patches():
         # if obfu_debug: pp([binlist(bm._set), binlist(bm._clear), bm._size, bm._reserved, binlist(bm.value), binlist(bm.mask)])
 
     if "bitwise_mov32,64":
-        searches = [
-            "50&f8 8b 04&c7 24 58&f8"
-        ]
+        search = "50&f8 8b 04&c7 24 58&f8"  # 50~57 8b 04~3c 24 58~5f
+        search_eval = "y[5:8]==y[4*8+5:4*8+8]r"
+
+        #               01234567 89
         replace_bits = "10001001 11......"
-        replace_eval = \
-            "x.bitset(10,y.bitget(5))r " + \
-            "x.bitset(11,y.bitget(6))r " + \
-            "x.bitset(12,y.bitget(7))r " + \
+        replace_eval =                      \
+            "x.bitset(10,y.bitget(5))r " +  \
+            "x.bitset(11,y.bitget(6))r " +  \
+            "x.bitset(12,y.bitget(7))r " +  \
             "x.bitset(13,y.bitget(18))r " + \
             "x.bitset(14,y.bitget(19))r " + \
             "x.bitset(15,y.bitget(20))r"
 
+        # XXX: untested
+        sample_replace_eval =               \
+                "x[0:8]=0x90r "             \
+                "x[8:10]=0b11r "            \
+                "x[10:16]=y[5:8]+y[18:21]r"
+
         replace = BitwiseMask(replace_bits, replace_eval)
         #  replace.add(replace_eval)
-        for i, search in enumerate(searches):
-            obfu.append("", "",
-                    BitwiseMask(search),
-                    replace,
-                    safe=1,
-                    resume=1,
-            )
+        obfu.append("", "bitwise_mov32",
+                BitwiseMask(search, search_eval),
+                replace,
+                safe=1,
+                resume=1,
+        )
 
-        searches = [
-            "41 50&f8 44 8b 04&c7 24 41 58&f8"
-        ]
+        search = "41 50&f8 44 8b 04&c7 24 41 58&f8"
+        search_eval = "y[1*8+5:1*8+8]==y[7*8+5:7*8+8]r"
+
         replace_bits = "01000101 10001001 11......"
         replace_eval = \
             "x.bitset(18,y.bitget(13))r " + \
@@ -1769,13 +1801,13 @@ def obfu_append_patches():
 
         replace = BitwiseMask(replace_bits)
         replace.add(replace_eval)
-        for i, search in enumerate(searches):
-            obfu.append("", "",
-                    BitwiseMask(search),
-                    replace,
-                    safe=1,
-                    resume=1,
-            )
+        obfu.append("", "bitwise_mov64",
+                BitwiseMask(search, search_eval),
+                replace,
+                safe=1,
+                resume=1,
+                exact=1,
+        )
     else:
 
         with BitwiseMask() as bm:

@@ -15,6 +15,7 @@ refresh_obfu_helpers = make_refresh(os.path.abspath(__file__))
 refresh = make_refresh(os.path.abspath(__file__))
 
 
+use_commenter = False
 def GetSize(ea):
     """
     Get instruction size
@@ -368,10 +369,9 @@ def PatchBytes(ea, patch=None, comment=None, code=False, put=False):
         #  if next_code_head > pos:
             #  idaapi.patch_bytes(pos, byte_type(bytearray([0x90] * (next_code_head - pos))))
 #  
-    if debug: print("Plan({:#x}, {:#x})".format(ea, ea + length))
     if code or was_code: EaseCode(ea, ea + length, noFlow=1, forceStart=1, noExcept=1)
     if comment:
-        Commenter(ea, 'line').add(comment)
+        if use_commenter: Commenter(ea, 'line').add(comment)
 
     Plan(ea, ea + length, name='PatchNops')
         # EaseCode(ea, next_code_head)
@@ -477,7 +477,7 @@ def PatchNops(ea, count = None, comment="PatchNops", put=False, nop=0x90, traili
             PatchBytes(ea + count - 1, 'c3', code=1, put=put)
             end = EaseCode(ea)
             for addr in idautils.Heads(ea, end):
-                Commenter(addr, 'line').add('{}'.format(comment))
+                if use_commenter: Commenter(addr, 'line').add('{}'.format(comment))
         else:
             PatchBytes(ea, MakeNops(count), code=1, comment=comment, put=put)
     else:
@@ -2048,7 +2048,7 @@ def truncateThunks():
                 MyMakeUnknown(ea, 1, 1)
                 Wait()
                 MakeCodeAndWait(ea)
-                Commenter(ea).add("was sub")
+                if use_commenter: Commenter(ea).add("was sub")
         #  print("0x%0x: %s (%i%%)" % (ea, fnName, percent))
 
 

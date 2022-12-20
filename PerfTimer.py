@@ -28,7 +28,7 @@ def perf_timed(*args, **kwargs):
             prefix = ".".join(_.initial(os.path.basename(stack[1].filename).split('.')))
         name = "{}.{}".format(prefix, func.__name__)
         setglobal("stack", inspect.stack())
-        print("[perftimer] binding as {}".format(name))
+        # print("[perftimer] binding as {}".format(name))
         return PerfTimer.bind(func, name)
     return decorate
 
@@ -79,6 +79,9 @@ class PerfTimer(object):
         self.parent = self.depth[-1] if self.depth else None
 
     def start(self):
+        # dprint("[start] self.name")
+        if debug: PerfTimer._name = self.name
+        
         self.start_times.append(self.timer())
         return self
 

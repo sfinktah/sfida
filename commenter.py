@@ -119,7 +119,13 @@ class Commenter(object):
 
     def fnGet(self, ea, repeatable = 0):
         for getter in self.fnGetters:
-            self.cm[str(getter)] = getter(ea, repeatable)
+            try:
+                self.cm[str(getter)] = getter(ea, repeatable)
+            except UnicodeDecodeError:
+                # dprint("[fnGet] getter, ea, repeatable")
+                print("[fnGet] getter:{}, ea:{}, repeatable:{}".format(getter, ahex(ea), repeatable))
+                raise
+                    
             if not self.cm[str(getter)]:
                 self.cm[str(getter)] = []
             else: self.cm[str(getter)] = self.cm[str(getter)].split("\n")

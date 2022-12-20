@@ -19,6 +19,7 @@ _file = os.path.abspath(__file__)
 abort_file = os.path.dirname(os.path.abspath(__file__)) + '/.abort'
 noExists = 1
 zmlog = None
+
 def refresh():
     execfile(_file)
 
@@ -34,6 +35,19 @@ def check(ea, comment):
 def check_re(ea, comment):
     c = Commenter(ea, 'func')
     return [c for c in c.matches(comment)]
+
+class ZmLog:
+    """
+    Logging shim
+    """
+
+    def __init__(self):
+        pass
+
+    def write(self, s, *args):
+        print("zmlog: {}".format(str(s).rstrip()))
+        if args:
+            print("zmlog-args: {}".format(args))
 
 def OurLabelAddress(ea, name):
     global zmlog
@@ -130,7 +144,9 @@ def ZmqLabelPattern(j, name, pattern, address, decl = ''):
                 if not OurSetType(p, decl):
                     if idc.get_type(p) != decl:
                         print("SetType(0x{:x}, '{}') failed".format(p, decl))
-                        needed_types = get_decl_args(decl)
+                        # XXX: changing this from needed_type = get_decl_args(decl) 
+                        #      will probably cause errors when get_decl_args returns a non-list
+                        needed_types.extend(get_decl_args(decl))
                     # dprint("[debug] needed_types")
                     print("[debug] needed_types:{}".format(needed_types))
                     
@@ -177,9 +193,16 @@ def byteify(input):
     else:
         return input
 
+def mb_perform(perform_log, m, method, arg):
+    global zmlog
+
+    m = getattr(m, method)(arg)
+    perform_log.append((not m.in_error(), m.ea, method, arg))
+    return m
+
 def zmserver():
     global context, socket, zmlog
-    if hasattr(globals(), 'context') and not context.closed:
+    if hasattr(globals(), 'context') and not globals()['context'].closed:
         context.destroy()
     zmq.Context().destroy()
     #  if socket:
@@ -193,128 +216,151 @@ def zmserver():
     socket.setsockopt(zmq.LINGER, 1000)
     poller = zmq.Poller()
     poller.register(socket, zmq.POLLIN) # POLLIN for recv, POLLOUT for send
+    cached_path_funcs = set()
 
-    with file_put_context('zmq.log', 'a') as _zmlog:
-        zmlog = _zmlog
-        while True:
-            if os.path.exists(abort_file):
-                print("Aborted due to presence of {}".format(abort_file))
-                raise Exception("Aborted")
-            try:
-                evts = poller.poll(1000)
-                if len(evts):
-                    message = socket.recv()
-                    # print("Received request: %s" % message)
+    # with file_put_context('zmq.log', 'a') as _zmlog:
+    zmlog = ZmLog()
+    while True:
+        if os.path.exists(abort_file):
+            print("Aborted due to presence of {}".format(abort_file))
+            raise Exception("Aborted")
+        try:
+            evts = poller.poll(1000)
+            if len(evts):
+                message = socket.recv()
+                # print("Received request: %s" % message)
 
-                    request = byteify(json.loads(message.decode('ascii')))
+                request = byteify(json.loads(message.decode('ascii')))
 
-                    if request['cmd'] == 'term':
-                        socket.send(asBytes('{"response":"ok"}'), zmq.NOBLOCK)
-                        context.destroy()
-                        return
+                if request['cmd'] == 'term':
+                    socket.send(asBytes('{"response":"ok"}'), zmq.NOBLOCK)
+                    context.destroy()
+                    return
 
-                    if request['cmd'] == 'ping':
-                        socket.send(asBytes('{"response":"pong"}'), zmq.NOBLOCK)
-                        continue
+                if request['cmd'] == 'ping':
+                    socket.send(asBytes('{"response":"pong"}'), zmq.NOBLOCK)
+                    continue
 
-                    failed_types = []
-                    if request['cmd'] == "aob":
-                        if type(request['decl']) is str:
-                            pass
-                        else:
-                            request['decl'] = ''
-                        if 'types' in request and request['types']:
-                            print("\n***TYPES***\n{}\n".format(request['types']))
-                            _errors = idc.parse_decls(request['types'], idc.PT_SILENT)
-                            if _errors:
-                                print("*** ERROR PARSING {}".format(request['types']))
-                        response = ZmqLabelPattern(request, request['description'], request['pattern'], request['address'], request['decl'])
-                        """
-                        {
-                            "globals": [{
-                                "ea": 5393363700,
-                                "name": "DeleteFileW",
-                                "path": [
-                                    ["offset", 97],
-                                    ["rip", 4],
-                                    ["name", "DeleteFileW"],
-                                    ["type", "BOOL __stdcall(LPCWSTR lpFileName)"]
-                                ],
-                                "sub": false,
-                                "type": "BOOL __stdcall(LPCWSTR lpFileName)"
-                            }],
-                            "types": ""
-                        }
-                        """
-
-                        if 'globals' in response and response['globals']:
-                            if isinstance(response['globals'], list):
-                                for item in response['globals']:
-                                    if item['type']:
-                                        failed_types.extend(get_decl_args(item['type']))
-
-                                    # offset, rip, name, _type
-                                    ea, name, path, sub, _type = item.values()
-                                    ea = response['address']
-                                    # ea = get_ea_by_any(name)
-                                    if IsValidEA(ea):
-                                        if not IsFuncHead(ea):
-                                            idc.add_func(ea)
-                                        #  print("skipping sub {}".format(name))
-                                        #  continue
-                                    if response["matches"] == 1:
-                                        print("{:x}: {:32} {:x}".format(response["address"], name, ea))
-                                        m = mb(response["address"])
-                                        go_sic = False
-                                        for step in item["path"]:
-                                            method, arg = step
-                                            # print("mb(): {}".format(m))
-                                            if arg or isinstance(arg, integer_types):
-                                                # print("mb: {} {}".format(method, arg))
-                                                if (method in ('name', 'type')):
-                                                    if not m.value():
-                                                        break
-                                                    if item["sub"]: 
-                                                        if not IsFuncHead(m.value()) or not HasUserName(m.value()) or go_sic:
-                                                            go_sic = True
-                                                        idc.add_func(m.value()) or ForceFunction(m.value())
-                                                        m = getattr(m, method)(arg)
-                                                    else:
-                                                        if not HasUserName(m.value()) or go_sic:
-                                                            go_sic = True
-
-                                                    if m.value():
-                                                        if method == 'name':
-                                                            zmlog.write("mem({:#x}).name('{}') # old\n".format(m.ea, m.name()))
-                                                            m = getattr(m, method)(arg)
-                                                            zmlog.write("mem({}).name('{}') # new\n".format(ahex(m.ea), m.name()))
-                                                        elif method == 'type':
-                                                            zmlog.write("mem({:#x}).type('{}') # old\n".format(m.ea, str(m.type())))
-                                                            m = getattr(m, method)(arg)
-                                                            zmlog.write("mem({}).type('{}') # new\n".format(ahex(m.ea), str(m.type())))
-                                                else:
-                                                    m = getattr(m, method)(arg)
-
-                        if failed_types:
-                            if 'request_type' in response and isinstance(response['request_type'], list):
-                                response['request_type'].extend(remove_known_types(failed_types))
-                            else:
-                                response['request_type'] = remove_known_types(failed_types)
-                            print("\n***\nREQUEST_TYPE_SENT: {}\n".format(response['request_type']))
-
+                failed_types = []
+                if request['cmd'] == "aob":
+                    if type(request['decl']) is str:
+                        pass
                     else:
-                        response['response'] = "unknown"
+                        request['decl'] = ''
+                    if 'types' in request and request['types']:
+                        print("\n***TYPES***\n{}\n".format(request['types']))
+                        _errors = idc.parse_decls(request['types'], idc.PT_SILENT)
+                        if _errors:
+                            print("*** ERROR PARSING {}".format(request['types']))
 
-                    #  if ('decl' in request and request['decl'] != ''):
-                    #  print("\nSending response: \n%s\n" % response)
-                    socket.send(asBytes(json.dumps(response)), zmq.NOBLOCK)
-            except KeyboardInterrupt:
-                print("W: interrupt received, stopping")
-                break
-            except:
-                traceback.print_exc()
-                socket.send(b"Exception", zmq.NOBLOCK)
-                break
+                    response = ZmqLabelPattern(request, request['description'], request['pattern'], request['address'], request['decl'])
+                    """
+                    {
+                        "globals": [{
+                            "ea": 5393363700,
+                            "name": "DeleteFileW",
+                            "path": [
+                                ["offset", 97],
+                                ["rip", 4],
+                                ["name", "DeleteFileW"],
+                                ["type", "BOOL __stdcall(LPCWSTR lpFileName)"]
+                            ],
+                            "sub": false,
+                            "type": "BOOL __stdcall(LPCWSTR lpFileName)"
+                        }],
+                        "types": ""
+                    }
+                    """
+
+                    if 'globals' in response and response['globals']:
+                        if isinstance(response['globals'], list):
+                            for item in response['globals']:
+                                #  if item['type']:
+                                    #  # dprint("[zmserver] item['type']")
+                                    #  print("[zmserver] item['type']: {}".format(item['type']))
+                                    #  print("[zmserver json] {}".format(json.dumps(response, indent=4)))
+                                    #  
+                                    #  failed_types.extend(get_decl_args(item['type']))
+
+                                # offset, rip, name, _type
+                                ea, name, path, sub, _type = item.values()
+                                ea = response['address']
+                                # ea = get_ea_by_any(name)
+                                if IsValidEA(ea):
+                                    if not IsFuncHead(ea):
+                                        idc.add_func(ea)
+                                    #  print("skipping sub {}".format(name))
+                                    #  continue
+                                if response["matches"] == 1:
+                                    print("{:x}: {:32} {:x}".format(response["address"], name, ea))
+                                    m = mb(response["address"])
+                                    perform_log = []
+                                    new_func = False
+                                    _name = None
+                                    for step in item["path"]:
+                                        if m.in_error():
+                                            print("m.in_error: {}".format(m.errors))
+                                            break
+                                        if not IsValidEA(m.ea):
+                                            print("m.ea is invalid: {}".format(ahex(m.ea)))
+                                            break
+                                        method, arg = step
+                                        # print("mb(): {}".format(m))
+                                        if arg or isinstance(arg, integer_types):
+                                            # print("mb: {} {}".format(method, arg))
+                                            if method in ('name', 'type'):
+                                                if method in ('name',):
+                                                    if not IsValidEA(m.ea):
+                                                        break
+                                                    if arg in cached_path_funcs:
+                                                        print("skipping cached_path_funcs: {}".format(arg))
+                                                        break
+
+                                                    if item["sub"]: 
+                                                        if not IsFuncHead(m.value()):
+                                                            idc.add_func(m.value()) or ForceFunction(m.value())
+                                                            new_func = True
+
+                                                    if not HasUserName(m.value()):
+                                                        new_func = True
+
+                                                if m.value():
+                                                    if method == 'name':
+                                                        _name = arg
+                                                        zmlog.write("mem({:#x}).name('{}') # old\n".format(m.ea, m.name()))
+                                                        m = mb_perform(perform_log, m, method, arg)
+                                                        zmlog.write("mem({}).name('{}') # new\n".format(ahex(m.ea), m.name()))
+                                                    elif method == 'type':
+                                                        zmlog.write("mem({:#x}).type('{}') # old\n".format(m.ea, str(m.type())))
+                                                        m = mb_perform(perform_log, m, method, arg)
+                                                        if m.in_error():
+                                                            failed_types.extend(get_decl_args(arg))
+                                                        else:
+                                                            cached_path_funcs.add(_name)
+                                                        zmlog.write("mem({}).type('{}') # new\n".format(ahex(m.ea), str(m.type())))
+                                            else:
+                                                m = mb_perform(perform_log, m, method, arg)
+
+                    if failed_types:
+                        if 'request_type' in response and isinstance(response['request_type'], list):
+                            response['request_type'].extend(remove_known_types(failed_types))
+                        else:
+                            response['request_type'] = remove_known_types(failed_types)
+                        print("\n***\nREQUEST_TYPE_SENT: {}\n".format(response['request_type']))
+
+                else:
+                    response['response'] = "unknown"
+
+                #  if ('decl' in request and request['decl'] != ''):
+                #  print("\nSending response: \n%s\n" % response)
+                socket.send(asBytes(json.dumps(response)), zmq.NOBLOCK)
+        except KeyboardInterrupt:
+            print("W: interrupt received, stopping")
+            break
+        except:
+            traceback.print_exc()
+            socket.send(b"Exception", zmq.NOBLOCK)
+            break
 
     context.destroy(linger=1)
 
@@ -328,52 +374,5 @@ def testport():
         print('socket is closed')
         
     s.close()
-
-def manual_subs(zmsigs):
-    """
-    @param zmsigs: [{
-        'cmd': 'aob',
-        'pattern': '48 89 74 24 08 57 48 83 ec 20 44 0f b7 1d f6 41 6e 01 4c 8b 15 ?? ?? ?? ?? 33 f6 48 8b f9 8b c6 8b d6 44 8b c6 45 85 db 7e 43 4b 8b 04 c2 48 85 c0 75 0c 49 ff c0 ff c2 4d 3b c3 7c ed eb 2e 48 ',
-        'description': 'au_re_j_GTAFree_0_245',
-        'address': 5388030992,
-        'decl': '__int64 __fastcall au_re_j_GTAFree_0_245(__int64 a1)',
-        'globals': [],
-        'subs': [{
-            'name': 'j_GTAFree_0',
-            'path': [
-                ['offset', 178],
-                ['rip', 4],
-                ['name', 'j_GTAFree_0'],
-                ['type', 'int __fastcall(rage::netSyncData_Dynamic *a1)']
-            ],
-            'sub': True,
-            'type': 'int __fastcall(rage::netSyncData_Dynamic *a1)'
-        }],
-        'matches': 0,
-        'version': 'gtasc-2245',
-        'label': ''
-    }, ...]
-
-    """
-    for sig in zmsigs:
-        if sig["subs"]:
-            address = sig["address"]
-            matches = sig["matches"]
-            for sub in sig["subs"]:
-                name = sub["name"]
-                ea = get_ea_by_any(name)
-                if ea < BADADDR:
-                    if not IsFuncHead(ea):
-                        idc.add_func(ea)
-                    else:
-                        continue
-                if matches == 1:
-                    print("{:x}: {:32} {:32}".format(ea, name, sub["type"] or "None"))
-                    m = mb(address)
-                    for p in sub["path"]:
-                        x, y = p
-                        if y or isinstance(y, integer_types):
-                            m = getattr(m, x)(y)
-                    idc.add_func(m.value())
 
 zmserver()

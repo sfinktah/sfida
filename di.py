@@ -1247,6 +1247,117 @@ def reverse_assembler():
     # d = deCode(bytes(bytearray.fromhex('80 1c 0d ef 00 00 00 00')))
     # pph(deCode(bytes(bytearray.fromhex('40 09 0c 4d 00 00 00 00')))[0])
 
+def di_generic(b):
+    def size(d, *args):
+        si = []
+        va = []
+        for op in d.operands:
+            #  pph(deCode(get_bytes(ms(), ml()), ms())[0].operands[0].value - d.size
+            field = None
+            if d.flowControl in ('FC_CALL', 'FC_UNC_BRANCH', 'FC_CND_BRANCH') or 'FLAG_RIP_RELATIVE' in d.flags:
+                if op.type in ('AbsoluteMemory', 'AbsoluteMemoryAddress'):
+                    field = 'dispSize'
+                    ra = (8, 32)
+                    if op.type in ('AbsoluteMemoryAddress', ):
+                        ra = (8, 32, 64)
+                elif op.type == 'Register':
+                    pass
+                elif op.type == 'Immediate':
+                    field = 'size'
+                    ra = (8, 16, 32, 64)
+                else:
+                    pass
+                    # v.dispSize == 0x20 or v.size in (8, 32, 64)):
+
+            if field is None:
+                si.append(0)
+                va.append(0)
+            else:
+                r = getattr(op, field)
+                if not isinstance(r, int):
+                    pph(d)
+                    raise RuntimeError('unexpected field size type {}'.format(type(r)))
+
+                if r not in (0, 8, 16, 32, 64):
+                    pph(d)
+                    raise RuntimeError('unexpected field size {} ({})'.format(r, str(d)))
+                if r in ra:
+                    si.append(r)
+                    if d.flowControl in ('FC_CALL', 'FC_UNC_BRANCH', 'FC_CND_BRANCH'):
+                        va.append(op.value - d.size - d.address)
+                    elif field == 'dispSize':
+                        va.append(op.disp)
+                    else:
+                        va.append(op.value)
+                elif r not in (0, 8, 32):
+                    print("{} = {}".format(field, r))
+
+        si = A(si)
+        va = A(va)
+        while len(si) < 2:
+            si.append(0)
+        while len(va) < 2:
+            va.append(0)
+        return sum(si), si[0], va[0], si[1], va[1]
+
+    def size_format(d, si):
+        disasm = str(d)
+        if not si[0]:
+            return disasm
+        op = []
+        op.append(string_between('', d.mnemonic, disasm, inclusive=1))
+        if not op[0]:
+            raise RuntimeError('asm didn\'t string_between: "{}" "{}"'.format(disasm, d.mnemonic))
+        op.append(string_between(d.mnemonic + ' ', ',', disasm))
+        op.append(string_between(', ', '', disasm))
+        for i in range(1, 3):
+            if si[i]:
+                op[i] = op[i].replace("0x0", "0x" + "0" * (si[i]>>2))
+        result = op[0]
+        if op[1]:
+            result += " " + op[1]
+        if op[2]:
+            result += ", " + op[2]
+        return result
+
+    results = b''
+    da = deCode(b)
+    if _.any(da, lambda v, *a: v.rawFlags == 0xffff):
+        return results
+
+    allInsnBytes = []
+    for d in da:
+        insnBytes = d.instructionBytes
+        total, *si = size(d)
+        #  print(d, si)
+        if total:
+            insnBytes = d.instructionBytes
+            for s, v in chunk_list(si, 2):
+                # dprint("[generic] s, v")
+                if s:
+                    #  print("[generic] s:{}, v:{}".format(s, v))
+                    
+                    mask = (1 << s) - 1
+                    bcount = s >> 3
+                    
+                    for i in range(d.size - bcount + 1):
+                        test = _.reduce(_.reverse(list(insnBytes[i:i+bcount])), lambda m, v, i: (m << 8) + v, 0)
+                        # dprint("[debug] v, test")
+                        #  print("[debug] v:{}, test:{}".format(ahex(v), ahex(test)))
+                        if test == v:
+                            #  print('test matched {} {}'.format(i, i+bcount))
+                            newInsnBytes = insnBytes[0:i] + b'\x00' * bcount + insnBytes[i+4:]
+                            insnBytes = newInsnBytes
+
+        allInsnBytes.extend(insnBytes)
+    return hash(bytes(allInsnBytes))
+
+
+
+            
+        
+
+    return results
 if hasglobal('PerfTimer'):
     __di__ = [get_ea_by_any, eax, _isInt, asBytes, asString, asBytesRaw, distorm_64_bit_flag, IdaGetMnem, GetMnemDi, GetMnemForce, GetInsn, MyGetInstructionLength, getLength, GetInsLen, getCode, GetFuncCode, GetFuncCodeNoJunk, GetFuncCodeIndexNoJunk, GetFuncCodeNoJunk_, GetFuncCodeIndexNoJunk_, GetFuncCodeIndexTest, GetFuncCodeIndex, getCodeAsList, ripadd, diInsn, diInsnsPretty, diInsns, diInsnsIter, di_decode_insn, di_can_decode, idafy, diInsnsObjectIter, diCode, deCode, deCodeIter, de, de1, derange, deranger, der, destart2, destart, label, _di_indent, instruction, deri, derip, deriploc, di, dii, log2, get_name_or_hex, get_operand_size_type, diida, diidaIter, idii, mov_reg_reg, find_movs, transmute_mov, diStrip, insn_sample, shr, sar, rol, ror, imul, shv86, reverse_assembler]
     PerfTimer.binditems(locals(), funcs=__di__, name='di')

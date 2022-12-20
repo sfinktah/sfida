@@ -37,18 +37,33 @@ zmqfake = False
 port = "5558"
 host = "gf.local"
 host = "localhost"
-context = zmq.Context()
 remote_version = ''
 local_version = idc.GetIdbPath().split('\\')[2]
-if not zmqfake:
+socket = getglobal('_zmq_socket', None, _set=1)
+remote_version = 'unknown'
+
+def zmq_connect():
+    global context, socket, zmlog
+    #  global context, socket, zmlog
+    if hasattr(globals(), 'context') and not context.closed:
+        context.destroy()
+    zmq.Context().destroy()
+
+    if zmqfake:
+        remote_version = 'fake'
+        return
+
+    context = zmq.Context()
+    zmclient.context = context
+
     print("Connecting to server...")
     socket = context.socket(zmq.REQ)
     socket.connect("tcp://%s:%s" % (host, port))
     socket.RCVTIMEO = 90000
-    socket.SNDTIMEO = 30000
+    socket.SNDTIMEO = 5000
+    socket.setsockopt(zmq.LINGER, 1000)
     remote_version = 'unknown'
-else:
-    remote_version = 'fake'
+
 
 def EA():
     return ScreenEA()
@@ -142,6 +157,21 @@ def unbyteify(input):
     else:
         return input
 
+def zmq_sleep():
+    try:
+        sleep_time_total = 10000
+        sleep_time_interval = 100
+        sleep_times = sleep_time_total / sleep_time_interval
+        for r in sleep_times:
+            idc.qsleep(sleep_time_interval)
+
+        if os.path.exists(abort_file):
+            print("W: .abort found, stopping")
+            sys.exit()
+    except KeyboardInterrupt:
+        print("W: interrupt received, stopping")
+        sys.exit()
+
 def zrequest_exists(j):
     global zmqfake
     if zmqfake:
@@ -154,15 +184,9 @@ def zrequest_exists(j):
         except KeyboardInterrupt:
             print("W: interrupt received, stopping")
             sys.exit()
-        except zmq.error.Again:
-            print(("Resource Temporarily Unavailable... %i" % retries))
-            try:
-                Sleep(10000)
-            except KeyboardInterrupt:
-                print("W: interrupt received, stopping")
-            except KeyboardInterrupt:
-                print("W: interrupt received, stopping")
-                sys.exit()
+        except zmq.error.Again as e:
+            print("zmq.error.Again: {}".format(str(e)));
+            zmq_sleep()
 
             retries = retries - 1
             continue
@@ -175,12 +199,15 @@ def zrequest_exists(j):
     if retries:
         retries = 3
         while retries:
+            if os.path.exists(abort_file):
+                print("Aborted due to presence of {}".format(abort_file))
+                raise Exception("Aborted")
             try:
                 message = socket.recv()
                 #  print("Received reply: [ %s ]" % message)
-            except zmq.error.Again:
-                print(("Resource Temporarily Unavailable... %i" % retries))
-                Sleep(10000)
+            except zmq.error.Again as e:
+                print("zmq.error.Again: {}".format(str(e)));
+                zmq_sleep()
                 retries = retries - 1
                 continue
             except KeyboardInterrupt:
@@ -223,50 +250,47 @@ def zrequest(j):
         retries = retries - 1
         try:
             if debug: print("retry #{} message:\n{}\n".format(retries, pfh(asString(request))))
+            if os.path.exists(abort_file):
+                print("Aborted due to presence of {}".format(abort_file))
+                raise Exception("Aborted")
             socket.send(request, zmq.NOBLOCK)
-        except zmq.error.Again:
-            print(("Resource Temporarily Unavailable... %i" % retries))
-            Sleep(10000)
-            continue
         #  except Exception as e:
             #  print("Exception!!!!")
             #  print(str(e))
             #  return 0
-        except zmq.error.InterruptedSystemCall as e:
-            print("interupted system call");
-            print((str(e)))
-        except zmq.error.Again as e:
-            print("again");
-            print((str(e)))
-            continue
-        except zmq.error.ContextTerminated as e:
-            print("context terminated");
-            print((str(e)))
-        except zmq.error.ZMQError as e:
-            print("zmqerror");
-            print((str(e)))
         except KeyboardInterrupt:
             print("W: interrupt received, stopping")
             sys.exit()
+        except zmq.error.InterruptedSystemCall as e:
+            print("interupted system call: {}".format(str(e)))
+            raise()
+        except zmq.error.Again as e:
+            print("zmq.error.Again: {}".format(str(e)));
+            continue
+        except zmq.error.ContextTerminated as e:
+            print("context terminated: {}".format(str(e)))
+            raise
+        except zmq.error.ZMQError as e:
+            print("zmqerror: {}".format(str(e)))
+            raise
         break
 
     if retries:
         retries = 10
     while retries:
         retries = retries - 1
-        print("waiting for response")
+        print("zrequest: waiting for response")
         try:
             message = socket.recv()
             if not message:
                 print("W: message was {}".format(type(message)))
                 return 0
-        except zmq.error.Again as e:
-            print("again");
-            print((str(e)))
-            continue
         except KeyboardInterrupt:
             print("W: interrupt received, stopping")
             return 0
+        except zmq.error.Again as e:
+            print("zmq.error.Again: {}".format(str(e)));
+            continue
         #  print("Received reply: [ %s ]" % message)
         try:
             try:
@@ -418,9 +442,16 @@ def sig_maker_auto_zmq(ea, colorise=False, force=False, special=False):
         pattern = pattern.replace('EXISTS', 'XEXISTSX')
     if noUnmatched:
         pattern = pattern.replace('UNMATCHED', 'XUNMATCHEDX')
-    if check_re(ea, r"\[PATTERN;(EXISTS|MULTIPLE|UNMATCHED):" + remote_version):
+    _exists = False
+    # quick hack to allow only updating already existing things (e.g. if xfer crashed)
+    #  if remote_version != 'unknown' and not check_re(ea, r"\[PATTERN;(EXISTS):" + remote_version):
+        #  print("%s: skipping on remote " % fnName + " (doesn't exist))")
+        #  return
+
+    if check_re(ea, r"\[PATTERN;(E____S|MULTIPLE|UNMATCHED):" + remote_version):
     #  if check_re(ea, r"\[PATTERN;UNMATCHED:" + remote_version):
-        for x in  check_re(ea, r"\[PATTERN;(EXISTS|MULTIPLE|UNMATCHED):" + remote_version):
+        for x in  check_re(ea, r"\[PATTERN;(E____S|MULTIPLE|UNMATCHED):" + remote_version):
+
             print("%s: skipping on remote " % fnName + " (" + string_between('PATTERN;', ':', x) + ")")
             return
 
@@ -635,6 +666,8 @@ def sig_maker_all(pattern=None, colorise=False, flags=0):
                 print('matched pattern with {}'.format(fnName))
             else:
                 ea = next(iter)
+                #  if ea < 0x1412c16b8:
+                    #  continue
                 if not HasUserName(ea):
                     continue
                 
@@ -651,10 +684,11 @@ def sig_maker_all(pattern=None, colorise=False, flags=0):
             raise Exception("Aborted")
         count = count + 1
         fnName = GetTrueName(ea)
-        if fnName == "DeleteCriticalSection":
+        if ea >= 0x1412c16b8:
             skip = 0
         if skip:
-            #  print("skipping: %s" % fnName)
+            if not fnName.startswith('sub_') and '_' not in fnName:
+                print("skipping: %s" % fnName)
             continue
         fnFlags = idaapi.get_flags(ea)
         if not special and (idc.get_segm_name(ea) != '.text' or IsChunked(ea) or GetFuncSize(ea) < 6 or idaapi.has_dummy_name(fnFlags) or not idaapi.has_any_name(fnFlags)): #  or "_impl" in fnName or fnName.startswith("implsub"): # fnName.find('::') > -1 or fnName.find('__') > -1 or fnName.find('BACK') > -1:
@@ -719,6 +753,7 @@ def zmclient(pattern=None, _host=None, _port=None, flags=0):
     if _port:
         port = _port
 
+    zmq_connect()
     ping()
     ping()
     ping()

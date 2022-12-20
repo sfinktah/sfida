@@ -142,6 +142,14 @@ def differences(a, b):
         raise ValueError("Lists of different length.")
     return sum(i != j for i, j in zip(a, b))
 
+def unpatch_emu_glob(*args, **kwargs):
+    r = read_emu_glob(*args, **kwargs, dryRun=1, trim=False)
+    if isIterable(args[0]):
+        r = _.flatten(r, 1)
+    for ea1, ea2 in [(x[0], x[0] + x[1][1]) for x in r if x[1][1]]:
+        print('unpatching {:#x} - {:#x} {}'.format(ea1, ea2, diida(ea1, ea2)))
+        unpatch(ea1, ea2)
+
 def read_emu_glob(fn, subdir='*', path=None, **kwargs):
     if path is None and match_emu._path is None:
         guess = os.path.abspath(os.path.dirname(get_idb_path()))
@@ -173,7 +181,7 @@ def read_emu_glob(fn, subdir='*', path=None, **kwargs):
         raise
     globbed = list(glob(fns))
     print('globbed {} files. kwargs: {}'.format(len(globbed), kwargs))
-    return read_emu(globbed, **kwargs)
+    return [x for x in read_emu(globbed, **kwargs) if x[1][1] > 0]
 
 def make_native_patchfile(ea=None, outFilename=None, noImport=False, width=76):
     import base64
@@ -404,17 +412,18 @@ def compare_bytes(ea, buf):
 
 
 @static_vars(_nulls=set())
-def read_emu(fn=None, dryRun=False, skipFuncs=False, put=False):
+def read_emu(fn=None, dryRun=False, skipFuncs=False, put=False, trim=True):
     """ 
     read_emu: read a file / list of files into patches
     eg: read_emu(glob('r:/data/memcpy/*_PackerFunction_140000000.bin'))
+    fn: ./balance/25/44/written_7ffe0014_4_BalanceFunc_1432ff09a.bin
 
     @param fn: filename or [fn1, fn2, ...]
 
     """
     if isinstance(fn, list):
         # print(fn)
-        return [(parseHex(string_between('_', '_', os.path.basename(x))), read_emu(x, dryRun=dryRun, skipFuncs=skipFuncs, put=put)) for x in fn]
+        return [(parseHex(string_between('_', '_', os.path.basename(x))), read_emu(x, dryRun=dryRun, skipFuncs=skipFuncs, put=put, trim=trim)) for x in fn]
     base = parseHex(string_between('_', '_', os.path.basename(fn)))
 
     bn = os.path.basename(fn)
@@ -422,60 +431,83 @@ def read_emu(fn=None, dryRun=False, skipFuncs=False, put=False):
     _addr,  bn    = string_between_splice('_',   '_', bn, repl='')
     _size, bn     = string_between_splice('__',  '_', bn, repl='')
     _packer, bn   = string_between_splice('___', '.', bn, repl='', greedy=1)
-    _packer_addr  = string_between('_', '', _packer)
-    _packer_words = long_to_words(-ida_ida.cvar.inf.min_ea + int(_packer_addr, 16))
-    if ida_ida.cvar.inf.min_ea <= base < ida_ida.cvar.inf.max_ea:
-        b = file_get_contents_bin_spread(fn)
-        if b and len(b) > 3 and _.all(b, lambda v, *a: v == 0):
-            print("skipping {} x null".format(len(b)))
-            Commenter(base, 'line').add("skipped {} null bytes from {} {}".format(len(b), _packer_words, ean(_packer_addr)))
-            read_emu._nulls.add((base, len(b)))
-            return '', 0, 0
-        if b:
-            #  if rv:
-                #  idc.jumpto(base)
+    _packer_addr  = string_between('_', '', _packer) or _packer
+    try:
+        _packer_words = long_to_words(-ida_ida.cvar.inf.min_ea + int(_packer_addr, 16))
+    except ValueError as e:
+        # dprint("[read_emu] bn, _prefix, _addr, _size, _packer, _packer_addr")
+        print("[read_emu] bn: {}, _prefix: {}, _addr: {}, _size: {}, _packer: {}, _packer_addr: {}".format(bn, _prefix, _addr, _size, _packer, _packer_addr))
+        
+        raise
 
-            #  if b[0] == 0 and _.sum(b) == 0:
-                #  return fn.split('_', 3)[3], len(b), -1
-            #  o = idc.get_bytes(base, len(b))
-            #  diffs = differences(o, b)
-            #  if diffs:
-            #  _was_code = IsCode_(base)
-            Commenter(base, 'line').add("{}: {:#x}-{:#x}".format(_packer_words, base, base + len(b)))
-            differ = compare_bytes(base, b)
-            if dryRun:
-                pass
-                # iccode(b, base)
-            else:
-                if skipFuncs and IsFunc_(base):
-                    if debug: print("skipping func at {:#x}".format(base))
+    if not IsValidEA(base):
+        print("[debug] base: {}".format(ahex(base)))
+        return '', -2, -2
+    # dprint("[debug] base")
+    
+
+    b = file_get_contents_bin_spread(fn)
+    if trim and len(b) == 1:
+        return '', 0, 0
+    if b and len(b) > 3 and _.all(b, lambda v, *a: v == 0):
+        print("skipping {} x null".format(len(b)))
+        Commenter(base, 'line').add("skipped {} null bytes from {} {}".format(len(b), _packer_words, ean(_packer_addr)))
+        read_emu._nulls.add((base, len(b)))
+        return '', 0, 0
+    if trim and b.endswith(bytes([0, 0, 0])):
+        b = b.rstrip(b'\0')
+    if not b:
+        return '', 0, 0
+    if b:
+        if trim:
+            dec = deCode(b)
+            good = bad = 0
+            for d in dec:
+                if d.rawFlags == 0xffff:
+                    bad += 1
                 else:
-                    if debug: 
-                        if skipFuncs:
-                            print("not func at {:#x}".format(base))
-                        else:
-                            print("nobody asked us to skip")
-                    if put or differ:
-                        if put:
-                            print("putting {} bytes at {:#x}".format(len(b), base))
-                            ida_bytes.put_bytes(base, b)
-                        else:
-                            ida_bytes.patch_bytes(base, b)
-            #  if idc.get_segm_name(base) == '.text' and not _was_code:
-                #  EaseCode(base, forceStart=1, noExcept=1)
-            #  for ea in range(base, base + len(b)):
-                #  idc.set_color(ea, idc.CIC_ITEM, 0x280128)
+                    good += 1
+            total = good + bad
+            if (bad / total) > 0.9:
+                # TODO: might be multiple offset blocks
+                if len(b) == 8 and IsValidEA(struct.unpack('Q', b)):
+                    print('not ignoring offset block {:#x} (points to {:#x})'.format(base, struct.unpack('Q', b)))
+                else:
+                    print('ignoring {:3.0f}% bad block {:#x} (len {} bytes)'.format(100 * bad / total, base, len(b)))
+                    return '', 0, 0
+        #  if rv:
+            #  idc.jumpto(base)
 
-            #  idc.create_insn(base)
-            #  if 'EaseCode' in globals():
-                #  try:
-                    #  EaseCode(base)
-                #  except AdvanceFailure:
-                    #  pass
+        #  if b[0] == 0 and _.sum(b) == 0:
+            #  return fn.split('_', 3)[3], len(b), -1
+        #  o = idc.get_bytes(base, len(b))
+        #  diffs = differences(o, b)
+        #  if diffs:
+        #  _was_code = IsCode_(base)
+        Commenter(base, 'line').add("{}: {:#x}-{:#x}".format(_packer_words, base, base + len(b)))
+        differ = compare_bytes(base, b)
+        if dryRun:
+            return fn.split('_', 3)[3], len(b), differ
+            # iccode(b, base)
+        else:
+            if skipFuncs and IsFunc_(base):
+                if debug: print("skipping func at {:#x}".format(base))
+            else:
+                if debug: 
+                    if skipFuncs:
+                        print("not func at {:#x}".format(base))
+                    else:
+                        print("nobody asked us to skip")
+                if put or differ:
+                    if put:
+                        # print("putting {} bytes at {:#x}".format(len(b), base))
+                        ida_bytes.put_bytes(base, b)
+                    else:
+                        ida_bytes.patch_bytes(base, b)
+            return fn.split('_', 3)[3], len(b), differ
 
-            return fn.split('_', 3)[3], len(b), differ # diffs
-
-    return fn.split('_', 3)[3], base, -2
+    # return base, len(b), differ # diffs
+    return fn.split('_', 3)[3], len(b), differ
 
 def read_emu_fn_split(fn):
     bn = os.path.basename(fn)
@@ -544,7 +576,7 @@ def read_emu_id_walk(subdir='balance', path=None):
         #  print("[read_emu_id_walk] ofn:{}, files:{}".format(ofn, files))
         
         read_emu_id(files, nulls=nulls, patches=patches)
-        v = _.uniq(_.sort(_.filter([di_generic(p) for p in patches])))
+        v = (_.sort(_.filter([di_generic(p) for p in patches])))
         print("{}: {}; {}".format(ofn.strip('*_'), '', v))
         #  for p in patches:
             # v = _.uniq(_.sort([hash(di_generic(x)) & 0xffffffffffffffff for x in p]))
@@ -552,20 +584,34 @@ def read_emu_id_walk(subdir='balance', path=None):
         results.append((ofn, v))
     return results
 
-def read_emu_id_match(a, b):
+def read_emu_id_match(_a, _b):
+    a = _a.copy()
+    b = _b.copy()
     b = _.filter(b, lambda v: v[1])
-    r = _.object(_.map(a, lambda x, *a: (x[0], set(x[1]))))
-    w = _.object(_.map(b, lambda x, *a: (x[0], set(x[1]))))
+    old = _.object(a)
+    new = _.object(b)
+    del a
+    del b
     best_matches = dict()
-    for ka, a in r.items():
-        best_match = None, 0, 8**8, 0.0
-        for kb, b in w.items():
-            matched = len(set.intersection(a, b))
-            unmatched = len(set.symmetric_difference(a, b))
+    for ka, a in old.items():
+        best_match = None, 0, 8**8, -0.01, -1, -1, 99
+        matched = unmatched = 0
+        lena = len(a)
+        for kb, x in new.items():
+            b = x.copy()
+            lenb = len(b)
+            lendiff = abs((lena / lenb) - 1.0)
+            for aa in a:
+                if aa in b:
+                    b.remove(aa)
+                    matched += 1
+                else:
+                    unmatched += 1
+                
             total = matched + unmatched
             match_percent = matched / total
-            if match_percent > best_match[3]:
-                best_match = kb, matched, unmatched, match_percent
+            if lendiff < best_match[6] or lendiff == best_match[6] and match_percent > best_match[3]:
+                best_match = kb, matched, unmatched, match_percent, lena, lenb, lendiff
         best_matches[ka] = best_match
 
     return best_matches
@@ -607,7 +653,7 @@ def read_emu_id_glob(fn, subdir='*', path=None, **kwargs):
     nulls = []
     patches = []
     read_emu_id(globbed, nulls=nulls, patches=patches)
-    v = _.uniq(_.sort(_.filter([di_generic(p) for p in patches])))
+    v = (_.sort(_.filter([di_generic(p) for p in patches])))
     print("{}: {}; {}".format(ofn.strip('*_'), '', v))
     #  for p in patches:
         # v = _.uniq(_.sort([hash(di_generic(x)) & 0xffffffffffffffff for x in p]))
@@ -1045,3 +1091,10 @@ def spread_files(path):
 
 # force laod of database
 match_emu(ea=0x13fffffff)
+
+if not getglobal('emu_stacks', None):
+    for fn in glob(os.path.join(os.path.dirname(idc.get_idb_path()), 'gtasc-*.lst')):
+        emu_stacks = read_uc_emu_stack(fn)
+
+
+

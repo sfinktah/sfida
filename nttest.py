@@ -86,7 +86,10 @@ def assemble_joined(l, visited=None):
 #  _chunks = [x for x in idautils.Chunks(eax('very_chunked_function'))]
 #  chunks = GenericRanger([GenericRange(x[0], trend=x[1])           for x in _chunks],            sort = 1)
 #  s = chunks
-def emujoin(r):
+def emujoin(r, color1=0x280128, color2=0x1F1D00):
+    """
+    color2 alt 0x001f00
+    """
     _conditional_allins = list(range(ida_allins.NN_ja, ida_allins.NN_jz + 1))
     _jump_allins = _conditional_allins + [ida_allins.NN_jmp]
     _ease = 1
@@ -125,12 +128,12 @@ def emujoin(r):
         print("coloring #1")
         for x in s:
             for y in idautils.Heads(x.start, x.trend):
-                idc.set_color(y, idc.CIC_ITEM, 0x280128)
+                idc.set_color(y, idc.CIC_ITEM, color1)
         print("coloring #2")
         for start, tu in r:
             if tu[2]:
                 for ea in idautils.Heads(start, start + tu[1]):
-                    idc.set_color(ea, idc.CIC_ITEM, 0x1F1D00)
+                    idc.set_color(ea, idc.CIC_ITEM, color2)
 
         #  for a, b in c:
             #  for ea in idautils.Heads(a, b):

@@ -2682,7 +2682,7 @@ def get_decl_args(decl):
                 for x, y in zip(["type", "indirection", "name"], [lhs, stars, rhs]):
                     if debug: print("        [get_decl_args] {:12} {}".format(x + ':', y or '(none)'))
 
-                if get_tinfo_by_parse(lhs):
+                if get_tinfo_magic(lhs):
                     # dprint("            [tinfo-ok] lhs")
                     if debug: print("        [get_decl_args] [tinfo-ok] lhs:{}".format(lhs))
                 else:
@@ -2694,7 +2694,7 @@ def get_decl_args(decl):
                 stars += returnType[-1]
                 returnType = returnType[0:-1]
             returnType = returnType.strip()
-            if not get_tinfo_by_parse(returnType):
+            if not get_tinfo_magic(returnType):
                     # dprint("    [tinfo-ok] returnType")
                     if debug: print("    [get_decl_args] [tinfo-fail] returnType: {}".format(returnType))
                     failed.append(returnType)

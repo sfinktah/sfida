@@ -12,7 +12,7 @@ from static_vars import static_vars
 
 @static_vars(last_width=getglobal('_progress_console_width', None))
 def _get_console_width():
-    return screenwidth_process.width
+    #  return screenwidth_process.width
     output_window_title = "Output window"
     tw = ida_kernwin.find_widget(output_window_title)
     if not tw:
@@ -25,13 +25,17 @@ def _get_console_width():
     if hasattr(ida_kernwin.PluginForm, 'TWidgetToPyQtWidget'):
         w = ida_kernwin.PluginForm.TWidgetToPyQtWidget(tw)
         scrollable = w.childAt(0, 0)
-        _get_console_width.last_width = scrollable.width()
+        char_width = int(scrollable.width() / 7.06)
+        _get_console_width.last_width = char_width
         setglobal('_progress_console_width', _get_console_width.last_width)
-        return scrollable.width()
+        return char_width
     else:
         print('[progress] return default width of 100')
         return 100
 
+
+_block = "█▒▓░"
+_block_half = "▏▎▍▋▊█" # half-_block: ▌  almost-fll-_block: ▉
 
 class ProgressBar:
     """Show a progress bar"""
@@ -57,6 +61,7 @@ class ProgressBar:
         self.always_print = 0
         self.show_percentage = True
         self.last_blocks = [0] * self.count
+        self.last_remainders = [0] * self.count
         self.onPrePrint = None
 
     def update(self, *values):
@@ -66,9 +71,10 @@ class ProgressBar:
                 self.raw_value[i] = value
                 self.value[i] = self.transpose_fns[i](value)
                 self.blocks[i], self.remainders[i] = self.calc_blocks(self.value[i])
-                if self.blocks[i] != self.last_blocks[i]:
+                if self.blocks[i] != self.last_blocks[i] or self.remainders[i] != self.last_remainders[i]:
                     _should_print = 1
-                self.last_blocks[i] = self.blocks[i]
+                    self.last_blocks[i] = self.blocks[i]
+                    self.last_remainders[i] = self.remainders[i]
         if self.always_print:
             _should_print = 1
         if _should_print:
@@ -77,7 +83,8 @@ class ProgressBar:
     def calc_blocks(self, value):
         done = self.console_width * value / self.maxval
         whole = int(done)
-        remainder = done - whole
+        remainder = int((done - whole) * len(_block_half))
+
         # dprint("[calc_blocks] value, done, whole, remainder")
         # print("[calc_blocks] value:{}, done:{}, whole:{}, remainder:{}".format(value, done, whole, remainder))
         
@@ -89,8 +96,6 @@ class ProgressBar:
         #  blocks = b'\xe2\x96\x81\xe2\x96\x82\xe2\x96\x83\xe2\x96\x85\xe2\x96\x86\xe2\x96\x87\xe2\x96\x91\xe2\x96\x92\xe2\x96\x93\xe2\x96\x88'.decode('utf-8')
         #  blocks = b'\xe2\x96\x91\xe2\x96\x92\xe2\x96\x93\xe2\x96\x91\xe2\x96\x92\xe2\x96\x93\xe2\x96\x91\xe2\x96\x92\xe2\x96\x93\xe2\x96\x88'.decode('utf-8')
 
-        block = "█▒▓░"
-        block_half = "▏▎▍▋▊▉█" # half-block: ▌
         drawn = 0
         max_drawn = 0
         blocks = [''] * len(self.blocks)
@@ -98,12 +103,12 @@ class ProgressBar:
             actual_v = self.value[i]
             block_v = value // (len(self.blocks) if not self.compound else 1)
             drawn += block_v
-            b = block[i % len(block)]
+            b = _block[i % len(_block)]
             bh = ''
             if i == 0:
                 bh = b
-                bh = block_half[int(self.remainders[i] * len(block_half))]
-            if block_v > 8 and len(self.blocks) > 1:
+                bh = _block_half[self.remainders[i]]
+            if block_v > 8: #  and len(self.blocks) > 1:
                 p = "{}%".format(int(actual_v))
                 block_v -= len(p)
                 r = block_v // 2
@@ -168,25 +173,52 @@ def screenwidth_display_test(m):
     for x in range(m): idc.msg("# ")
     idc.msg("\n")
 
-@static_vars(r=[], width=10)
+@static_vars(r=[], width=100, ratio=7.5)
 def screenwidth_process(m, x, y):
     screenwidth_process.r.append((m, x, y))
+    return y < 2
 
 def screenwidth_calc():
-    screenwidth_process.width = _.last(_.filter(screenwidth_process.r, lambda v, *a: v[2] == 1))[1]
-    print("screenwidth is {} characters".format(screenwidth_process.width))
+    # screenwidth_process.width = _.last(_.filter(screenwidth_process.r, lambda v, *a: v[2] == 1))[1]
+    screenwidth_process.width = [v[1] for v in screenwidth_process.r if v[2] == 1][-1]
+    screenwidth_process.ratio = screenwidth_widget() / screenwidth_process.width
+    print("screenwidth is {} characters, char-to-pixel ratio is {:3.5f}".format(screenwidth_process.width, screenwidth_process.ratio))
     progress_demo()
+
+def screenwidth_widget():
+    output_window_title = "Output window"
+    tw = ida_kernwin.find_widget(output_window_title)
+    if not tw:
+        raise Exception("Couldn't find widget '%s'" % output_window_title)
+
+    # convert from a SWiG 'TWidget*' facade,
+    # into an object that PyQt will understand
+    if hasattr(ida_kernwin.PluginForm, 'TWidgetToPyQtWidget'):
+        w = ida_kernwin.PluginForm.TWidgetToPyQtWidget(tw)
+        scrollable = w.childAt(0, 0)
+        return scrollable.width()
 
 cmds=[]
 def nextcmd():
-    if cmds:
-        fake_cli(cmds.pop(0))
+    if cmds: fake_cli(cmds.pop(0))
 
 def screenwidth_get():
+    screenwidth_process.r.clear()
     for x in range(400):
         cmds.append("screenwidth_display_test({}); nextcmd()".format(x))
-        cmds.append("screenwidth_process({}, *ida_kernwin.get_output_cursor()[1:]); nextcmd()".format(x))
+        cmds.append("if screenwidth_process({}, *ida_kernwin.get_output_cursor()[1:]): nextcmd()".format(x))
     cmds.append("screenwidth_calc()")
     nextcmd()
+    return
 
-screenwidth_get()
+def binary_search(value, low, high, iterator):
+    value = 1
+    while low < high:
+        mid = (low + high) >> 1
+        if iterator(mid) < value:
+            low = mid + 1
+        else:
+            high = mid
+    return low
+
+# screenwidth_get()

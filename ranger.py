@@ -132,9 +132,14 @@ class GenericRange(object):
     def trend(self):
         return self._last + 1
 
+    @property
+    def stop(self):
+        return self._last + 1
+
     @trend.setter
     def trend(self, value):
         self._last = value - 1
+
 
 
 
@@ -355,8 +360,14 @@ class GenericRanges:
     """Collection of GenericRange(s)"""
 
     def __init__(self, genericRanges=None):
-        self.genericRanges = SortedList() if genericRanges is None else SortedList([(get_start(x), get_last(x) + 1) for x in genericRanges])
-        self.optimize()
+        self.genericRanges = SortedList(key=lambda v: v[1])
+        if genericRanges:
+            self.genericRanges = SortedList([(get_start(x), get_last(x) + 1) for x in genericRanges])
+            self.optimize()
+
+    def __repr__(self):
+        return 'GenericRanges([' + ', '.join([ahex(x) for x in self.genericRanges]).replace('[', '(').replace(']', ')') + '])'
+        # return repr(ahex(list(self.genericRanges)))
 
     def __len__(self):
         return self.genericRanges.__len__()
@@ -377,10 +388,24 @@ class GenericRanges:
         return self.genericRanges.__reversed__()
     
     def __contains__(self, item):
-        for r in self.genericRanges:
-            if get_start(r) <= item <= get_last(r):
-                return True
-        return False
+        if isinstance(item, int):
+            right = self.genericRanges.bisect_left((item, item))
+            left = right - 1
+            if left < 0:
+                left = 0
+            for r in self.genericRanges[left:right+1]:
+                if get_start(r) <= item <= get_last(r):
+                    return True
+            return False
+        else:
+            right = self.genericRanges.bisect_left((item))
+            left = right - 1
+            if left < 0:
+                left = 0
+            for r in self.genericRanges[left:right+1]:
+                if issubset(item, r):
+                    return True
+            return False
     
     def append(self, object):
         object = (get_start(object), get_last(object) + 1)
@@ -396,14 +421,17 @@ class GenericRanges:
                         self.genericRanges.pop(idx+1)
                     return
         else:
-            overlapping = filterSet(self.genericRanges, object, adjoins)
-            if overlapping:
-                new = object
-                for r in overlapping:
-                    new = union(r, object)
-                    self.genericRanges.remove(r)
-                self.genericRanges.add(new)
-                return
+            if object in self.genericRanges:
+                overlapping = filterSet(self.genericRanges, object, adjoins)
+                if overlapping:
+                    new = object
+                    for r in overlapping:
+                        new = union(r, object)
+                        self.genericRanges.remove(r)
+                    self.genericRanges.add(new)
+                    return
+                else:
+                    raise RuntimeError('This point should never be reached')
 
         # self.genericRanges.append(object)
         self.genericRanges.add(object)
@@ -424,6 +452,7 @@ class GenericRanges:
             self.append(item)
 
     update = extend
+    add = append
     
     def index(self, value, start=0, stop=9223372036854775807):
         return self.genericRanges.index(value, start, stop)
@@ -459,16 +488,28 @@ class GenericRanges:
 
     def optimize(self):
         self.sort()
+
+        starting_len = len(self.genericRanges)
+
         def by(memo, r, i):
             if memo:
                 last = memo[-1]
                 if adjoins(last, r):
-                    memo[-1] = union(last, r)
+                    new = union(last, r)
+                    # dprint("[by] last, r, new")
+                    print("[by-union] {} + {} = {}".format(ahex(last), ahex(r), ahex(new)))
+                    
+                    memo[-1] = new
                     return memo
             memo.append(r)
             return memo
 
-        self.genericRanges = SortedList(_.reduce(self.genericRanges, by, []))
+        self.genericRanges = type(self.genericRanges)(_.reduce(self.genericRanges, by, []))
+        final_len = len(self.genericRanges)
+        if (final_len != starting_len):
+            print('self.optimize: reduced from {} to {} items'.format(starting_len, final_len))
+
+
 
 def GenericRangesAsTuples(gr):
     for r in gr:
@@ -477,3 +518,12 @@ def GenericRangesAsTuples(gr):
 if hasglobal('PerfTimer'):
     PerfTimer.bindmethods(GenericRange)
     PerfTimer.bindmethods(GenericRanger)
+
+"""
+for addr in done2:
+  if addr in done3: continue
+  b = Block(addr)
+  if b[0] in done3 and b[1] in done3: continue
+  print("adding {}".format(ahex(b)))
+  done3.add(b)
+"""
