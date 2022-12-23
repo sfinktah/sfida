@@ -3,7 +3,7 @@ import os
 import cgi
 import errno
 import itertools
-import json
+import json, pickle
 import re
 import requests
 import socket
@@ -430,8 +430,31 @@ class HTTPRequestHandler(BaseHTTPRequestHandler):
         self._write('{:X}\r\n{}\r\n'.format(l, r))
 
 
-    def _serve_route(self, args):
+    def _serve_route(self, args, opts):
+        # Python>urlparse.urlparse('http://localhost.local:1234/ida/api/v1.0/get_type.json?idiot=phil&a=b')
+        # ('http', 'localhost.local:1234', '/ida/api/v1.0/get_type.json', '', 'idiot=phil&a=b', '')
+        # Python>pp(read_everything(u))
+        #  [   ('fragment', '',                            "<class 'str'>"),
+        #      ('hostname', 'localhost.local',             "<class 'str'>"),
+        #      ('netloc',   'localhost.local:1234',        "<class 'str'>"),
+        #      ('params',   '',                            "<class 'str'>"),
+        #      ('password', None,                          "<class 'NoneType'>"),
+        #      ('path',     '/ida/api/v1.0/get_type.json', "<class 'str'>"),
+        #      ('port',     '0x4d2',                       "<class 'int'>"),
+        #      ('query',    'idiot=phil&a=b',              "<class 'str'>"),
+        #      ('scheme',   'http',                        "<class 'str'>"),
+        #      ('username', None,                          "<class 'NoneType'>")]
         path = urlparse.urlparse(self.path).path
+        # Python>os.path.splitext(u.path)
+        # ('/ida/api/v1.0/get_type', '.json')
+        path, response_encoding = os.path.splitext(path)
+        if response_encoding:
+            response_encoding = response_encoding.lstrip('.')
+        else:
+            response_encoding = 'json'
+
+        opts['response_encoding'] = response_encoding
+
         route_match = self._get_route_match(path)
         if route_match:
             key, view_function = route_match
@@ -582,7 +605,8 @@ class HTTPRequestHandler(BaseHTTPRequestHandler):
     def _serve(self, args):
         error = False
         try:
-            it = self._serve_route(args)
+            opts = {}
+            it = self._serve_route(args, opts)
             # it = sleeping_generator_test({}, {})
             if issubclass(it.__class__, Exception):
                 response = {'code': 400, 'msg': 'returned exception {}: {}'.format(it.__class__, str(it))}
@@ -632,6 +656,11 @@ class HTTPRequestHandler(BaseHTTPRequestHandler):
 
         
 
+        encoder = json.dumps
+        response_encoding = self._extract_response_encoding()
+        if response_encoding == 'pickle':
+            encoder = pickle.dumps
+
         jsonp_callback = self._extract_callback()
         if jsonp_callback:
             content_type = 'application/javascript'
@@ -645,7 +674,7 @@ class HTTPRequestHandler(BaseHTTPRequestHandler):
         self.send_origin_headers()
         self.end_headers()
 
-        self._write(response_fmt.format(json.dumps(response)))
+        self._write(response_fmt.format(encoder(response)))
         return
 
     def _extract_post_map(self):
@@ -678,6 +707,21 @@ class HTTPRequestHandler(BaseHTTPRequestHandler):
         try:
             args = self._extract_query_map()
             return args['callback']
+        except:
+            return ''
+
+    def _extract_response_encoding(self):
+        try:
+            path = urlparse.urlparse(self.path).path
+            # Python>os.path.splitext(u.path)
+            # ('/ida/api/v1.0/get_type', '.json')
+            path, response_encoding = os.path.splitext(path)
+            if response_encoding:
+                response_encoding = response_encoding.lstrip('.')
+            else:
+                response_encoding = 'json'
+
+            return response_encoding
         except:
             return ''
 
@@ -1465,6 +1509,7 @@ def idarest_main(*args):
     ir.add_route('make_patch', lambda o, a: "\n".join(make_native_patchfile(a['ea'])))
     ir.add_route('getglobal', lambda o, a: getglobal(a['name'], None))
     ir.add_route('setglobal', lambda o, a: setglobal(a['name'], a['value']))
+    ir.add_route('patches', lambda o, a: get_patches())
     ### end example routes
 
 

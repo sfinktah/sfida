@@ -851,6 +851,31 @@ def unpatch_all():
             # idaapi.patch_byte(x, y)
     return patchedBytes
 
+class Namespace(object):
+
+    """ For simulating full closure support
+    """
+    pass
+
+def get_patches():
+    ns = Namespace()
+    ns.patchedBytes = defaultdict(bytearray)
+    ns.lastEa = None
+    ns.firstEa = None
+
+
+    def get_patch_byte(ea, fpos, org_val, patch_val):
+        if ns.lastEa is None or ea - ns.lastEa > 1:
+            ns.firstEa = ea
+
+        ns.lastEa = ea
+        ns.patchedBytes[ns.firstEa].append(patch_val)
+
+
+    idaapi.visit_patched_bytes(0, idaapi.BADADDR, get_patch_byte)
+    return pickle.dumps( ns.patchedBytes ).hex()
+    return ns.patchedBytes
+
 def unpatch_all_count():
     patchedBytes=[]
 

@@ -494,7 +494,12 @@ def _Pseudocode_example():
             vu.set_lvar_type(array, tif)
 
 def contents(o, types):
-    
+    """
+    A very stupid function that tries to check if the majority of arguments are
+    of type `types`. All it really manages to do (most times) is check if the
+    last arg is of type `types`, unless there are actually more of one type,
+    e.g.: contents([1, 2, 'A', 'B', 3], (int,))==True
+    """
     return _(A(o))                           \
             .chain()                         \
             .countBy(lambda x, *a: type(x))  \
@@ -503,7 +508,7 @@ def contents(o, types):
             .reverse()                       \
             .first()                         \
             .first()                         \
-            .value() in types
+            .value() in A(types)
     #  return _.first(_.first(_.reverse(_.sortBy(_.pairs(_.countBy(o, lambda x, *a: type(x))), lambda v, *a: v[1])))) in types
     #  t = next(iter(A(o)))
     #  return isinstance(t, types)
@@ -1466,6 +1471,7 @@ def wrap_pattern(pattern, split=None):
         .replace(r'\w\+',                           r'\w+')               \
         .replace(r' += ',                           r' \+= ')             \
         .replace(r' ^ ',                            r' \^ ')              \
+        .replace(r'++',                             r'\+\+')              \
         .replace(r'[::reinterpret_pointer_cast::]', r'(?:\*\([^)]+\*\))') \
         .replace(r'[::pointer_cast::]',             r'(?:\([^)]+\*\))')   \
         .replace(r'[::static_cast::]',              r'(?:\([^)]+\))')     \
@@ -1473,6 +1479,8 @@ def wrap_pattern(pattern, split=None):
         .replace(r'[::reinterpet_cast::]',          r'(?:\*\([^)]+\)&)')  \
         .replace(r'[::deref_static_cast::]',        r'(?:\*\([^)]+\))')   \
         .replace(r'[::v::]',                        r'(?:v\d+)')          \
+        .replace(r'[::globalvar::]',                r'(?:\b(?:dword|qword|word|byte|off|unk|loc|sub)_[1-9A-F][0-9A-F]+\b)')           \
+        .replace(r'[::anyvar::]',                   r'(?:\w+)')           \
         .replace(r'[::number::]',                   r'(?:(?:0x)?[0-9a-fA-F]+)')
     if split:
         return pattern.split(split)
@@ -1677,8 +1685,8 @@ def rename_lvar_factory(*args, **kwargs):
                 args = args[1:]
             else:
                 skip_first = 1
-                print("args:   {}".format(indent(8, args,  skipFirst=1, stripLeft=1)))
-                print("names:  {}".format(indent(8, names, skipFirst=1, stripLeft=1)))
+                print("fn_rename_lvar1: args:   {}".format(indent(8, args,  skipFirst=1, stripLeft=1)))
+                print("fn_rename_lvar1: names:  {}".format(indent(8, names, skipFirst=1, stripLeft=1)))
                 for r in range(1, len(args)):
                     if not args[r] in args[0]:
                         skip_first = 0
@@ -1784,9 +1792,9 @@ def decompile_native(ea = None):
                         if matches: print("line", "\nline ".join(sti.as_list()))
                     else:
                         matches = re.findall(rule[0], line)
-                        if matches: print("\nline", line)
-                    if matches:
-                        print("match:  {}\ngroups: {}\nfnargs: {}".format(string_between('re.compile(\'', '\')', str(rule[0]), greedy=1), matches[0], rule[1]))
+                        if matches: 
+                            print("\nline", line)
+                            print("match:  {}\ngroups: {}\nfnargs: {}".format(string_between('re.compile(\'', '\')', str(rule[0]), greedy=1), matches[0], rule[1]))
                     if matches and rule[2] and callable(rule[2]):
                         if rule[1]:
                             for g in reby_simple(rule[1], matches):
@@ -1847,7 +1855,7 @@ def decompile_rand(ea = None):
             def fn_rename_lvar(*args):
                 if len(args) > len(names):
                     skip_first = 1
-                    print("args:   {}".format(args))
+                    print("[fn_rename_lvar2] args:   {}".format(args))
 
                     for r in range(1, len(args)):
                         if not args[r] in args[0]:
@@ -1856,7 +1864,7 @@ def decompile_rand(ea = None):
                         args = args[1:]
 
                 for index, name, _type in zip(indexes, names, types):
-                    print('i,n,t: {}, {}, {}'.format(index, name, _type))
+                    if debug: print('i,n,t: {}, {}, {}'.format(index, name, _type))
                     if _type is None and isinstance(name, str) and eax(args[index]):
                         old_name = args[index]
                         fnLoc = get_ea_by_any(old_name)
@@ -1890,51 +1898,6 @@ def decompile_rand(ea = None):
                 (wrap_compile(r'^\s+(v\d+) = \w+ & ~prngSeed;'),                 2 , rename_lvar_factory(0, 'dans')),
                 #     v34 = ~prngSeed;
                 (wrap_compile(r'^\s+(v\d+) = ~prngSeed;'),                 2 , rename_lvar_factory(0, 'ns')),
-                #  (wrap_compile(r'^\s+(v\d+) [\^]= \*[::static_cast::]*(\w+);'),                                       3 , fn_vortex_1),
-                #  (wrap_compile(r'\b(o_|off_14[0-9A-F]{7})\b'),                                                        2 , fn_offset_1),
-                #  (wrap_compile(r'\b(o_+\d*)\b'),                                                                      2 , fn_offset_1),
-                #  (wrap_compile(r'^\s+if \( !([::v::]) && Zero \)'),                                                   1 , rename_lvar_factory(0, 'misdirection')),
-                #  (wrap_compile(r'^\s+(\w+)\(ptr, ([::v::]), [::static_cast::]?([::v::])\);'),                         4 , rename_lvar_factory(('ArxanMemcpy', 'src', 'length'), type=(None, 'uint8_t*', 'uint32_t'), uniq=1)),
-                #  (wrap_compile(r'^\s+(\w+)\(ptr, \w+, [::static_cast::]?\w+\);'),                                     3 , rename_lvar_factory(('ArxanMemcpy'), type=(None), uniq=1)),
-                #  (wrap_compile(r'^\s+(v\d+) = 0i64;'),                                                                2 , rename_lvar_factory(0, '_align', uniq=1)),
-                #  (wrap_compile(r'^\s+([::v::]) = [::pointer_cast::]ArxanCheckFunction_\w+ - [::pointer_cast::]\w+;'), 2 , rename_lvar_factory(0, 'Zero', uniq=1)),
-                #  (wrap_compile(r'^\s+([::v::]) = \w+_\x+ ^ \*\(_DWORD \*\)([::v::]);'),                               3 , rename_lvar_factory(('buf', 'ciphered'), type=('uint32_t', 'uint32_t *'))),
-                #  (wrap_compile(r'^\s+(dword_\x+) = \*\(_DWORD \*\)(\w+_1402FAE33);'),                                 3 , lambda all, dst, src: MakeDword(eax(src))),
-                #  (wrap_compile(r'^\s+(dword_\x+) = (dword_\x+);'),                                                    3 , rename_lvar_factory(('arxan_done_dst_{}'.format(suffix), 'arxan_done_src_{}'.format(suffix)), type=(None, None))),
-                #  (wrap_compile(r'^\s+(v\d+) = 0i64;'),                                                                2 , rename_lvar_factory(0, 'Zero', uniq=1)),
-                #  (wrap_compile(r'^\s+([::v::]).start = 0;'),                                                          2 , rename_lvar_factory(0, 'range', uniq=1)),
-                #  (wrap_compile(r'^\s+([::v::]) = &ImageBase\[range.start\];'),                                        2 , rename_lvar_factory(0, 'ptr')),
-                #  (wrap_compile(r'^\s+(Zero|v\d+) (=) 1i64;'),                                                         2 , rename_lvar_factory(0, '_align', uniq=1)),
-                #  (wrap_compile(r'^\s+(v\d+) = [::static_cast::]*\w+imagebase', re.I),                                 2 , rename_lvar_factory(0, 'ImageBase', type='uint8_t *', uniq=1)),
-                #  # guide = (uint8_t *)&unk_1439B9746;
-                #  (wrap_compile(r'^\s+(?:guide\w*) = [::reference_cast::]*(\w+);', re.I),                              2 , rename_lvar_factory(('guide_{}'.format(suffix)), type=(None))),
-                #  (wrap_compile(r'^\s+(v\d+) = a1;'),                                                                  2 , rename_lvar_factory(0, '_arg_0', uniq=1)),
-                #  (wrap_compile(r'^\s+if \((v\d+) == (24)\)'),                                                         2 , rename_lvar_factory(0, '_stack_padding', uniq=1)),
-                #  (wrap_compile(r'^\s+if \((v\d+) == (24)\)'),                                                         2 , rename_lvar_factory(0, '_stack_padding', uniq=1)),
-                #  (wrap_compile(r'([::v::]) = __ROL4__\(\2, ([::v::])\)'),                                             2 , rename_lvar_factory(('roll_amt', 'rolling_code') )),
-                #  (wrap_compile(r'([::v::]) += rolling_code ^ roll_amt'),                                              1 , rename_lvar_factory(0, 'hash')),
-                #  (wrap_compile(r'^\s+(\w+)\([::static_cast::]*&(\w+), [::static_cast::]*&(\w+)\);'),                  4 , rename_lvar_factory(('ArxanGetNextRange_{}'.format(suffix), 'guide', 'range'), type=(None, 'uint8_t*', 'arxan_range'), uniq=1)),
-                #  (wrap_compile(r'^\s+(ArxanMemcpy[^(), ]+)\(&?(\w+), &?(\w+), &?(\w+)\);'),                           5 , rename_lvar_factory((ea, 'dst', 'p_B0', 'len'), uniq=1)),
-                #  (wrap_compile(r'([::v::]) = [::reinterpet_cast::]ImageBase\[[::deref_static_cast::]([::v::])\]'),    3 , rename_lvar_factory(('acid_bath', 'acid_offset'), type=('uint64_t', 'uint32_t*'), uniq=1)),
-                #  (wrap_pattern(r"""Zero = 0i64;
-    #  ImageBase = .*
-    #  .*_arg_0 \+ _align.*
-    #  (v\d+) = [::static_cast::]*&?\w+;
-    #  (v\d+) = [::static_cast::]*&(v\d+);
-    #  (v\d+|p_B0) = [::static_cast::]*&(v\d+);
-    #  (v\d+) = 0;
-    #  (v\d+) = 0;""", split="\n"), 0, test_multimatch),
-
-                # *(_QWORD *)GetCurrentProcess_0 = GetProcAddress(pKernel32, "GetCurrentProcess");
-                #  (wrap_compile(r'\*\(_QWORD \*\)(\w\+) = GetProcAddress\((\w\+), "(\w\+)"\)')), 4, None),
-                #  # NtQueryVirtualMemory = (__int64)GetProcAddress(v1, "NtQueryVirtualMemory");
-                #  (wrap_compile(r'(\w\+) = \([^)]+\)GetProcAddress\((\w\+), "(\w\+)"\)')), 3, fn_process_handle_1),
-                #  # GetModuleFileNameA_0 = (DWORD (__stdcall *)(HMODULE, LPSTR, DWORD))GetProcAddress(pKernel32, "GetModuleFileNameA");
-                #  #  match1                  ^^ match2 ..........................  ^^                 ^match3      ^match4
-                #  (wrap_compile(r'(\w+) = \(([^(]+\([^)]+\)[^)]+\))\)GetProcAddress\((\w+), "(\w+)"\)')), 4, None),
-                #  # pKernel32 = GetModuleHandleA("kernel32.dll");
-                #  (wrap_compile(r'(\w+) = GetModuleHandle[AW]?\("(\w+).dll"\);')), 2, fn_module_handle),
-                #  # wrap_compile(r'')),
         ]
 
         while True:
@@ -2027,6 +1990,7 @@ def decompile_arxan(ea = None):
             for arg in args:
                 if len(nargs) in (0,):
                     if contents(arg, (int,)):
+                        k
                         nargs['indexes'] = A(arg)
                 if len(nargs) in (0,1):
                     if contents(arg, (str,)):
@@ -2055,7 +2019,7 @@ def decompile_arxan(ea = None):
             def fn_rename_lvar(*args):
                 if len(args) > len(names):
                     skip_first = 1
-                    print("args:   {}".format(args))
+                    if debug: print("[fn_rename_lvar3] args:   {}".format(args))
 
                     for r in range(1, len(args)):
                         if not args[r] in args[0]:
@@ -2064,13 +2028,19 @@ def decompile_arxan(ea = None):
                         args = args[1:]
 
                 for index, name, _type in zip(indexes, names, types):
-                    print('i,n,t: {}, {}, {}'.format(index, name, _type))
-                    if _type is None and isinstance(name, str) and eax(args[index]):
-                        old_name = args[index]
-                        fnLoc = get_ea_by_any(old_name)
-                        LabelAddressPlus(fnLoc, name)
-                    if _type:
-                        set_lvar_type(args[index], _type, ea, vu=vu)
+                    if debug: print('i,n,t: {}, {}, {}'.format(index, name, _type))
+                    if eax(args[index]):
+                        if isinstance(name, str):
+                            old_name = args[index]
+                            fnLoc = get_ea_by_any(old_name)
+                            # dprint("[fn_rename_lvar] old_name, fnLoc, name")
+                            if debug: print("[fn_rename_lvar] old_name: {}, fnLoc: {}, name: {}".format(old_name, fnLoc, name))
+                            LabelAddressPlus(fnLoc, name)
+                        if _type is not None: 
+                            idc.SetType(fnLoc, _type)
+                    else:
+                        if _type:
+                            set_lvar_type(args[index], _type, ea, vu=vu)
                     if isinstance(name, int):
                         old_name = args[index]
                         fnLoc = get_ea_by_any(old_name)
@@ -2105,7 +2075,7 @@ def decompile_arxan(ea = None):
                 # v13 ^= *(unsigned __int8 *)i
                 # v13 ^= *(unsigned __int8*)i;
                 #[::static_cast::]*
-                (wrap_compile(r'^\s+(v\d+) [\^]= \*[::static_cast::]*(\w+);'),                                       3 , fn_vortex_1),
+                #(wrap_compile(r'^\s+(v\d+) [\^]= \*[::static_cast::]*(\w+);'),                                       3 , fn_vortex_1),
                 (wrap_compile(r'\b(o_|off_14[0-9A-F]{7})\b'),                                                        2 , fn_offset_1),
                 (wrap_compile(r'\b(o_+\d*)\b'),                                                                      2 , fn_offset_1),
                 (wrap_compile(r'^\s+if \( !([::v::]) && Zero \)'),                                                   1 , rename_lvar_factory(0, 'misdirection')),
@@ -2117,8 +2087,11 @@ def decompile_arxan(ea = None):
                 (wrap_compile(r'^\s+(dword_\x+) = \*\(_DWORD \*\)(\w+_1402FAE33);'),                                 3 , lambda all, dst, src: MakeDword(eax(src))),
                 (wrap_compile(r'^\s+(dword_\x+) = (dword_\x+);'),                                                    3 , rename_lvar_factory(('arxan_done_dst_{}'.format(suffix), 'arxan_done_src_{}'.format(suffix)), type=(None, None))),
                 (wrap_compile(r'^\s+(v\d+) = 0i64;'),                                                                2 , rename_lvar_factory(0, 'Zero', uniq=1)),
+                #               rolling_code = *(_DWORD *)v10;
                 (wrap_compile(r'^\s+([::v::]).start = 0;'),                                                          2 , rename_lvar_factory(0, 'range', uniq=1)),
-                (wrap_compile(r'^\s+([::v::]) = &ImageBase\[range.start\];'),                                        2 , rename_lvar_factory(0, 'ptr')),
+                #               v10 = (__int64 *)&ImageBase[start];
+                (wrap_compile(r'^\s+([::anyvar::]) = [::reference_cast::]ImageBase\[(?:range.)?start\];'),           2 , rename_lvar_factory(0, 'ptr', type='uintptr_t')),
+                (wrap_compile(r'^\s+([::anyvar::]) = &ImageBase\[range.start\];'),                                   2 , rename_lvar_factory(0, 'ptr', type='uintptr_t')),
                 (wrap_compile(r'^\s+(Zero|v\d+) (=) 1i64;'),                                                         2 , rename_lvar_factory(0, '_align', uniq=1)),
                 (wrap_compile(r'^\s+(v\d+) = [::static_cast::]*\w+imagebase', re.I),                                 2 , rename_lvar_factory(0, 'ImageBase', type='uint8_t *', uniq=1)),
                 # guide = (uint8_t *)&unk_1439B9746;
@@ -2126,8 +2099,26 @@ def decompile_arxan(ea = None):
                 (wrap_compile(r'^\s+(v\d+) = a1;'),                                                                  2 , rename_lvar_factory(0, '_arg_0', uniq=1)),
                 (wrap_compile(r'^\s+if \((v\d+) == (24)\)'),                                                         2 , rename_lvar_factory(0, '_stack_padding', uniq=1)),
                 (wrap_compile(r'^\s+if \((v\d+) == (24)\)'),                                                         2 , rename_lvar_factory(0, '_stack_padding', uniq=1)),
-                (wrap_compile(r'([::v::]) = __ROL4__\(\2, ([::v::])\)'),                                             2 , rename_lvar_factory(('roll_amt', 'rolling_code') )),
-                (wrap_compile(r'([::v::]) += rolling_code ^ roll_amt'),                                              1 , rename_lvar_factory(0, 'hash')),
+                #               rolling_code = __ROL4__(rolling_code, roll_amt);
+                (wrap_compile(r'^\s+([::anyvar::]) = __ROL4__\(\2, ([::anyvar::])\)'),                               3 , rename_lvar_factory(('rolling_code', 'roll_amt')) ),
+                #               v14 += rolling_code;
+                (wrap_compile(r'^\s+([::anyvar::]) += rolling_cod\w+(?: ^ roll_am\w+)?'),                            2 , rename_lvar_factory(0, 'accum')),
+                #               rolling_code = *(_DWORD *)v10;
+                (wrap_compile(r'^\s+rolling_code = \*(?:\(_DWORD \*\))?([::v::]);'),                                 2 , rename_lvar_factory(0, 'cipher_ptr', type='uintptr_t') ),
+                #               v19 = dword_14358307F - *(_DWORD *)v15;
+                (wrap_compile(r'^\s+([::v::]) = ([::globalvar::]) - \*\(_DWORD \*\)([::v::]);'),                     4 , rename_lvar_factory(('buf', 'subtract_key_{}'.format(suffix), 'cipher_ptr'), 
+                                                                                                                                                type=(None, 'uint32_t', 'uintptr_t')) ),
+                #               v20 = *v14++ - roll_amt * rolling_code;
+                #               buf = *cipher_ptr++ - roll_amt * rolling_code;
+                (wrap_compile(r'^\s+([::anyvar::]) = \*([::anyvar::])++ - roll_amt \* rolling_code;'),               3 , rename_lvar_factory(('buf', 'cipher_ptr'), type=(None, 'uintptr_t')) ),
+                (wrap_compile(r'^\s+([::anyvar::]) = \*(?:\(_DWORD \*\))?([::anyvar::]) - roll_amt \* rolling_code'),3 , rename_lvar_factory(('buf', 'cipher_ptr'), type=('uint32_t', 'uintptr_t')) ),
+                #               buf = dword_143438883 ^ *v15++;
+                (wrap_compile(r'^\s+([::anyvar::]) = ([::globalvar::]) ^ \*([::v::])++;'),                           4 , rename_lvar_factory(('buf', 'cipher_key', 'cipher_ptr'), type=('uint32_t', 'uint32_t', 'uintptr_t')) ),
+
+                (wrap_compile(r'^\s+accum = ([::globalvar::]);'),                                                    2 , rename_lvar_factory(('accum_{}'.format(suffix)), type=('uint32_t'))),
+                #               cipher_ptr = (uintptr_t)&loc_14385C978;
+                #               cipher_ptr = (uintptr_t)qword_143842050;
+                (wrap_compile(r'^\s+cipher_ptr = \(uintptr_t\)&?([::anyvar::]);'),                                   2 , rename_lvar_factory(('ciphered_{}'.format(suffix)), type=(None))),
                 (wrap_compile(r'^\s+(\w+)\([::static_cast::]*&(\w+), [::static_cast::]*&(\w+)\);'),                  4 , rename_lvar_factory(('ArxanGetNextRange_{}'.format(suffix), 'guide', 'range'), type=(None, 'uint8_t*', 'arxan_range'), uniq=1)),
                 (wrap_compile(r'^\s+(ArxanMemcpy[^(), ]+)\(&?(\w+), &?(\w+), &?(\w+)\);'),                           5 , rename_lvar_factory((ea, 'dst', 'p_B0', 'len'), uniq=1)),
                 (wrap_compile(r'([::v::]) = [::reinterpet_cast::]ImageBase\[[::deref_static_cast::]([::v::])\]'),    3 , rename_lvar_factory(('acid_bath', 'acid_offset'), type=('uint64_t', 'uint32_t*'), uniq=1)),
@@ -2181,10 +2172,19 @@ def decompile_arxan(ea = None):
                             print("multimatch matches", matches)
                     else:
                         matches = re.findall(psub[0], line)
-                        if matches: print("\nfindall line", line)
+                        if matches: 
+                            # dprint("[decompile_arxan] psub[0], psub[1], len(matches)")
+                            if len(matches[0]) != psub[1]:
+                                print("*** [findall line   ]", line)
+                                print("*** [decompile_arxan] matches: {} | psub[1]: {}".format(len(matches[0]), psub[1]))
                     if matches and len(psub) > 1:
                         try:
-                            print("match:  {}\ngroups: {}\nfnargs: {}".format(string_between('re.compile(\'', '\')', str(psub[0]), greedy=1), _.first(matches), psub[1]))
+                            if debug:
+                                print("match:  {}\ngroups: {}\nfnargs: {}".format(
+                                    string_between('re.compile(\'', '\')', str(psub[0]), greedy=1), 
+                                    _.first(matches), 
+                                    psub[1])
+                                )
                         except KeyError:
                             # dprint("[keyError] psub, matches")
                             print("[keyError] psub:{}, matches:{}".format(psub, matches))

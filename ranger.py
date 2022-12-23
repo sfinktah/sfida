@@ -448,9 +448,14 @@ class GenericRanges:
         return self.genericRanges.count()
     
     def extend(self, iterable):
-        for item in iterable:
-            self.append(item)
+        self.genericRanges += SortedList([(get_start(x), get_last(x) + 1) for x in iterable])
+        self.optimize()
 
+        # very slow
+        #  for item in iterable:
+            #  self.append(item)
+
+    __add__ = extend
     update = extend
     add = append
     
@@ -497,7 +502,7 @@ class GenericRanges:
                 if adjoins(last, r):
                     new = union(last, r)
                     # dprint("[by] last, r, new")
-                    print("[by-union] {} + {} = {}".format(ahex(last), ahex(r), ahex(new)))
+                    # print("[by-union] {} + {} = {}".format(ahex(last), ahex(r), ahex(new)))
                     
                     memo[-1] = new
                     return memo

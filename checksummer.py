@@ -161,6 +161,15 @@ def ArxanGetNextRangeGenChunked(guide, _range=None, step=4):
         for rs in range(_range.start, _range.end, step):
             yield ida_ida.cvar.inf.min_ea + rs, min(step, _range.end - rs)
 
+def ArxanGetGuideLen(guide):
+    if isinstance(guide, (str, int)):
+        guide = arxan_guide(guide)
+    start = guide.ea
+    list(ArxanGetNextRangeGen(guide))
+    end = guide.ea
+    return end - start
+
+
 
 def ArxanDwordSub(guide, src, dword):
     r = arxan_range()
@@ -262,7 +271,8 @@ class arxan_range:
         """
         self._start = _uint32(value)
         if self._start == _uint32(-1):
-            print("[arxan_range] **** start == -1 ****")
+            pass
+            #  print("[arxan_range] **** start == -1 ****")
         elif self._start > 0x5000000:
             print("[arxan_range] start {:08x}".format(ida_ida.cvar.inf.min_ea + self._start))
         return self._start

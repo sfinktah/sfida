@@ -260,7 +260,15 @@ def ripadd(group, rip):
         return "rel 0x{:x}".format(rip + int(splut[1] + splut[2], 16))
     return "rel " + "".join(group)
 
+def diAsBytes(s):
+    if isinstance(s, bytearray):
+        s = bytes(s)
+    elif isinstance(s, str):
+        s = bytes(hex_pattern(s, wildcard=0x0))
+    return s
+
 def diInsn(code, offset = 0):
+    code = diAsBytes(code)
     if isinstance(code, list):
         code = bytearray(code)
     if isinstance(code, bytearray):
@@ -272,11 +280,13 @@ def diInsn(code, offset = 0):
         return instruction.lower().replace('[cr4:', '[')
 
 def diInsnsPretty(code, ea = None, dt=distorm_64_bit_flag()):
+    code = diAsBytes(code)
     iterable = diInsnsIter(asBytes(bytearray(code)), ea)
     for (offset, size, instruction, hexdump) in iterable:
         yield instruction.lower().replace('[cr4:', '[')
 
 def diInsns(code, ea = None, dt=distorm_64_bit_flag()):
+    code = diAsBytes(code)
     iterable = diInsnsIter(asBytes(bytearray(code)), ea)
     return [x for x in iterable]
 
@@ -288,6 +298,7 @@ def diInsns(code, ea = None, dt=distorm_64_bit_flag()):
         #  return instruction
 
 def diInsnsIter(code, ea = None, dt=distorm_64_bit_flag()):
+    code = diAsBytes(code)
     if ea is None:
         ea = idc.get_screen_ea()
     if isinstance(code, list):
@@ -326,6 +337,7 @@ def idafy(operand, ea, size):
     return operand
 
 def diInsnsObjectIter(code, ea=None, dt=distorm_64_bit_flag()):
+    code = diAsBytes(code)
     for it in diInsnsIter(asBytes(bytearray(code)), ea):
         yield SimpleAttrDict({
             'ea': it[0],
@@ -335,8 +347,8 @@ def diInsnsObjectIter(code, ea=None, dt=distorm_64_bit_flag()):
             })
 
 
-
 def diCode(code, offset = 0, noHex=0):
+    code = diAsBytes(code)
     dt       = distorm_64_bit_flag()
     iterable = distorm3.DecodeGenerator(offset, code, dt)
     result = []
@@ -354,9 +366,11 @@ def diCode(code, offset = 0, noHex=0):
     #     print("%.8x: %-32s %s" % (offset, hexdump, instruction))
 
 def deCode(code, ea = 0, dt=distorm_64_bit_flag(), features = 0):
+    code = diAsBytes(code)
     return distorm3.Decompose(ea, code, dt, features)
 
 def deCodeIter(code, ea = 0, dt=distorm_64_bit_flag(), features = 0):
+    code = diAsBytes(code)
     return distorm3.DecomposeGenerator(ea, code, dt, features)
 
 def de(ea = None, length = None):

@@ -1093,7 +1093,7 @@ def spread_files(path):
 match_emu(ea=0x13fffffff)
 
 if not getglobal('emu_stacks', None):
-    for fn in glob(os.path.join(os.path.dirname(idc.get_idb_path()), 'gtasc-*.lst')):
+    for fn in glob(os.path.join(os.path.dirname(idc.get_idb_path()), 'gtasc-*balance.lst')):
         emu_stacks = read_uc_emu_stack(fn)
 
 

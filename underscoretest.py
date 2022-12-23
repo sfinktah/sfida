@@ -8,7 +8,7 @@ try:
 except ImportError:
     pass
 from types import *
-import re, random
+import os, re, random
 import functools
 import random
 import time
@@ -17,6 +17,21 @@ from threading import Timer
 from collections import Sequence
 import six
 from six.moves import builtins
+
+_underscore__file__ = os.path.abspath(__file__)
+_underscore__name__ = __name__
+# dprint("[] _underscore__file__, _underscore__name__")
+print("[] _underscore__file__: {}, _underscore__name__: {}".format(_underscore__file__, _underscore__name__))
+
+def null():
+    return None
+
+def refresh_underscore():
+    try:
+        from exectools import _from
+        _from(_underscore__name__ + ' import _')
+    except ModuleNotFoundError:
+        pass
 
 def _oget(obj, key, default=None, call=False):
     """Get attribute or dictionary value of object
@@ -398,6 +413,8 @@ class underscore(object):
     """
 
     Null = "__Null__"
+    #  @staticmethod
+    #  def null(): pass
     """
     Since we are working with the native types
     I can't compare anything with None, so I use a Substitute type for checking
@@ -1178,7 +1195,7 @@ class underscore(object):
         """
         return self._wrap(len(self.obj))
 
-    def first(self, n=None):
+    def first(self, n=None, default=null):
         """
         Get the first element of an array. Passing **n** will return the
         first N values in the array. Aliased as `head` and `take`.
@@ -1193,8 +1210,9 @@ class underscore(object):
 
         keys = _.keys(o)[0:count]
         res = [o[x] for x in keys]
-        if n is None and res:
-            return self._wrap(res[0])
+        if n is None:
+            if res: return self._wrap(res[0])
+            if default is not null: return self._wrap(default)
 
         #  keys = getattr(self.obj, 'keys', None)
         #  res = []
@@ -1209,12 +1227,13 @@ class underscore(object):
         """
         Get the first element of an array, or `default` if empty.
         """
-        count = 1
-        keys = _.keys(self.obj)[0:count]
-        res = [self.obj[x] for x in keys]
-        if not res:
-            return default
-        return self._wrap(res[0])
+        return self.first(default=default)
+        #  count = 1
+        #  keys = _.keys(self.obj)[0:count]
+        #  res = [self.obj[x] for x in keys]
+        #  if not res:
+            #  return default
+        #  return self._wrap(res[0])
 
     def initial(self, n=1):
         """
@@ -1225,17 +1244,29 @@ class underscore(object):
         """
         return self._wrap(self.obj[0:-n])
 
-    def last(self, n=1):
+    def last(self, n=None, default=null):
         """
-        Get the last element of an array. Passing **n** will return the last N
-        values in the array.
+        Get the first element of an array. Passing **n** will return the
+        first N values in the array. Aliased as `head` and `take`.
         The **guard** check allows it to work with `_.map`.
+
+        Note: not passing `n` will return the first item, passing `n=1`
+        will return a list containing only the first item. (as per underscore.js)
+
+        old doc:
+            Get the last element of an array. Passing **n** will return the last N
+            values in the array.
+            The **guard** check allows it to work with `_.map`.
         """
         o = _asList(self.obj)
-        keys = _.keys(o)[-n:]
+        count = n if n is not None else 1
+
+
+        keys = _.keys(o)[-count:]
         res = [o[x] for x in keys]
-        if n == 1 and res:
-            res = res[-1]
+        if n is None:
+            if res: return self._wrap(res[-1])
+            if default is not null: return self._wrap(default)
         return self._wrap(res)
 
 
@@ -1375,7 +1406,7 @@ class underscore(object):
                 return memo + iterator(value)
             return memo + value
 
-        ret = _.reduce(self.obj, by, initial)
+        ret = _.reduce(_values(self.obj), by, initial)
         return self._wrap(ret)
 
     def union(self, *args):
@@ -1529,14 +1560,16 @@ class underscore(object):
             return func(*(args + args_rest)) 
         return part
 
-    def partial(self, *args):
+    def partial(self, *args, **kwargs):
         """
         Partially apply a function by creating a version that has had some of
         its arguments pre-filled, without changing its dynamic `this` context.
         """
-        def part(*args2):
+        def part(*args2, **kwargs2):
             args3 = args + args2
-            return self.obj(*args3)
+            kwargs3 = kwargs.copy()
+            kwargs3.update(kwargs2)
+            return self.obj(*args3, **kwargs3)
 
         return self._wrap(part)
 
@@ -2480,6 +2513,10 @@ class underscore(object):
             return self.obj
 
     @staticmethod
+    def refresh():
+        refresh_underscore()
+
+    @staticmethod
     def makeStatic():
         """ Provide static access to underscore class
         """
@@ -2490,15 +2527,19 @@ class underscore(object):
             d = eachMethod[1].__doc__
             if not hasattr(_, m):
                 def caller(a):
-                    def execute(*args):
+                    def execute(*args, **kwargs):
                         r = None
-                        if len(args) == 1:
-                            r = getattr(underscore(args[0]), a)()
-                        elif len(args) > 1:
-                            rargs = args[1:]
-                            r = getattr(underscore(args[0]), a)(*rargs)
+                        if args:
+                            r = getattr(underscore(args[0]), a)(*args[1:], **kwargs)
                         else:
-                            r = getattr(underscore([]), a)()
+                            r = getattr(underscore([]), a)(**kwargs)
+                        #  if len(args) == 1:
+                            #  r = getattr(underscore(args[0]), a)()
+                        #  elif len(args) > 1:
+                            #  rargs = args[1:]
+                            #  r = getattr(underscore(args[0]), a)(*rargs)
+                        #  else:
+                            #  r = getattr(underscore([]), a)()
                         #  if r is None:
                             #  print("makeStatic failed: a:'{}', args:'{}' returned None".format(a, args))
                         return r

@@ -1119,25 +1119,48 @@ def LabelManyAddresses(l, label, force = False):
         MemLabelAddressPlus(ea, label)
         #  print("[labeled] ea:{:x}, label:{}".format(ea, idc.get_name(ea), ida_name.GN_VISIBLE))
 
-def FunctionsMatching(regex=None, exclude=None, filter=lambda x: x, flags=0):
+def GenericMatching(regex=None, exclude=None, filter=lambda x: x, flags=0, source=None, address=None, name=None):
     if regex and not isinstance(regex, re.Pattern):
         regex = re.compile(regex, flags)
     if exclude and not isinstance(exclude, re.Pattern):
         exclude = re.compile(exclude, flags)
-    result = [a for a in idautils.Functions() if filter(a) and (not regex or re.match(regex, idc.get_name(a)))]
-    if exclude:
-        result = [a for a in result if not re.search(regex, idc.get_name(a))]
+    result = [address(a) for a in source() 
+        if filter(address(a)) and 
+        (not regex or re.match(regex, name(a))) and
+        (not exclude or not re.search(exclude, name(a)))
+    ]
     return result
 
-def NamesMatching(regex=None, exclude=None, filter=lambda x: x, flags=0):
-    if regex and not isinstance(regex, re.Pattern):
-        regex = re.compile(regex, flags)
-    if exclude and not isinstance(exclude, re.Pattern):
-        exclude = re.compile(exclude, flags)
-    result = [a[0] for a in idautils.Names() if filter(a[0]) and (not regex or re.match(regex, a[1]))]
-    if exclude:
-        result = [a for a in result if not re.search(regex, idc.get_name(a))]
-    return result
+def GenericMatchingUi(*args, source=None, **kwargs):
+    result = [[idc.get_name(x), hex(x)] for x in source(*args, **kwargs)]
+    result.sort()
+    from HexRaysPyTools.forms import MyChoose
+    variable_chooser = MyChoose(
+        [x for x in result],
+        "Select",
+        [["Name", 25], ["Address", 16]]
+    )
+    row = variable_chooser.Show(modal=True)
+    if row != -1:
+        idc.jumpto(int(result[row][1], 16))
+        #  idaapi.open_pseudocode(result[row][1], 0)
+
+_NamesPartial = dict(
+        source = idautils.Names,
+        address = lambda v, *a: v[0],
+        name = lambda v, *a: v[1],
+)
+
+_FunctionsPartial = dict(
+        source = idautils.Functions,
+        address = lambda v, *a: v,
+        name = idc.get_name,
+)
+
+FunctionsMatching = _.partial(GenericMatching, **_FunctionsPartial)
+NamesMatching = _.partial(GenericMatching, **_NamesPartial)
+FunctionsMatchingUi = _.partial(GenericMatchingUi, source=FunctionsMatching)
+NamesMatchingUi = _.partial(GenericMatchingUi, source=NamesMatching)
 
 def RenameFunctionsMatching(regex=None, iteratee=None, exclude=None, filter=lambda x: x, flags=0):
     if callable(iteratee):
@@ -1152,23 +1175,11 @@ def RenameFunctionsMatching(regex=None, iteratee=None, exclude=None, filter=lamb
         raise ValueError('no iteratee specified')
 
 
-def FunctionNamesMatching(regex=None, exclude=None, filter=lambda x: x, flags=0):
+def FunctionsMatchingAsNames(regex=None, exclude=None, filter=lambda x: x, flags=0):
     return GetFuncName(FunctionsMatching(regex, exclude, filter, flags))
 
-def FunctionsMatchingUi(*args, **kwargs):
-    result = [[idc.get_name(x), hex(x)] for x in FunctionsMatching(*args, **kwargs)]
-    result.sort()
-    from HexRaysPyTools.forms import MyChoose
-    variable_chooser = MyChoose(
-        [x for x in result],
-        "Select Function",
-        [["Function name", 25], ["Function address", 16]]
-    )
-    row = variable_chooser.Show(modal=True)
-    if row != -1:
-        idc.jumpto(int(result[row][1], 16))
-        #  idaapi.open_pseudocode(result[row][1], 0)
-
+fmui = FunctionsMatchingUi
+nmui = NamesMatchingUi
 
 
 def FunctionsWhere(predicate):

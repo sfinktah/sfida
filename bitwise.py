@@ -695,17 +695,17 @@ if False and __name__ == "__main__":
                 [["4c 89 74 24 f8", "48 8d 64 24 f8"], ["48 8d 64 24 f8", "4c 89 34 24 90"], "r14"],
                 [["4c 89 7c 24 f8", "48 8d 64 24 f8"], ["48 8d 64 24 f8", "4c 89 3c 24 90"], "r15"]
         ]
-    def hex_byte_as_pattern_int(string):
-        return -1 if '?' in string else int(string, 16)
-
-    def hex_pattern(hexLists):
-        result = [ ]
-        # Convert a string into a list, just so we can process it
-        if not isinstance(hexLists, list):
-            hexLists = [hexLists]
-        for l in hexLists:
-            result.extend([hex_byte_as_pattern_int(item) for item in l.split(" ")])
-        return result
+    #       def hex_byte_as_pattern_int(string):
+    #           return -1 if '?' in string else int(string, 16)
+    #   
+    #       def hex_pattern(hexLists):
+    #           result = [ ]
+    #           # Convert a string into a list, just so we can process it
+    #           if not isinstance(hexLists, list):
+    #               hexLists = [hexLists]
+    #           for l in hexLists:
+    #               result.extend([hex_byte_as_pattern_int(item) for item in l.split(" ")])
+    #           return result
 
     from underscoretest import _
     with BitwiseMask(store=1) as bm1:

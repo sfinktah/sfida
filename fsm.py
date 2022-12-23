@@ -1,6 +1,6 @@
 def FindStackMutators(ea=None, skipRetrace=False, path=None, **kwargs):
     ea = eax(ea)
-    if 'emu_stacks' in globals():
+    if 'emu_stacks' in globals() and not kwargs.get('noEmu', None):
         if ea in emu_stacks and emu_stacks[ea]:
             results = []
             for i, r in enumerate(emu_stacks[ea]):

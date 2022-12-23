@@ -205,6 +205,10 @@ class IdaRestClient(IdaRestConfiguration, object):
         # names = _.flatten(irc.get_json('names', 'http://192.168.1.123:2007/ida/api/v1.0/').json()['data'], 1)
         # [LabelAddressPlus(x, y) for x, y in names if ean(x) != y and not re_match_array(r'^(NATIVE|The|Arxan|Balance|\w+Bunny|.*stack_align|.*Concurrency)', [ean(x), y])];
         # pph([(x, ean(x), y) for x, y in names if ean(x) != y and not re_match_array(r'^(NATIVE|The|Arxan|Balance|\w+Bunny|.*stack_align|.*Concurrency)', [ean(x), y])])
+        #
+        # patches = irc.get_json('patches.picle', 'http://192.168.1.123:2021/ida/api/v1.0/')
+        # p = pickle.loads(bytearray.fromhex(patches.json()['data']))
+        # for ea, b in p.items(): PatchBytes(ea, b)
         if flags is not None:
             results = self.get_json('get_type', type=types, flags=flags)
         else:

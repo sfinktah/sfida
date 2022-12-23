@@ -6565,35 +6565,35 @@ def listOfBytesAsHex(byteArray):
     return bytesHex
 
 
-def hex_byte_as_pattern_int(string):
-    return -1 if '?' in string else int(string, 16)
+def hex_byte_as_pattern_int(string, wildcard=-1):
+    return wildcard if '?' in string else int(string, 16)
 
-def hex_string_as_list(string):
+def hex_string_as_list(string, **kwargs):
     def intify(string): return -1 if '?' in string else int(string, 16)
-    return [hex_byte_as_pattern_int(x) for x in string.split(' ')]
+    return [hex_byte_as_pattern_int(x, **kwargs) for x in string.split(' ')]
 
-def hex_pattern(hexLists):
+def hex_pattern(hexLists, **kwargs):
     result = [ ]
     # Convert a string into a list, just so we can process it
     if not isinstance(hexLists, list):
         hexLists = [hexLists]
     for l in hexLists:
-        result.extend([hex_byte_as_pattern_int(item) for item in l.split(" ")])
+        result.extend([hex_byte_as_pattern_int(item, **kwargs) for item in l.split(" ")])
     return result
 
-def hex_patterns(hexLists):
+def hex_patterns(hexLists, **kwargs):
     result = [ ]
     # Convert a string into a list, just so we can process it
     if not isinstance(hexLists, list):
         hexLists = [hexLists]
     for l in hexLists:
-        result.append([hex_byte_as_pattern_int(item) for item in l.split(" ")])
+        result.append([hex_byte_as_pattern_int(item, **kwargs) for item in l.split(" ")])
     return result
 
-def make_pattern_from_hex_list(hexLists):
+def make_pattern_from_hex_list(hexLists, **kwargs):
     result = []
     for list in hexLists:
-        result.append([hex_byte_as_pattern_int(item) for item in list.split(" ")])
+        result.append([hex_byte_as_pattern_int(item, **kwargs) for item in list.split(" ")])
     return result
 
 def swap32(x, n=4):
@@ -9528,9 +9528,6 @@ def GetFuncEnd(ea=None):
     if not func:
         return BADADDR
     return func.end_ea
-
-def hex_byte_as_pattern_int(string):
-    return -1 if '?' in string else int(string, 16)
 
 def MakeCodeAndWait(ea, force = False, comment = ""):
     """
@@ -12893,7 +12890,7 @@ if hasglobal('PerfTimer'):
 #     'sharp_sock_alert', 'wall_town_air', 'rear_tin_alert', 'flesh_rob_aim',
 #     'page_knee_alert', 'thick_ben_orgy', 'felt_louis_aids']
 #
-#     good: felt_louis_aids[register_natives] swear_apart_air joint_anger_aim brick_pan_aids beak_moved_aim sharp_sock_alert[exact_told_aids] 
+#     good: felt_louis_aids[register_natives] swear_apart_air joint_anger_aim brick_pan_aids beak_moved_aim sharp_sock_alert[exact_told_aids] say_fool_air[plow_look_alert|] 
 #     bad: page_knee_alert louis_draft_aim thick_ben_orgy
 #     0xFCFA31AD, 0xBC537E0D, 0xAE04310C
 #     ['exact_told_aids', 'sharp_sock_alert', 'alert_close_air', 'net_deed_acid', 'kind_cloud_air', 'five_baby_aim', 'tap_bake_air', 'shot_sixth_air', 'sweet_sheet_add', 'blame_stock_air']
