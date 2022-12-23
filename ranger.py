@@ -455,7 +455,11 @@ class GenericRanges:
         #  for item in iterable:
             #  self.append(item)
 
-    __add__ = extend
+    def __add__(self, iterable):
+        tmp = self.copy()
+        tmp.extend(iterable)
+        return tmp
+
     update = extend
     add = append
     
