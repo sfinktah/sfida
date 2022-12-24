@@ -976,8 +976,28 @@ def my_print_decls(name, flags = PDF_INCL_DEPS | PDF_DEF_FWD):
     result = ''
     if ordinals:
         result = idc.print_decls(','.join([str(x) for x in ordinals if x > -1]), flags)
+    splitted = re.split(r'\n\n/\* \d+ \*/\n', result)
+    result_object = dict()
+    for s in splitted:
+        s1 = string_between('', '\n', s, retn_all_on_fail=1)
+        # typedef struct tagCALPSTR CALPSTR;
+        # typedef unsigned __int8 uint8_t;
+
+        # typedef/struct/union
+        t = string_between('', ' ', s1)
+
+        t1 = string_between('', ' : ', s1, retn_all_on_fail=1)
+        # struct/typedef/union name
+        t2 = string_between(' ', '', t1, rightmost=1)
+
+        # skip forward decls
+        if t == 'struct' and t2.endswith(';'):
+            continue
+        t2 = t2.rstrip(';')
+        result_object[t2] = s
+
     print(result)
-    return result
+    return result_object
     #  if ti.is_typeref():
         #  final_type = ti.get_final_type_name()
         #  if final_type and isString(final_type):

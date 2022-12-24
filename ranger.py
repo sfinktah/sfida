@@ -359,7 +359,13 @@ def get_last(r):
 class GenericRanges:
     """Collection of GenericRange(s)"""
 
-    def __init__(self, genericRanges=None):
+    def __init__(self, genericRanges=None, cmp=adjoins):
+        """
+        describe_target
+
+        @param cmp: comparison function (default: adjoins) see also: overlaps
+        """
+        self.cmp = cmp
         self.genericRanges = SortedList(key=lambda v: v[1])
         if genericRanges:
             self.genericRanges = SortedList([(get_start(x), get_last(x) + 1) for x in genericRanges])
@@ -386,43 +392,74 @@ class GenericRanges:
     
     def __reversed__(self):
         return self.genericRanges.__reversed__()
+
+    def __eq__(self, other):
+        pass
     
-    def __contains__(self, item):
+    def __ne__(self, other):
+        pass
+    
+    def __lt__(self, other):
+        pass
+    
+    def __le__(self, other):
+        pass
+    
+    def __gt__(self, other):
+        pass
+    
+    def __ge__(self, other):
+        pass
+    
+    def __cmp__(self, other):
+        pass
+    
+    def __indexOf__(self, item):
         if isinstance(item, int):
             right = self.genericRanges.bisect_left((item, item))
             left = right - 1
             if left < 0:
                 left = 0
-            for r in self.genericRanges[left:right+1]:
-                if get_start(r) <= item <= get_last(r):
-                    return True
-            return False
+            for i in range(left, right+1):
+                r = self.genericRanges[i]
+                if get_start(r) <= item < get_last(r):
+                    return i
         else:
             right = self.genericRanges.bisect_left((item))
             left = right - 1
             if left < 0:
                 left = 0
-            for r in self.genericRanges[left:right+1]:
+            for i in range(left, right+1):
+                r = self.genericRanges[i]
                 if issubset(item, r):
-                    return True
-            return False
+                    return i
+        return -1
+
+    def find(self, item):
+        found = self.__indexOf__(item)
+        if ~found:
+            return self[found]
+
+
+    def __contains__(self, item):
+        return ~self.__indexOf__(item)
     
     def append(self, object):
         object = (get_start(object), get_last(object) + 1)
 
         if isinstance(self.genericRanges, list):
-            idx = indexOfSet(self.genericRanges, object, adjoins)
+            idx = indexOfSet(self.genericRanges, object, self.cmp)
             if ~idx:
                     self.genericRanges[idx] = union(self.genericRanges[idx], object)
                     #
                     # XXX: the new range may join two existing ranges
-                    if len(self.genericRanges) > idx and adjoins(self.genericRanges[idx], self.genericRanges[idx+1]):
+                    if len(self.genericRanges) > idx and self.cmp(self.genericRanges[idx], self.genericRanges[idx+1]):
                         self.genericRanges[idx] = union(self.genericRanges[idx], self.genericRanges[idx+1])
                         self.genericRanges.pop(idx+1)
                     return
         else:
             if object in self.genericRanges:
-                overlapping = filterSet(self.genericRanges, object, adjoins)
+                overlapping = filterSet(self.genericRanges, object, self.cmp)
                 if overlapping:
                     new = object
                     for r in overlapping:
@@ -503,7 +540,7 @@ class GenericRanges:
         def by(memo, r, i):
             if memo:
                 last = memo[-1]
-                if adjoins(last, r):
+                if self.cmp(last, r):
                     new = union(last, r)
                     # dprint("[by] last, r, new")
                     # print("[by-union] {} + {} = {}".format(ahex(last), ahex(r), ahex(new)))

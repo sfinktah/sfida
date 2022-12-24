@@ -1095,11 +1095,18 @@ class IDARequestHandler(HTTPRequestHandler):
             tinfo.deserialize(idaapi.cvar.idati, tp, fld, None)
             return tinfo
 
+        def get_tinfo_magic(name):
+            tif = get_tinfo_by_parse(name + '*')
+            if not tif:
+                return
+            return tif.get_pointed_object()
+
+
         def my_print_decls(name, flags=0):
             names = name if isinstance(name, list) else [name]
             ordinals = []
             for name in names:
-                ti = get_tinfo_by_parse(name)
+                ti = get_tinfo_magic(name)
                 if ti:
                     ordinal = ti.get_ordinal()
                     if ordinal:
@@ -1509,7 +1516,7 @@ def idarest_main(*args):
     ir.add_route('make_patch', lambda o, a: "\n".join(make_native_patchfile(a['ea'])))
     ir.add_route('getglobal', lambda o, a: getglobal(a['name'], None))
     ir.add_route('setglobal', lambda o, a: setglobal(a['name'], a['value']))
-    ir.add_route('patches', lambda o, a: get_patches())
+    ir.add_route('patches', lambda o, a: get_patches_idarest())
     ### end example routes
 
 

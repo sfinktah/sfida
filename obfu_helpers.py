@@ -251,7 +251,8 @@ except:
 
 def IsCode(ea): return (idc.get_full_flags(ea) & idc.MS_CLS) == idc.FF_CODE
 
-def PatchBytes(ea, patch=None, comment=None, code=False, put=False):
+@perf_timed()
+def PatchBytes(ea, patch=None, comment=None, code=False, put=False, ease=True):
     """
     @param ea [optional]:           address to patch (or ommit for screen_ea)
     @param patch list|string|bytes: [0x66, 0x90] or "66 90" or b"\x66\x90" (py3)
@@ -369,11 +370,11 @@ def PatchBytes(ea, patch=None, comment=None, code=False, put=False):
         #  if next_code_head > pos:
             #  idaapi.patch_bytes(pos, byte_type(bytearray([0x90] * (next_code_head - pos))))
 #  
-    if code or was_code: EaseCode(ea, ea + length, noFlow=1, forceStart=1, noExcept=1)
+    if ease and (code or was_code): EaseCode(ea, ea + length, noFlow=1, forceStart=1, noExcept=1)
     if comment:
         if use_commenter: Commenter(ea, 'line').add(comment)
 
-    Plan(ea, ea + length, name='PatchNops')
+    Plan(ea, ea + length, name='PatchBytes')
         # EaseCode(ea, next_code_head)
 
 
@@ -462,7 +463,8 @@ def MakeTerms(length):
 
     return result
 
-def PatchNops(ea, count = None, comment="PatchNops", put=False, nop=0x90, trailingRet=False):
+@perf_timed()
+def PatchNops(ea, count=None, comment="PatchNops", put=False, nop=0x90, trailingRet=False, ease=True):
     if count is None and ea < 100000:
         ea, count = count, ea
     if ea is None:
@@ -475,11 +477,12 @@ def PatchNops(ea, count = None, comment="PatchNops", put=False, nop=0x90, traili
         if trailingRet:
             PatchBytes(ea, MakeNops(count-1), code=1, put=put)
             PatchBytes(ea + count - 1, 'c3', code=1, put=put)
-            end = EaseCode(ea)
+            if ease:
+                end = EaseCode(ea)
             for addr in idautils.Heads(ea, end):
                 if use_commenter: Commenter(addr, 'line').add('{}'.format(comment))
         else:
-            PatchBytes(ea, MakeNops(count), code=1, comment=comment, put=put)
+            PatchBytes(ea, MakeNops(count), code=1, comment=comment, put=put, ease=ease)
     else:
         MyMakeUnknown(ea, count, DOUNK_DELNAMES)
         if put:
@@ -932,7 +935,7 @@ def ida_resolve(assembly):
 
     return _resolve(assembly)
 
-def nassemble(ea, string = None, apply=None, comment=None, quiet=False, put=False):
+def nassemble(ea, string = None, apply=None, comment=None, quiet=False, put=False, ease=True):
     """ assemble with nasm
 
     :param ea: target address
@@ -988,7 +991,8 @@ def nassemble(ea, string = None, apply=None, comment=None, quiet=False, put=Fals
             # idc.plan_and_wait(ea, nextInsn)
             # forceCode(ea, nextInsn) # , nextInsn) # , ea + nextInsn)
             # idc.auto_wait()
-            EaseCode(ea, noExcept=1, forceStart=1)
+            if ease:
+                EaseCode(ea, noExcept=1, forceStart=1)
             #  forceCode(ea, nextInsn) # , nextInsn) # , ea + nextInsn)
             #  forceCode(nextInsn)
                 #  for e in range(ea, nextInsn):

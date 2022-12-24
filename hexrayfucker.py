@@ -1466,22 +1466,38 @@ def reby(chunk_size, matches):
                     yield item
 
 def wrap_pattern(pattern, split=None):
-    pattern = pattern                                                     \
-        .replace(r'\x',                             r'[0-9a-fA-F]')       \
-        .replace(r'\w\+',                           r'\w+')               \
-        .replace(r' += ',                           r' \+= ')             \
-        .replace(r' ^ ',                            r' \^ ')              \
-        .replace(r'++',                             r'\+\+')              \
-        .replace(r'[::reinterpret_pointer_cast::]', r'(?:\*\([^)]+\*\))') \
-        .replace(r'[::pointer_cast::]',             r'(?:\([^)]+\*\))')   \
-        .replace(r'[::static_cast::]',              r'(?:\([^)]+\))')     \
-        .replace(r'[::reference_cast::]',           r'(?:\([^)]+\)&)')    \
-        .replace(r'[::reinterpet_cast::]',          r'(?:\*\([^)]+\)&)')  \
-        .replace(r'[::deref_static_cast::]',        r'(?:\*\([^)]+\))')   \
-        .replace(r'[::v::]',                        r'(?:v\d+)')          \
-        .replace(r'[::globalvar::]',                r'(?:\b(?:dword|qword|word|byte|off|unk|loc|sub)_[1-9A-F][0-9A-F]+\b)')           \
-        .replace(r'[::anyvar::]',                   r'(?:\w+)')           \
-        .replace(r'[::number::]',                   r'(?:(?:0x)?[0-9a-fA-F]+)')
+    pattern = pattern                                                         \
+        .replace(r'\x',                                 r'[0-9a-fA-F]')       \
+        .replace(r'\w\+',                               r'\w+')               \
+        .replace(r' += ',                               r' \+= ')             \
+        .replace(r' ^ ',                                r' \^ ')              \
+        .replace(r'++',                                 r'\+\+')              \
+        .replace(r'[::any_cast::]',                     r'(?:[::dereference::]|[::reference::]|[::reinterpret_pointer_cast::]|[::pointer_cast::]|[::static_cast::]|[::reference_cast::]|[::reinterpet_cast::]|[::deref_static_cast::])*') \
+        .replace(r'[::dereference::]',                  r'(?:\*)')            \
+        .replace(r'[::reference::]',                    r'(?:&)')             \
+        .replace(r'[::reinterpret_pointer_cast::]',     r'(?:\*\([^)]+\*\))') \
+        .replace(r'[::pointer_cast::]',                 r'(?:\([^)]+\*\))')   \
+        .replace(r'[::static_cast::]',                  r'(?:\([^)]+\))')     \
+        .replace(r'[::reference_cast::]',               r'(?:\([^)]+\)&)')    \
+        .replace(r'[::reinterpet_cast::]',              r'(?:\*\([^)]+\)&)')  \
+        .replace(r'[::deref_static_cast::]',            r'(?:\*\([^)]+\))')   \
+        .replace(r'[::opt_dereference::]',              r'(?:\*)?')           \
+        .replace(r'[::opt_reference::]',                r'(?:&)?')            \
+        .replace(r'[::opt_reinterpret_pointer_cast::]', r'(?:\*\([^)]+\*\))?')\
+        .replace(r'[::opt_pointer_cast::]',             r'(?:\([^)]+\*\))?')  \
+        .replace(r'[::opt_static_cast::]',              r'(?:\([^)]+\))?')    \
+        .replace(r'[::opt_reference_cast::]',           r'(?:\([^)]+\)&)?')   \
+        .replace(r'[::opt_reinterpet_cast::]',          r'(?:\*\([^)]+\)&)?') \
+        .replace(r'[::opt_deref_static_cast::]',        r'(?:\*\([^)]+\))?')  \
+        .replace(r'[::v::]',                            r'(?:\bv\d+\b)')      \
+        .replace(r'[::i::]',                            r'(?:\b[ijklmnop]\b)')\
+        .replace(r'[::dummyname::]',                    r'(?:\b(?:algn|asc|byte3|byte|custdata|dbl|dword|flt|loc|locret|nullsub|off|packreal|qword|seg|stru|sub|tbyte|unk|word|xmmword|ymmword)_[0-9a-fA-F]+\b)')           \
+        .replace(r'[::anyvar::]',                       r'(?:\b\w+\b)')       \
+        .replace(r'[::hex::]',                          r'(?:\b0x[0-9a-fA-F]+\b)')\
+        .replace(r'[::decimal::]',                      r'(?:\b[0-9]+\b)')
+
+        
+
     if split:
         return pattern.split(split)
     if pattern.startswith(('^', '\\')):
@@ -2095,7 +2111,8 @@ def decompile_arxan(ea = None):
                 (wrap_compile(r'^\s+(Zero|v\d+) (=) 1i64;'),                                                         2 , rename_lvar_factory(0, '_align', uniq=1)),
                 (wrap_compile(r'^\s+(v\d+) = [::static_cast::]*\w+imagebase', re.I),                                 2 , rename_lvar_factory(0, 'ImageBase', type='uint8_t *', uniq=1)),
                 # guide = (uint8_t *)&unk_1439B9746;
-                (wrap_compile(r'^\s+(?:guide\w*) = [::reference_cast::]*(\w+);', re.I),                              2 , rename_lvar_factory(('guide_{}'.format(suffix)), type=(None))),
+                # guide = (uint8_t *)byte_143BAD2FD;
+                (wrap_compile(r'^\s+(?:guide\w*) = (?:[::reference_cast::]|[::static_cast::])?(\w+);', re.I),                              2 , rename_lvar_factory(('guide_{}'.format(suffix)), type=(None))),
                 (wrap_compile(r'^\s+(v\d+) = a1;'),                                                                  2 , rename_lvar_factory(0, '_arg_0', uniq=1)),
                 (wrap_compile(r'^\s+if \((v\d+) == (24)\)'),                                                         2 , rename_lvar_factory(0, '_stack_padding', uniq=1)),
                 (wrap_compile(r'^\s+if \((v\d+) == (24)\)'),                                                         2 , rename_lvar_factory(0, '_stack_padding', uniq=1)),
@@ -2106,16 +2123,16 @@ def decompile_arxan(ea = None):
                 #               rolling_code = *(_DWORD *)v10;
                 (wrap_compile(r'^\s+rolling_code = \*(?:\(_DWORD \*\))?([::v::]);'),                                 2 , rename_lvar_factory(0, 'cipher_ptr', type='uintptr_t') ),
                 #               v19 = dword_14358307F - *(_DWORD *)v15;
-                (wrap_compile(r'^\s+([::v::]) = ([::globalvar::]) - \*\(_DWORD \*\)([::v::]);'),                     4 , rename_lvar_factory(('buf', 'subtract_key_{}'.format(suffix), 'cipher_ptr'), 
+                (wrap_compile(r'^\s+([::v::]) = ([::dummyname::]) - \*\(_DWORD \*\)([::v::]);'),                     4 , rename_lvar_factory(('buf', 'subtract_key_{}'.format(suffix), 'cipher_ptr'), 
                                                                                                                                                 type=(None, 'uint32_t', 'uintptr_t')) ),
                 #               v20 = *v14++ - roll_amt * rolling_code;
                 #               buf = *cipher_ptr++ - roll_amt * rolling_code;
                 (wrap_compile(r'^\s+([::anyvar::]) = \*([::anyvar::])++ - roll_amt \* rolling_code;'),               3 , rename_lvar_factory(('buf', 'cipher_ptr'), type=(None, 'uintptr_t')) ),
                 (wrap_compile(r'^\s+([::anyvar::]) = \*(?:\(_DWORD \*\))?([::anyvar::]) - roll_amt \* rolling_code'),3 , rename_lvar_factory(('buf', 'cipher_ptr'), type=('uint32_t', 'uintptr_t')) ),
                 #               buf = dword_143438883 ^ *v15++;
-                (wrap_compile(r'^\s+([::anyvar::]) = ([::globalvar::]) ^ \*([::v::])++;'),                           4 , rename_lvar_factory(('buf', 'cipher_key', 'cipher_ptr'), type=('uint32_t', 'uint32_t', 'uintptr_t')) ),
+                (wrap_compile(r'^\s+([::anyvar::]) = ([::dummyname::]) ^ \*([::v::])++;'),                           4 , rename_lvar_factory(('buf', 'cipher_key', 'cipher_ptr'), type=('uint32_t', 'uint32_t', 'uintptr_t')) ),
 
-                (wrap_compile(r'^\s+accum = ([::globalvar::]);'),                                                    2 , rename_lvar_factory(('accum_{}'.format(suffix)), type=('uint32_t'))),
+                (wrap_compile(r'^\s+accum = ([::dummyname::]);'),                                                    2 , rename_lvar_factory(('accum_{}'.format(suffix)), type=('uint32_t'))),
                 #               cipher_ptr = (uintptr_t)&loc_14385C978;
                 #               cipher_ptr = (uintptr_t)qword_143842050;
                 (wrap_compile(r'^\s+cipher_ptr = \(uintptr_t\)&?([::anyvar::]);'),                                   2 , rename_lvar_factory(('ciphered_{}'.format(suffix)), type=(None))),
@@ -2130,6 +2147,36 @@ def decompile_arxan(ea = None):
     ({m}v\d+|p_B0) = [::static_cast::]*&({m}v\d+);
     ({m}v\d+) = 0;
     ({m}v\d+) = 0;""", split="\n"), 0, test_multimatch), #  def test_multimatch({m}cipher_text, p_B4, B4, p_B0, B4a, B4b, remain):
+
+                #                   """ BEFORE
+                #                   v22 = 0;
+                #                   v15 = &v7;
+                #                   v16 = byte_143BCD491;
+                #                   for ( m = &loc_143AE927F; v22 < dword_143685693; ++v22 )
+                #                       *v15++ = *m++ ^ *v16++;
+                #   
+                #                   v21 = &v7;
+                #                   ProcAddress = GetProcAddress(Zero, &v7);
+                #                   v20 = ProcAddress;
+                #   
+                #                   ### AFTER
+                #   
+                #                   procNameLength = 0;
+                #                   lpProcName = &ProcName;
+                #                   xor2 = byte_143BCD491;
+                #                   for ( xor1 = &loc_143AE927F; procNameLength < dword_143685693; ++procNameLength )
+                #                       *lpProcName++ = *xor1++ ^ *xor2++;
+                #   
+                #                   ppProcName = &ProcName;
+                #                   ProcAddress = GetProcAddress(hModule, &ProcName);
+                #                   v20 = ProcAddress;
+                #                   """
+                (wrap_compile(r'^\s+ProcAddress = GetProcAddress\(([::anyvar::]), &([::v::])\);'),                  3 , rename_lvar_factory(('hModule', 'ProcName'), type=('HMODULE', 'CHAR'), uniq=1)),
+                (wrap_compile(r'^\s+([::v::]) = &ProcName;'),                  2 , rename_lvar_factory('lpProcName')),
+                (wrap_compile(r'^\s+\*lpProcName++ = \*([::i::])++ ^ \*([::v::])++;'),                  3 , rename_lvar_factory(('xor1', 'xor2'))),
+                #         for ( xor1 = &loc_143AE927F; v22 < dword_143685693; ++v22 )
+                (wrap_compile(r'^\s+for \( xor1 = [::opt_reference::]([::dummyname::]); (?P<word>[::v::]) < [::opt_reference::]([::dummyname::]); ++(?P=word) \)'), 4 , rename_lvar_factory(('xor1_{}'.format(suffix), 'index', 'xor_len_{}'.format(suffix), ))),
+                (wrap_compile(r'^\s+xor2 = [::opt_reference::]([::dummyname::]);'), 2 , rename_lvar_factory('xor2_{}'.format(suffix))),
 
                 # *(_QWORD *)GetCurrentProcess_0 = GetProcAddress(pKernel32, "GetCurrentProcess");
                 #  (wrap_compile(r'\*\(_QWORD \*\)(\w\+) = GetProcAddress\((\w\+), "(\w\+)"\)')), 4, None),

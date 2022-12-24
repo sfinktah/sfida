@@ -436,8 +436,7 @@ class Obfu(object):
         self.patterns_bitwise.append(BitwisePattern(search, mask, replFunc, brief, safe, bitmask=bitmask, **kwargs))
 
 
-    def process_replacement(self, search, repl, addressList, patternComment, addressListWithNops, addressListFull, pat=None, context=None, length=None):
-        printed = False
+    def process_replacement(self, search, repl, addressList, patternComment, addressListWithNops, addressListFull, pat=None, context=None, length=None, printed=False):
         assemble = nassemble
         if obfu_debug: printi("[process_replacement] repl:{}".format(listAsHex(repl)))
         if isinstance(repl, list):
@@ -449,20 +448,28 @@ class Obfu(object):
                 repl = length, repl
             else:
                 printed = True
-                printi("{:x} {} repl:Search: {}\n                   Replace: {}\n                   Comment: {}"
+                printi("{:x} {} repl:Comment: {}"
                         .format(addressList[0], 
                             type(repl[0]).__name__,
-                            listAsHex(search), 
-                            listAsHex(repl), 
+                            #  listAsHex(search), 
+                            #  listAsHex(repl), 
                             patternComment)) # listAsHex(search), 
+                #  printi("{:x} {} repl:Search: {}\n                   Replace: {}\n                   Comment: {}"
+                        #  .format(addressList[0], 
+                            #  type(repl[0]).__name__,
+                            #  listAsHex(search), 
+                            #  listAsHex(repl), 
+                            #  patternComment)) # listAsHex(search), 
                 repl = (length or len(repl), repl)
 
         # bitwise stuff
         if isinstance(repl, tuple) and len(repl) == 2:
             _search, _repl = repl
             try:
-                _search = list(_search)
+                if not isinstance(_search, int):
+                    _search = list(_search)
             except TypeError as e:
+                printi("obfu exception: {}: {} [_search:{}]".format(e.__class__.__name__, str(e), _search))
                 pass
                 #  printi("[ignore] exception: {}: {} [_search:{}]".format(e.__class__.__name__, str(e), _search))
                 #  raise
@@ -477,11 +484,14 @@ class Obfu(object):
             if obfu_debug: printi("[process_replacement] tuple: _search:{}, _repl:{}".format(listAsHexIfPossible(_search), listAsHexIfPossible(_repl)))
 
             if not printed:
-                printi("{:x} bitwise: Search: {}\n                   Replace: {}\n                   Comment: {}"
+                printi("{:x} bitwise: Comment: {}"
                         .format(addressList[0], 
-                            listAsHex(search), 
-                            listAsHex(repl), 
                             patternComment)) # listAsHex(search), 
+                #  printi("{:x} bitwise: Search: {}\n                   Replace: {}\n                   Comment: {}"
+                        #  .format(addressList[0], 
+                            #  listAsHex(search), 
+                            #  listAsHex(_repl), 
+                            #  patternComment)) # listAsHex(search), 
 
             if -1 in _repl:
                 for i in range(len(search)):
@@ -527,10 +537,15 @@ class Obfu(object):
                 raise IndexError("pfft")
 
             _nop_end_index = addressListWithNops.index(_end_address)
+            _full_end_index = addressListWithNops.index(_end_address)
             if _nop_end_index == -1:
                 raise RuntimeError("couldn't match addressListWithNops to addressList")
             else:
                 _nop_end_index += 1
+            if _full_end_index == -1:
+                raise RuntimeError("couldn't match addressListWithfulls to addressList")
+            else:
+                _full_end_index += 1
 
             # dprint("[hm] _end, _nop_end_index, addressList, addressListWithNops, addressListFull")
 
@@ -546,6 +561,11 @@ class Obfu(object):
             if isinstance(_repl, list) and isinstance(_repl[0], str) and _repl[-1] == 'int3' or \
                     isinstance(_repl, list) and isinstance(_repl[0], int) and _repl[-1] == 'cc':
                         is_int3 = True
+                        #  targetRanges = GenericRanger(addressListFull, sort=0, outsort=0) 
+                        #  oriTargetRanges = targetRanges.copy()
+                        #  _targetRanges = str(targetRanges)
+                        #  if obfu_debug: printi("full targetRanges: {}".format(targetRanges))
+                        #  if obfu_debug: printi("full oriTargetRanges: {}".format(oriTargetRanges))
                         _repl.pop()
                         #  if obfu_debug: printi("obfu_class: extending targetRanges... locating longest range...")
                         #  sortedRanges = _.sortBy(targetRanges, lambda x, *a: len(x))
@@ -579,13 +599,15 @@ class Obfu(object):
                         r = targetRanges[0]
                         # spread reversed asm to beginning and start of range where possible
                         length = min(len(_repl), r.length)
-                        print("exact copy at {:#x}".format(r.start))
-                        PatchBytes(r.start, _repl[0:length], code=1, comment="{} {}".format(patternComment, _targetRanges))
+                        if obfu_debug: print("exact copy at {:#x}".format(r.start))
+                        PatchBytes(r.start, _repl[0:length], code=1, ease=1, comment="{} {}".format(patternComment, _targetRanges))
                         patchedAddresses.update(list(range(r.start, r.start + length)))
                         _repl = _repl[length:]
                         if _repl and len(targetRanges) < 2:
                             raise ObfuFailure("Not enough targetRanges for exact replacement")
                         targetRanges = targetRanges[1:]
+                        [Plan(ra.start, ra.start + ra.length) for ra in oriTargetRanges]
+                        #  [Plan(ra[0], EaseCode(ra[0], forceStart=1, noExcept=1)) for ra in oriTargetRanges]
                     return {'patchedAddresses': patchedAddresses}
 
                 if isinstance(_repl[0], int):
@@ -595,203 +617,199 @@ class Obfu(object):
                     _repl = [(bytearray().fromhex(x[3])) for x in diInsnsIter(_repl)]
                     assemble = bytepatch
 
-                if isinstance(_repl[0], (str, bytearray)):
-                    #  for asm in _repl:
-                    #  length = assemble(asm, address)
-                    #  if not length:
-                    #  raise ObfuFailure("assemble: " + asm)
-                    #  length = len(length)
-                    #  MakeCode(address)
-                    # pp(targetRanges)
-
-                    # assemble for length
-                    reverse = is_int3
-                    address = targetRanges[0].start
-                    test_assembled = [assemble(x, address) for x in _repl]
-                    # this isn't a particualr good check
-                    if not isinstance(test_assembled, (bytearray, list)):
-                        if obfu_debug: printi("couldn't assemble (for length) '%s': %s" % ("; ".join(_repl), test_assembled))
-                        raise ObfuFailure("assemble: {}".format(asm))
-                    else:
-                        test_assembled.reverse()
-                        if obfu_debug: printi("test_assembly length {} '{}': {}".format(
-                                        [len(x) for x in test_assembled], 
-                                        "; ".join(_repl) if isinstance(_repl, str) else 'bytearray', 
-                                        listAsHex(test_assembled))
-                                  )
-
-                    # run the whole thing through a test
-                    targetLengths = [x.length for x in targetRanges]
-                    for raw, nxt in stutter_chunk(test_assembled, 2, 1):
-                        length = len(raw)
-                        if len(targetLengths) == 0:
-                            printi("ran out of ranges to fill")
-                            raise ObfuFailure("ran out of ranges to fill")
-                            # get the [perhaps approximate] length of insn
-                            found = _.find(targetLengths, lambda v, *a: v >= length)
-                            if found is None:
-                                raise ObfuFailure("ran out of room for {}".format(listAsHex(raw)))
-                            idx = targetLengths.index(found)
-                            targetLengths[idx] -= length
-                            #  r.length -= length;
-                            if idx > 0:
-                                targetLengths = targetLengths[idx:]
-
-                    #  printi("test assembled with remaining lengths: {}".format(targetLengths))
-
-
-                    no_trailing_ret = False
-                    pad_tail = 0
-                    tail_padded = 0
-                    if reverse:
-                        _repl.reverse()
-                        targetRanges.reverse()
-                        if isinstance(_repl[0], str) and _repl[0].startswith(('ret', 'jmp')) or isinstance(_repl[0], bytes) and _repl[0].startswith((b'\xc3', b'\xe9', b'\xeb')):
-                            no_trailing_ret = True
+                elif isinstance(_repl[0], (str, bytearray)):
+                    with PerfTimer('obfu.patch.str'):
+                        # assemble for length
+                        # reverse = is_int3
+                        reverse = False
+                        address = targetRanges[0].start
+                        test_assembled = [assemble(x, address) for x in _repl]
+                        # this isn't a particualr good check
+                        if not isinstance(test_assembled, (bytearray, list)):
+                            if obfu_debug: printi("couldn't assemble (for length) '%s': %s" % ("; ".join(_repl), test_assembled))
+                            raise ObfuFailure("assemble: {}".format(asm))
                         else:
-                            pad_tail = 1
-                    targetRanges0 = targetRanges[0]
-                    found = None
-                    i = -1
-                    for asm, next_asm in stutter_chunk(_repl, 2, 1):
-                        i += 1
-                        # dprint("[process_replacement] asm, next_asm")
-                        if obfu_debug: print("[process_replacement] asm:{}, next_asm:{}".format(asm, next_asm))
-                        
-                        last_for_range = False
-                        if next_asm is None:
-                            next_asm = ''
-                            last_for_range = True
+                            test_assembled.reverse()
+                            if obfu_debug: printi("test_assembly length {} '{}': {}".format(
+                                            [len(x) for x in test_assembled], 
+                                            "; ".join(_repl) if isinstance(_repl, str) else 'bytearray', 
+                                            listAsHex(test_assembled))
+                                      )
 
-                        if len(targetRanges) == 0:
-                            printi("ran out of ranges to fill")
-                            raise ObfuFailure("ran out of ranges to fill")
-                        # get the [perhaps approximate] length of insn
-                        try:
-                            if pad_tail:
-                                tail_padded = pad_tail
-                                pad_tail = 0
-                                asm1 = "{}; ret".format(asm)
-                                asm2 = "{}; {}; ret".format(asm, next_asm)
+                        # run the whole thing through a test
+                        targetLengths = [x.length for x in targetRanges]
+                        for raw, nxt in stutter_chunk(test_assembled, 2, 1):
+                            length = len(raw)
+                            if len(targetLengths) == 0:
+                                printi("ran out of ranges to fill")
+                                raise ObfuFailure("ran out of ranges to fill")
+                                # get the [perhaps approximate] length of insn
+                                found = _.find(targetLengths, lambda v, *a: v >= length)
+                                if found is None:
+                                    raise ObfuFailure("ran out of room for {}".format(listAsHex(raw)))
+                                idx = targetLengths.index(found)
+                                targetLengths[idx] -= length
+                                #  r.length -= length;
+                                if idx > 0:
+                                    targetLengths = targetLengths[idx:]
+
+                        #  printi("test assembled with remaining lengths: {}".format(targetLengths))
+
+
+                        no_trailing_ret = False
+                        pad_tail = 0
+                        tail_padded = 0
+                        if reverse:
+                            _repl.reverse()
+                            targetRanges.reverse()
+                            if isinstance(_repl[0], str) and _repl[0].startswith(('ret', 'jmp')) or isinstance(_repl[0], bytes) and _repl[0].startswith((b'\xc3', b'\xe9', b'\xeb')):
+                                no_trailing_ret = True
                             else:
-                                asm1 = asm
-                                asm2 = "{}; {}".format(asm, next_asm)
-                            length = len(assemble(asm1, targetRanges[0].start))
-                            length2 = len(assemble(asm2, targetRanges[0].start))
-                            # dprint("[process_replacement] length, length2")
-                            if obfu_debug: print("[process_replacement] length:{}, length2:{}".format(length, length2))
+                                pad_tail = 1
+                        targetRanges0 = targetRanges[0]
+                        found = None
+                        i = -1
+                        for asm, next_asm in stutter_chunk(_repl, 2, 1):
+                            i += 1
+                            # dprint("[process_replacement] asm, next_asm")
+                            if obfu_debug: print("[process_replacement] asm:{}, next_asm:{}".format(asm, next_asm))
                             
-                            if not "shorted chunks":
-                                if found is not None and asm == "int3":
-                                    addr = eax(found)
-                                    # SetFuncOrChunkEnd(addr, addr)
-                                continue
-
-                            found = _.find(targetRanges, lambda v, *a: v.length >= length)
-                            if found is None:
-                                raise ObfuFailure("ran out of room assembling {}".format(asm))
-                            found2 = _.find(targetRanges, lambda v, *a: v.length >= length2)
-                            if found2 is None:
+                            last_for_range = False
+                            if next_asm is None:
+                                next_asm = ''
                                 last_for_range = True
-                                idx2 = None
-                            else:
-                                idx2 = targetRanges.index(found2)
-                            idx = targetRanges.index(found)
-                            last_for_range = last_for_range or idx != idx2
+
+                            if len(targetRanges) == 0:
+                                printi("ran out of ranges to fill")
+                                raise ObfuFailure("ran out of ranges to fill")
+                            # get the [perhaps approximate] length of insn
+                            try:
+                                if pad_tail:
+                                    tail_padded = pad_tail
+                                    pad_tail = 0
+                                    asm1 = "{}; ret".format(asm)
+                                    asm2 = "{}; {}; ret".format(asm, next_asm)
+                                else:
+                                    asm1 = asm
+                                    asm2 = "{}; {}".format(asm, next_asm)
+                                length = len(assemble(asm1, targetRanges[0].start))
+                                length2 = len(assemble(asm2, targetRanges[0].start))
+                                # dprint("[process_replacement] length, length2")
+                                if obfu_debug: print("[process_replacement] length:{}, length2:{}".format(length, length2))
                                 
-                            r = targetRanges[idx]
-                            # spread reversed asm to beginning and start of range where possible
-                            if reverse: # and not last_for_range:
-                                target = r.trend - length
-                            else:
-                                target = r.start
-                            assembled = assemble(asm1, target)
-                            if not isinstance(assembled, list):
-                                if obfu_debug: printi(("assemble failed '%s': %s" % (asm, assembled)))
-                                raise ObfuFailure("assemble: {}".format(asm))
-                            else:
-                                if obfu_debug: printi(("assembled %x-%x %s  %s" % (target, target + length, listAsHex(assembled), asm)))
-                            PatchBytes(target, assembled, code=1, comment="{} {}".format(patternComment, _targetRanges))
-                            patchedAddresses.update(list(range(target, target + len(assembled))))
+                                if not "shorted chunks":
+                                    if found is not None and asm == "int3":
+                                        addr = eax(found)
+                                        # SetFuncOrChunkEnd(addr, addr)
+                                    continue
 
-                            forceCode(target)
-                            if not IsCode_(target):
-                                if obfu_debug: printi("0x%x: Couldn't MakeCode" % target)
-                            # we could also leave the generic ranges in place with
-                            # modificiations to indication not to use, then erase over
-                            # them later... but remember, the reason we are ejecting them
-                            # is because we need to avoid out-of-order code
-                            if reverse: # and not last_for_range:
-                                r.trend -= length;
-                            else:
-                                r.start += length
-                            #  r.length -= length;
-                            if idx > 0:
-                                # we have skipped to the next range, marked the rest
-                                # of the previous range as used
-                                usedRanges.extend(targetRanges[0:idx])
-                                targetRanges = targetRanges[idx:]
-                            #  no need to do this
-                            #  # yes, this is safe and works. r is like an magic c++ iterator
-                            #  if r.length < 1:
-                            #  usedRanges = targetRanges[:1]
-                            #  targetRanges = targetRanges[1:]
+                                found = _.find(targetRanges, lambda v, *a: v.length >= length)
+                                if found is None:
+                                    raise ObfuFailure("ran out of room assembling {}".format(asm))
+                                found2 = _.find(targetRanges, lambda v, *a: v.length >= length2)
+                                if found2 is None:
+                                    last_for_range = True
+                                    idx2 = None
+                                else:
+                                    idx2 = targetRanges.index(found2)
+                                idx = targetRanges.index(found)
+                                last_for_range = last_for_range or idx != idx2
+                                    
+                                r = targetRanges[idx]
+                                # spread reversed asm to beginning and start of range where possible
+                                if reverse: # and not last_for_range:
+                                    target = r.trend - length
+                                else:
+                                    target = r.start
+                                assembled = assemble(asm1, target)
+                                if not isinstance(assembled, list):
+                                    if obfu_debug: printi(("assemble failed '%s': %s" % (asm, assembled)))
+                                    raise ObfuFailure("assemble: {}".format(asm))
+                                else:
+                                    if obfu_debug: printi(("assembled %x-%x %s  %s" % (target, target + length, listAsHex(assembled), asm)))
+                                PatchBytes(target, assembled, code=1, ease=1, comment="{} {}".format(patternComment, _targetRanges))
+                                patchedAddresses.update(list(range(target, target + len(assembled))))
 
-                            # pp(hex(targetRanges))
+                                forceCode(target)
+                                if not IsCode_(target):
+                                    if obfu_debug: printi("0x%x: Couldn't MakeCode" % target)
+                                # we could also leave the generic ranges in place with
+                                # modificiations to indication not to use, then erase over
+                                # them later... but remember, the reason we are ejecting them
+                                # is because we need to avoid out-of-order code
+                                if reverse: # and not last_for_range:
+                                    r.trend -= length;
+                                else:
+                                    r.start += length
+                                #  r.length -= length;
+                                if idx > 0:
+                                    # we have skipped to the next range, marked the rest
+                                    # of the previous range as used
+                                    usedRanges.extend(targetRanges[0:idx])
+                                    targetRanges = targetRanges[idx:]
+                                #  no need to do this
+                                #  # yes, this is safe and works. r is like an magic c++ iterator
+                                #  if r.length < 1:
+                                #  usedRanges = targetRanges[:1]
+                                #  targetRanges = targetRanges[1:]
 
-                        except KeyboardInterrupt:
-                            raise KeyboardInterrupt()
-                        #  except ValueError:
-                            #  printi(("couldn't find room for '%s' in %s" % (asm, _targetRanges)))
-                            #  raise ObfuFailure("assemble: {}".format(asm))
+                                # pp(hex(targetRanges))
 
-                    #  if not is_int3:
-                        #  usedRanges.extend(targetRanges)
+                            except KeyboardInterrupt:
+                                raise KeyboardInterrupt()
+                            #  except ValueError:
+                                #  printi(("couldn't find room for '%s' in %s" % (asm, _targetRanges)))
+                                #  raise ObfuFailure("assemble: {}".format(asm))
 
-                    if obfu_debug:
-                        printi("usedRanges: {}".format(pf(usedRanges)))
-                    #  for r in usedRanges:
-                        #  if r.length > 0:
-                            #  ## ZeroCode(start, length)
-                            #  if obfu_debug:
-                                #  printi("usedRangesNopping: {:x}, {:x}, {} {}".format(r.start, r.length, patternComment, _targetRanges))
-                            #  PatchNops(r.start, r.length, patternComment)
-                            #  for _addr in range(r.start, r.start + r.length):
-                                #  patchedAddresses.add(_addr)
+                        #  if not is_int3:
+                            #  usedRanges.extend(targetRanges)
 
-                    patchedRanges = GenericRanger(patchedAddresses, sort=0, outsort=0)
-                    # dprint("[process_replacement] patchedRanges")
-                    # print("[process_replacement] patchedRanges:{}".format(patchedRanges))
-                    
-                    
-
-                    # XXX: the `difference` probably isn't neccessary, as the two should be mutually exlusive
-                    # YYY: it's necessary now, we're using the original target ranges!
-                    if obfu_debug:
-                        setglobal('oriTargetRanges', oriTargetRanges)
-                        setglobal('patchedRanges', patchedRanges)
-
-                    d = difference(oriTargetRanges, patchedRanges, ordered=1) # usedRanges
-                    # dprint("[process_replacement] difference")
-                    # print("[process_replacement] difference:{}".format(d))
-                    
-                    if d:
-                        *all, last = d
-                        # dprint("[process_replacement] all, last")
-                        
-                        for r in all:
-                            ## ZeroCode(start, length)
-                            if obfu_debug:
-                                printi("remainingRangesNopping: {:#x}-{:#x}".format(r.start, r.trend))
-                            PatchNops(r.start, r.length, patternComment + " " + _targetRanges)
-                            for _addr in range(r.start, r.start + r.length):
-                                patchedAddresses.add(_addr)
                         if obfu_debug:
-                            printi("lastRangeNopping:       {:#x}-{:#x}".format(last.start, last.trend))
-                        PatchNops(last.start, last.length, patternComment + _targetRanges + " (trailing)") # , trailingRet=is_int3 and tail_padded)
-                        for _addr in range(last.start, last.start + last.length):
-                            patchedAddresses.add(_addr)
-                    return {'patchedAddresses': patchedAddresses}
+                            printi("usedRanges: {}".format(pf(usedRanges)))
+                        #  for r in usedRanges:
+                            #  if r.length > 0:
+                                #  ## ZeroCode(start, length)
+                                #  if obfu_debug:
+                                    #  printi("usedRangesNopping: {:x}, {:x}, {} {}".format(r.start, r.length, patternComment, _targetRanges))
+                                #  PatchNops(r.start, r.length, patternComment)
+                                #  for _addr in range(r.start, r.start + r.length):
+                                    #  patchedAddresses.add(_addr)
+
+                        patchedRanges = GenericRanger(patchedAddresses, sort=0, outsort=0)
+                        # dprint("[process_replacement] patchedRanges")
+                        # print("[process_replacement] patchedRanges:{}".format(patchedRanges))
+                        
+                        
+
+                        # XXX: the `difference` probably isn't neccessary, as the two should be mutually exlusive
+                        # YYY: it's necessary now, we're using the original target ranges!
+                        if obfu_debug:
+                            setglobal('oriTargetRanges', oriTargetRanges)
+                            setglobal('patchedRanges', patchedRanges)
+
+                        d = difference(oriTargetRanges, patchedRanges, ordered=1) # usedRanges
+                        # dprint("[process_replacement] difference")
+                        # print("[process_replacement] difference:{}".format(d))
+                        
+                        if d:
+                            *all, last = d
+                            # dprint("[process_replacement] all, last")
+                            
+                            for r in all:
+                                ## ZeroCode(start, length)
+                                if obfu_debug:
+                                    printi("remainingRangesNopping: {:#x}-{:#x}".format(r.start, r.trend))
+                                PatchNops(r.start, r.length, patternComment + " " + _targetRanges, ease=0)
+                                for _addr in range(r.start, r.start + r.length):
+                                    patchedAddresses.add(_addr)
+                            if obfu_debug:
+                                printi("lastRangeNopping:       {:#x}-{:#x}".format(last.start, last.trend))
+                            PatchNops(last.start, last.length, patternComment + _targetRanges + " (trailing)", ease=0) # , trailingRet=is_int3 and tail_padded)
+                            for _addr in range(last.start, last.start + last.length):
+                                patchedAddresses.add(_addr)
+                            [Plan(ra.start, ra.start + ra.length) for ra in oriTargetRanges]
+                            #  [Plan(ra[0], EaseCode(ra[0], forceStart=1, noExcept=1)) for ra in oriTargetRanges]
+                        return {'patchedAddresses': patchedAddresses}
         else:
             printi(("ProcessReplacement: Unexpected type (exected tuple): %s" % type(repl)))
             pp(repl)
@@ -885,24 +903,31 @@ class Obfu(object):
             # 141057f05 Search|Replace (A): 21|('0x15', ['<generator object recursive_map at 0x0000021AAAFC8F48>', '<generator object recursive_map at 0x0000021AAAFC8F48>'])
             #          jmp via push rbp, xchg, lea rsp, jmp rsp-8
             if not self.quiet:
-                printi("{:x} replFunc:    Search: {}\n                   Replace: {}\n                   Comment: {}"
+                printi("{:x} replFunc:Comment: {}"
                         .format(ea, 
-                            listAsHex(search), 
-                            ahex(repl), 
                             patternComment)) # listAsHex(search), 
+                #  printi("{:x} replFunc:Search: {}\n                   Replace: {}\n                   Comment: {}"
+                        #  .format(ea, 
+                            #  listAsHex(search), 
+                            #  ahex(repl), 
+                            #  patternComment)) # listAsHex(search), 
 
-            r = self.process_replacement(search, repl, addressList, patternComment, addressListWithNops, addressListFull, length=len(search), pat=pat, context=context)
+            r = self.process_replacement(search, repl, addressList, patternComment, addressListWithNops, addressListFull, length=len(search), pat=pat, context=context, printed=True)
             if r:
                 return {'addressList': addressList, 'safe': safe, 'result': r}
         elif repl:
             #  printi("{:x} Search|Replace (B): {}|{}\n          {}".format(ea, listAsHex(search), ahex(repl), patternComment))
             if not self.quiet:
-                printi("{:x} repl:        Search: {}\n                   Replace: {}\n                   Comment: {}"
-                        .format(ea, listAsHex(search), 
-                            ahex(repl), 
+                printi("{:x} repl:    Comment: {}"
+                        .format(ea, 
                             patternComment)) # listAsHex(search), 
+                #  printi("{:x} repl:    Search: {}\n                   Replace: {}\n                   Comment: {}"
+                        #  .format(ea, 
+                            #  listAsHex(search), 
+                            #  ahex(repl), 
+                            #  patternComment)) # listAsHex(search), 
             r = self.process_replacement(search, (search, repl), addressList, patternComment,
-                                        addressListWithNops, addressListFull, pat=pat, context=context)
+                                        addressListWithNops, addressListFull, pat=pat, context=context, printed=True)
             if r:
                 return {'addressList': addressList, 'pattern': pat, 'safe': safe, 'result': r}
         elif not repl:
@@ -938,7 +963,7 @@ class Obfu(object):
         if fnEnd < BADADDR and len(flowRefs) == 1 and hitFnEnd:
             # Expand Function
             SetFunctionEnd(ea, NextNotTail(fnEnd))
-            Wait()
+            #  Wait()
         ip = ea
         count = 0
         addressList = []
@@ -978,7 +1003,7 @@ class Obfu(object):
                     break
 
             # idaapi.set_item_color(ip, 0x222222)
-            Wait()
+            #  Wait()
             visited.add(ip)
             # insLen = MakeCodeAndWait(ip, force = True)
             count += insLen

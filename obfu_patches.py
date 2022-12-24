@@ -494,7 +494,7 @@ def patch_double_stack_push_call_jump(search, replace, original, ea, addressList
         or flags == 0x305054a0                                                        \
         or flags & idc.FF_0OFF \
         or (type(idc.GetDisasm(target)) is str and idc.GetDisasm(target).startswith("extrn")) \
-        or (type(GetType(target)) is str and GetType(target).endswith(")")):
+        or (type(idc.get_type(target)) is str and idc.get_type(target).endswith(")")):
             #  raise ObfuFailure("0x%x: serious business: %s {%s}" % (addressList[0], GetDisasm(target), GetDisasm(target)))
 
             state = 0
@@ -1637,7 +1637,8 @@ def obfu_append_patches():
             # interpolation patch engine
             simple_patch_factory([
                 "jmp {hex(idc.get_operand_value(addressList[1], 1))}",
-                "int3"]),
+                "int3"
+                ]),
             #  simple_patch_factory([
                 #  "nop",
                 #  "db 0x66, 0x90",
@@ -3000,11 +3001,13 @@ def obfu_append_patches():
     #  00~ff 00~ff 00~bf 00~ff 00~97
     #  00~ff 00~ff 00~ff 00~ff 00~ff
     obfu.append("", "mov [rsp-0x8], rax; lea rsp, [rsp-0x8]",
+            #            1     2  3     4  5  1  2  3  4  5
             bit_pattern("48~4c 89 44~7c 24 f8 48 8d 64 24 f8"),
             "", lambda a, b, c, *z, **kw: \
+                    #            1  2  3  4  5                   1     2     3     4     5
                     hex_pattern('48 8d 64 24 f8') + bit_pattern('00~ff 00~ff 00~bf 00~ff 00~97').sub(c[0:5]),
                     #  (len(a), [c[5], c[6], c[7], c[8], c[9], c[0], c[1], c[2]&0xbf, c[3], c[4]&0x97]),
-            resume=1, then='push', priority=2,
+            resume=1, then='push', priority=2, exact=1
     )
     # bit_pattern('48 8d 64 24 f8')
     # bit_pattern('00~ff 00~ff 00~bf 00~ff 00~97').sub(c[5:10]) + hex_pattern('48 8d 64 24 f8')

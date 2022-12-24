@@ -161,7 +161,7 @@ def read_emu_glob(fn, subdir='*', path=None, **kwargs):
         emu_path(path)
 
     if isinstance(fn, list):
-        return [read_emu_glob(x, subdir=subdir, **kwargs) for x in fn]
+        return _.flatten([read_emu_glob(x, subdir=subdir, **kwargs) for x in fn], 1)
 
     if not match_emu._path:
         print("No path set")

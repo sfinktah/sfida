@@ -608,8 +608,11 @@ def diida(ea=None, length=None, mnemOnly=False, filter=None, iteratee=None, retu
     if ea is None:
         ea = ScreenEA()
     if IsOffset(ea, loose=1):
-        return "dq offset {}".format(ean(getptr(ea)))
+        if returnLength:
+            return 8, "dq offset {}".format(ean(getptr(ea)))
     if IsData(ea) and IsStruct(ea):
+        if returnLength:
+            return idc.next_not_tail(ea) - ea, "struct"
         return "struct"
     if length is None: # Default to 1 instruction
         length = MyGetInstructionLength(ea) or 15

@@ -1453,6 +1453,13 @@ def get_selection_or_ea(asLength=False, expandEa=True, ea_iteratee=None, selecti
             return ea_iteratee(EA())
         return idc.get_screen_ea(), idc.next_not_tail(idc.get_screen_ea()) if expandEa else idc.get_screen_ea()
 
+def get_selection(asLength=False, expandEa=True, ea_iteratee=None, selection_iteratee=None):
+    selection, startaddr, endaddr = ida_kernwin.read_range_selection(None)
+    if selection:
+        if callable(selection_iteratee):
+            return selection_iteratee(startaddr, endaddr)
+        return startaddr, endaddr - startaddr if asLength else endaddr
+
 def create_insns(ea1, ea2):
     ea = idc.get_item_head(ea1)
     n = True
@@ -1465,30 +1472,39 @@ def create_insns(ea1, ea2):
                 n = idc.create_insn(ea)
         ea += n
 
-def hotkey_patch():
+def hotkey_patch(ea1=None, ea2=None):
     obfu.combed.clear()
-    chunkStart, chunkEnd = get_selection_or_ea()
+    if ea1 and ea2:
+        chunkStart, chunkEnd = ea1, ea2
+    else:
+        chunkStart, chunkEnd = get_selection_or_ea()
     if chunkStart + IdaGetInsnLen(chunkStart) >= chunkEnd:
-        print("single patch at {:x}".format(chunkStart))
+        # print("single patch at {:x}".format(chunkStart))
         obfu._patch(chunkStart)
     elif chunkEnd > chunkStart and chunkEnd < BADADDR and chunkEnd - chunkStart < 8192:
-        print("range patch")
+        # print("range patch")
         reflow = True
-        while reflow:
+        patches = 1
+        while reflow or patches:
+            patches = 0
             reflow = False
-            print("reflow:")
+            #  print("reflow:")
             for ea in idautils.Heads(chunkStart, chunkEnd):
-                print("for ea: {:x}".format(ea))
+                if isNop(ea) or isJmp(ea) or isCall(ea):
+                    continue
+                #  print("for ea: {:x}".format(ea))
                 r = True
                 while r and not reflow:
-                    r = False
-                    r = obfu._patch(ea)
-                    if r and isinstance(r, list):
-                        print("result")
+                    r = A(obfu._patch(ea))
+                    if r: #  and isinstance(r, list):
+                        #  print("result")
                         for p in r:
+                            patches += 1
                             if deep_get(p, 'pat.options.reflow', '') == 'reflow':
-                                print("reflowing")
+                                #  print("reflowing")
                                 reflow = True
+    else:
+        print("hotkey_patch range > 8192 bytes, ignored")
 
 
 
@@ -1508,6 +1524,13 @@ def hotkey_edit_nasm():
                 continue
             ida_auto.plan_and_wait(chunkStart, chunkEnd)
         break
+
+def hotkey_ease_code():
+    if get_selection():
+        chunkStart, chunkEnd = get_selection()
+        EaseCode(chunkStart, chunkEnd, forceStart=1, ignoreInt=1)
+    else:
+        EaseCode(idc.here(), forceStart=1, ignoreInt=1)
 
 def hotkey_unpatch():
     chunkStart, chunkEnd = get_selection_or_ea()

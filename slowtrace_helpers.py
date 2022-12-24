@@ -116,7 +116,7 @@ class TraceDepth(object):
 
 
 #
-@static_vars(last_indent=0) 
+@static_vars(last_indent=0)
 def printi(value, sacrificial=None, depth=None, *args, **kwargs):
     g_depth = TraceDepth.get()
 
@@ -314,7 +314,7 @@ def func_rename_vtable_xref(ea=None, **kwargs):
     else:
         printi("{:x} vtables: {}".format(ea, len(vtables)))
 
-    
+
 
 def isListOf(o, t):
     if isinstance(o, list):
@@ -322,7 +322,7 @@ def isListOf(o, t):
             if isinstance(o[0], t):
                 return True
     return False
-        
+
 def RecurseCalledRange(r=None, width=512, data=0, makeChart=1, exe='dot', includeSubs=0, fixVtables=False):
     from bisect import bisect_left, bisect_right, bisect
     chart = []
@@ -335,7 +335,7 @@ def RecurseCalledRange(r=None, width=512, data=0, makeChart=1, exe='dot', includ
         for head in Heads(startea, endea):
             xrefs.extend([x for x in [GetBlockStart(x.to) for x in idautils.XrefsFrom(head) \
                     if x.type in (
-                        #  ida_xref.fl_CF, ida_xref.fl_CN, 
+                        #  ida_xref.fl_CF, ida_xref.fl_CN,
                         ida_xref.fl_JF, ida_xref.fl_JN
                         ) \
                     ] if x])
@@ -362,7 +362,7 @@ def RecurseCalledRange(r=None, width=512, data=0, makeChart=1, exe='dot', includ
         if start < result:
             return None
         printi("[GetBlockStart] start:{:x} left:{:x}, right:{:x}, result:{:x}".format(start, rdict[rdict_keys[left]][0], rdict[rdict_keys[left]][1], result))
-        
+
         return rdict[rdict_keys[left]][0]
 
     depth = 0
@@ -379,7 +379,7 @@ def RecurseCalledRange(r=None, width=512, data=0, makeChart=1, exe='dot', includ
         for ea in refs:
             # dprint("[adding] ea")
             printi("[adding] ea: {}".format(ahex(ea)))
-            
+
             chart.append([start, ea])
             assoc[start].append(ea)
             assoc[ea].append(start)
@@ -391,7 +391,7 @@ def RecurseCalledRange(r=None, width=512, data=0, makeChart=1, exe='dot', includ
     for k in list(assoc.keys()):
         # dprint("[debug] k")
         printi("[debug] k:{}".format(ahex(k)))
-        
+
         addrs.clear()
         addrs2.clear()
         if k in assoc:
@@ -415,7 +415,7 @@ def RecurseCalledRange(r=None, width=512, data=0, makeChart=1, exe='dot', includ
             # dprint("[debug] addrs")
             printi("[debug] addrs:{}".format(hex(addrs2)))
             printi("[debug] used:{}".format(hex(list(used))))
-            
+
             sets.append(addrs)
 
     #  return chart
@@ -484,8 +484,9 @@ def CheckChunks(funcea=None):
 
 
 def GetAllChunks():
-    for cid in range(ida_funcs.get_fchunk_qty()): 
-        yield ida_funcs.getn_fchunk(cid)
+    for cid in range(ida_funcs.get_fchunk_qty()):
+        func = ida_funcs.getn_fchunk(cid)
+        yield func.start_ea, func.end_ea
 
 
 def NotHeads(start=None, end=None, predicate=None, advance=None):
@@ -501,7 +502,7 @@ def NotHeads(start=None, end=None, predicate=None, advance=None):
     """
     if start is None: start = ida_ida.cvar.inf.min_ea
     if end is None:   end = ida_ida.cvar.inf.max_ea
-    if predicate is None or not callable(predicate): 
+    if predicate is None or not callable(predicate):
         return
     if advance is None:
         advance = lambda a, e: a + 1
@@ -580,7 +581,7 @@ def check_append_func_tail(func, ea1, ea2):
         #  printi("append_func_tail: appending instead of extending:\nappend_func_tail(0x{:x}, 0x{:x}, 0x{:x})\n[overlaps existing function chunk at 0x{:x}]".format(funcea))
         #  printi("executing instead: ida_funcs.set_func_end(0x{:x}, 0x{:x})".format(tail.start_ea, ea2))
         #  return ida_funcs.set_func_end(tail.start_ea, ea2)
-    
+
     all_owners = set()
     for ea in range(ea1, ea2): # if len(list(idautils.Chunks(ea))) > 1 and func.start_ea in GetChunkOwners(ea) or \
         if ida_funcs.get_func_chunknum(func, ea) != -1:
@@ -734,7 +735,7 @@ def FixChunks(funcea=None, leave=None):
                         printi("[FixChunks] We have a really messed up ghost chunk at 0x{:x} belonging to 0x{:x} with no ChunkOwners".format(chunk_start, funcea))
                     else:
                         return True
-                    
+
                     _tailqty = func.tailqty
                     _chunk_list = GetChunks(funcea)
                     _ida_chunks = idautils.Chunks(funcea)
@@ -806,7 +807,7 @@ def FixChunks(funcea=None, leave=None):
                             if r:
                                 printi("[FixChunks] Managed to fix really fucked up ghost chunk")
                                 continue
-                            
+
             else:
                 pass
                 #  if debug: printi("[FixChunks] valid chunk number #{} ({})".format(_chunk_number, GetChunkNumber(chunk_start)))
@@ -868,7 +869,7 @@ def FixChunk(ea=None, leave=None, owner=None, chunk_end=None):
     #  # dprint("[FixChunk] _chunkNumber, chunkOwners, _chunkOwner, set.intersection(set(chunkOwners), [_chunkOwner])")
     # print("[FixChunk] _chunkNumber:{}, _chunkOwners:{}, _chunkOwner:{}, set.intersection(set(_chunkOwners), [_chunkOwner]):{}".format(_chunkNumber, _chunkOwners, _chunkOwner, set.intersection(set(_chunkOwners), [_chunkOwner])))
 
-    
+
     if _chunkNumber == -1 and _chunkOwners and _chunkOwner and not set.intersection(set(_chunkOwners), [_chunkOwner]):
         printi("[FixChunk] chunk at {:x} has conflicting and mutually exclusive owner and owners {}, {}".format(ea, hex(_chunkOwners), hex(_chunkOwner)))
         #  .text:0000000140A90F99     loc_140A90F99:                          ; CODE XREF: PED::_0x862C576661F1AAEF_ACTUAL_0_0-29DCF35↓j
@@ -879,7 +880,7 @@ def FixChunk(ea=None, leave=None, owner=None, chunk_end=None):
         # .text:0000000143C719B5     ; START OF FUNCTION CHUNK FOR NotRealSub [0x140a90fa0] (GetChunkOwner)
         # .text:0000000143C719B5     ;   ADDITIONAL PARENT FUNCTION CheckLoadedModules_inner [0x14345725b] (GetChunkOwners)
         # .text:0000000143C719B5
-        # .text:0000000143C719B5     cs: 
+        # .text:0000000143C719B5     cs:
 
         chunkOwners = GetChunkOwners(ea)
         chunkParent = chunkOwners[0]
@@ -901,7 +902,7 @@ def FixChunk(ea=None, leave=None, owner=None, chunk_end=None):
         ida_funcs.append_func_tail(GetFunc(chunkParent), chunkStart, chunkEnd)
         return idc.remove_fchunk(chunkParent, chunkStart)
 
-        #        Python>chunkStart=chunkStart 
+        #        Python>chunkStart=chunkStart
         #            chunkStart
         #        Python>ce=chunkEnd
         #            chunkEnd
@@ -1104,8 +1105,8 @@ def FixChunk(ea=None, leave=None, owner=None, chunk_end=None):
                 #  "y": y,
                 #  "z": hex(z),
             #  })))
-#  
-#  
+#
+#
     #  printi("[FixChunk] {}".format(pf({
             #  "invalid_owners": hex(invalid_owners),
             #  "valid_owners": hex(valid_owners),
@@ -1148,14 +1149,14 @@ def FixChunk(ea=None, leave=None, owner=None, chunk_end=None):
             printi("[FixChunk] Making function at {:x}".format(funcea))
             # if not MyMakeFunction(funcea):
             if not idc.add_func(funcea, IdaGetInsnLen(funcea) + funcea):
-                for _ea in invalid_owners + valid_owners: 
+                for _ea in invalid_owners + valid_owners:
                     printi("Removing all chunks from {:x}".format(_ea))
                     # for r in range(10):
                     while len(RemoveAllChunks(_ea)) > 1:
                         pass
                 if len(GetChunkOwners(funcea)) > 1:
                     raise RuntimeError("[FixChunk] Couldn't make {:x} into a legitimate function".format(funcea))
-    
+
             idc.auto_wait()
             # if we try to add chunkOwnersFuncNames chunk that overlaps an existing chunk owned by
             # the same function, IDA will crash.  So check for this first.
@@ -1180,7 +1181,7 @@ def FixChunk(ea=None, leave=None, owner=None, chunk_end=None):
 
     if len(GetChunkOwners(ea)) > 1:
         printi("[FixChunk] Owners still > 1, removing all chunks...")
-        for _ea in invalid_owners + valid_owners: 
+        for _ea in invalid_owners + valid_owners:
             printi("Removing all chunks from {:x}".format(_ea))
             # for r in range(10):
             while len(RemoveAllChunks(_ea)) > 1:
@@ -1200,13 +1201,13 @@ def FixAdjoiningChunks(ea=None, owner=None):
 
     ; ---------------------------------------------------------------------------
     ; START OF FUNCTION CHUNK FOR netshop___0x45c52481c47b5e75_actual
-    
+
     loc_140CD3AF2:                          ; CODE XREF: netshop___0x45c52481c47b5e75_actual-1822FE3
                     jmp     short loc_140CD3A9D
     ; END OF FUNCTION CHUNK FOR netshop___0x45c52481c47b5e75_actual
     ; ---------------------------------------------------------------------------
     ; START OF FUNCTION CHUNK FOR netshop___0x45c52481c47b5e75_actual
-    
+
     loc_140CD3AF4:                          ; CODE XREF: netshop___0x45c52481c47b5e75_actual-1BEFBBC
                     jmp     loc_1452E1DB0
     ; END OF FUNCTION CHUNK FOR netshop___0x45c52481c47b5e75_actual
@@ -1237,13 +1238,13 @@ def ZeroFunction(funcea=None, total=False):
     # See also:
     # def ida_funcs.find_func_bounds(*args) -> "int":
     #     r"""
-    # 
-    # 
+    #
+    #
     #     Determine the boundaries of a new function. This function tries to
     #     find the start and end addresses of a new function. It calls the
     #     module with \ph{func_bounds} in order to fine tune the function
     #     boundaries.
-    
+
     if isinstance(funcea, list):
         for ea in funcea:
             ZeroFunction(ea, total=total)
@@ -1326,7 +1327,7 @@ def ZeroFunction(funcea=None, total=False):
         # remove library flag (again)
         idc.set_func_flags(fnLoc, idc.get_func_flags(fnLoc) & ~4)
         # return original function name
-        
+
         if fnName:
             idc.set_name(fnLoc, fnName, idc.SN_NOWARN)
 
@@ -1452,7 +1453,7 @@ def IsSameChunk(old, new):
         return False
     # dprint("[IsSameChunk] owners1, owners2")
     #  printi("[IsSameChunk] owners1:{}, owners2:{}".format(hex(owners1), hex(owners2)))
-    
+
     if GetChunkNumber(old) != GetChunkNumber(new):
         return False
 
@@ -1593,9 +1594,9 @@ def CreateInsns(ea=None, length=None, count=None, min_length=None, max_length=No
         # dprint("[debug] pos, end")
         printi("[debug] idx:{:x}, count:{:x}".format(pos, end))
         fail = 1
-        
+
     if not fail:
-        for _len, _pos in results: 
+        for _len, _pos in results:
             forceCode(_pos, _len)
         return True, results
 
@@ -1659,10 +1660,10 @@ def ForceFindRefsTo(ea=None):
             return addr
 
     return PerformInSegments(finder)
-    
+
 def GetTarget(ea, flow=0, calls=1, conditionals=1, operand=1, failnone=False):
     """
-    @param operand bitmask 1 | 2 == 3 
+    @param operand bitmask 1 | 2 == 3
     """
     if isIterable(ea):
         return [GetTarget(x, flow=flow, calls=calls, conditionals=conditionals, operand=operand, failnone=failnone)
@@ -1676,7 +1677,7 @@ def GetTarget(ea, flow=0, calls=1, conditionals=1, operand=1, failnone=False):
     elif idc.get_operand_type(ea, 0) in (idc.o_mem, idc.o_imm) and IsValidEA(idc.get_operand_value(ea, 0)): # and IsCode_(idc.get_operand_value(ea, 1)):
         return idc.get_operand_value(ea, 0)
     if isOffset(ea):
-        target = getptr(ea) 
+        target = getptr(ea)
         if idc.get_inf_attr(idc.INF_MIN_EA) <= target < idc.get_inf_attr(idc.INF_MAX_EA):
             return target
 
@@ -1693,7 +1694,7 @@ def GetTarget(ea, flow=0, calls=1, conditionals=1, operand=1, failnone=False):
             if di_mnem != mnem:
                 raise AdvanceFailure(msg)
             return None if failnone else BADADDR
-    
+
     rv = None
     if operand & 1 and (mnem == "jmp" or (calls and mnem == "call") or (conditionals and mnem[0] == "j")):
         opType = idc.get_operand_type(ea, 0)
@@ -1735,7 +1736,7 @@ def GetTarget7(ea):
     mnem = IdaGetMnem(ea)
     if not mnem:
         return idc.BADADDR
-    
+
     opType0 = idc.get_operand_type(ea, 0)
     if mnem == "jmp" or mnem == "call" or mnem[0] == "j":
         if opType0 != o_near and opType0 != o_mem:
@@ -1784,7 +1785,7 @@ def GetChunkOwners(ea=None, includeOwner=False):
     @param ea: linear address
     """
     ea = eax(ea)
-    
+
     #  https://www.hex-rays.com/products/ida/support/sdkdoc/classfunc__parent__iterator__t.html
     #  func_parent_iterator_t fpi(fnt);
     #  for ( bool ok=fpi.first(); ok; ok=fpi.next() )
@@ -1795,13 +1796,13 @@ def GetChunkOwners(ea=None, includeOwner=False):
     # if debug: printi("[idapy] ida_funcs.get_fchunk(0x{:x}):\n{}".format(ea, pfh(func)))
     if not func:
         return []
-    
+
     #  func = ida_funcs.func_t(ea)
     it = ida_funcs.func_parent_iterator_t(func)
     ok = it.first()
     if ok == False:
         return [func.start_ea]
-    
+
     owners = []
     while ok:
         parent = it.parent()
@@ -1861,12 +1862,12 @@ def RemoveOtherChunkOwners(ea, fn):
 def idc_append_func_tail(funcea, ea1, ea2):
     """
     Append a function chunk to the function
-    
+
     @param funcea: any address in the function
     @param ea1: start of function tail
     @param ea2: end of function tail
     @return: 0 if failed, 1 if success
-    
+
     @note: If a chunk exists at the specified addresses, it must have exactly
            the specified boundaries
     """
@@ -2049,7 +2050,7 @@ def FuncContains(funcea=None, ea=None):
         return 0
     else:
         funcea = func.start_ea
-    
+
     return idafuncs.func_contains(func, ea)
 
 def RemoveChunkOwner(ea=None, funcea=None):
@@ -2099,12 +2100,12 @@ def GetChunkReferer(ea=None, n=0):
     """
     ea = eax(ea)
     return ida_funcs.get_fchunk_referer(ea, n)
-    
 
 
 
-    
-    
+
+
+
 
 def GetNumChunks(funcea=None):
     """
@@ -2146,9 +2147,9 @@ def IsChunkEnd(ea=None):
 
 
 
-def IsChunk(ea=None, owner=None):   
-    """ 
-    Is address in a tail chunk 
+def IsChunk(ea=None, owner=None):
+    """
+    Is address in a tail chunk
 
     @param ea: linear address
 
@@ -2173,7 +2174,7 @@ def IdaGetInsnLen(ea):
 
 #  def GetInsnLen(*args):
     #  return IdaGetInsnLen(*args)
-#  
+#
 #  def InsnLen(ea):
     #  return MyGetInstructionLength(ea)
 
@@ -2200,8 +2201,8 @@ def GetRbp(ea):
     func = GetFunc(ea)
     if not func:
         printi("return_unless: func")
-        return 
-    
+        return
+
     return idc.get_spd(ea) + func.frsize - func.fpd + func.frregs
 
 def GetSpDiffEx(ea=None):
@@ -2231,7 +2232,7 @@ def IsOffset64(ea=None, apply=False, loose=False):
             and (loose or ea & (ptrsize() - 1) == 0)
             and IsOff0(ea)
             and IsValidEA(getptr(ea))
-            and not IsCode_(ea) 
+            and not IsCode_(ea)
             and re.match(r'd\w offset ', idc.GetDisasm(ea))
             and True
     )
@@ -2297,14 +2298,14 @@ def AppendFunc(funcea=None, append=None):
     for cs, ce in chunks:
         idc.append_func_tail(funcea, cs, ce)
 
-    
-    
+
+
 
 def FuncFindRetrace(cs=False, **kwargs):
     idc.jumpto(GetFuncStart(here()))
     FuncFindApplySkipJumps()
     while FuncFindBadJumps(here()):
-            for ea in FuncFindBadJumps(here()): 
+            for ea in FuncFindBadJumps(here()):
                 try:
                     if cs:
                         ea = GetChunkStart(ea)
@@ -2532,7 +2533,7 @@ def SetChunkEnd(ea, value):
 
 def SetFuncOrChunkEnd(ea, value):
     if IsHeadChunk(ea):
-        return SetFuncEnd(ea, value) 
+        return SetFuncEnd(ea, value)
     elif IsChunk(ea, value):
         return SetChunkEnd(ea, value)
     else:
@@ -2593,10 +2594,10 @@ def IsNiceFunc(funcea=None, verbose=False, noChunks=False):
 
     # mov [rsp+arg_0], rbx
     # sub rsp, imm
-    if (insn.ops[0].type, insn.ops[0].reg) in ((4, 4), (1, 4)): 
+    if (insn.ops[0].type, insn.ops[0].reg) in ((4, 4), (1, 4)):
         good += 1
     # mov    reg, rsp
-    elif (insn.ops[1].type, insn.ops[1].reg) == (1, 4): 
+    elif (insn.ops[1].type, insn.ops[1].reg) == (1, 4):
         good += 1
 
     elif insn_match(ea, idaapi.NN_mov, (idc.o_reg, 0), (idc.o_reg, 4), comment='mov rax, rsp'):
@@ -2616,11 +2617,11 @@ def IsNiceFunc(funcea=None, verbose=False, noChunks=False):
     else:
         if verbose: print(f"{ea:#x} didn't start with anything nice")
         return False
-    
+
     if noChunks and GetNumChunks(ea) != 0:
         if verbose: print(f"{ea:#x} GetNumChunks() == {GetNumChunks(ea)}")
         return False
-  
+
     if ida_funcs.func_does_return(ea):
         # if verbose: print(f"{ea:#x} func_does_return(): Yes")
         if IsFuncSpdBalanced(ea):
@@ -2819,13 +2820,13 @@ def insn_mmatch(ea=None, patterns=None):
             ea = ea + IdaGetInsnLen(ea)
 
     return True
-    
+
 
     insn_mmatch(
-            EA(), 
+            EA(),
             [
-                ((idaapi.NN_lea, idc.o_reg), (2, idc.o_mem)), 
-                ((idaapi.NN_mov, idc.o_reg), (1, idc.o_imm)), 
+                ((idaapi.NN_lea, idc.o_reg), (2, idc.o_mem)),
+                ((idaapi.NN_mov, idc.o_reg), (1, idc.o_imm)),
                 ((idaapi.NN_jmp, idc.o_near))])
 
 
@@ -2853,7 +2854,7 @@ def GetFuncInfo(funcea=None):
         output.append("Nice Function")
     output.append(describe_target(ea))
     return output
-                
+
 def GetFuncChunked(ea):
     #  return GetChunk(ea) is not None
     return len(list(idautils.Chunks(ea))) > 1
@@ -2917,7 +2918,7 @@ def RenameFunctionsRe(pattern, repl, functions=None, exclude=None, filter=None, 
 
 
     return result
-    
+
 
 def GetFuncSize(ea):
     if not IsChunked(ea):
@@ -2942,7 +2943,7 @@ def MakeSigned(number, size=32):
 def GetRawJumpTarget(ea):
     if ea is None:
         return None
-    
+
     insnlen = IdaGetInsnLen(ea)
     if not insnlen:
         return None
@@ -2990,7 +2991,7 @@ def SkipJumps(ea=None,
             skipObfu=skipObfu,
             returnJumps=returnJumps,
             skipNops=skipNops,
-            skipShort=skipShort, 
+            skipShort=skipShort,
             skipCalls=skipCalls,
             unpatch=unpatch,
             until=until,
@@ -3016,7 +3017,7 @@ def SkipJumps(ea=None,
 
     def record_jumps(ea):
         if ea not in recordedJumps:
-            recordedJumps.append(ea) 
+            recordedJumps.append(ea)
 
     def return_jumps(_else=SkipJumps):
         if returnJumps or returnTargets:
@@ -3035,7 +3036,7 @@ def SkipJumps(ea=None,
 
     def iterateeAdd(_count, _ea):
         # dpt _ea:int
-        
+
         if not isinstance(_ea, int):
             raise TypeError(f'_ea should be int, not {type(_ea).__name__} ({ahex(_ea)})')
 
@@ -3052,7 +3053,7 @@ def SkipJumps(ea=None,
 
         if not iterateeQueueEnd:
             iterateeQueueEnd.append(True)
-            if iterateeQueue and (iterateeQueue[-1][0] != 0 or not includeEnd): 
+            if iterateeQueue and (iterateeQueue[-1][0] != 0 or not includeEnd):
                 iterateeQueue[-1][0] = -1
         else:
             raise RuntimeError("processIterateeQueue called twice with end")
@@ -3078,12 +3079,12 @@ def SkipJumps(ea=None,
         if apply and state == 'end' and len(processedIterateeQueue) > 1:
             # dprint("[processIterateeQueue] processIterateeQueue")
             # print("[processIterateeQueue] processedIterateeQueue:{}".format(processedIterateeQueue))
-            
+
             # adding targets to the end and _uniqing is just a hack, need to fix properly adding final target
             _start, *_mid, _end = _.uniq([x[1] for x in processedIterateeQueue] + targets)
             # dprint("[processIterateeQueue] _start, _mid, _end")
             # print("[processIterateeQueue] _start:{}, _mid:{}, _end:{}".format(_start, _mid, _end))
-            
+
             Commenter(_start, 'line').add('SkipJumpsIterateeStart: here -> {}'.format(" -> ".join(hex(_mid + [_end]))))
             Commenter(_end, 'line').add('SkipJumpsIterateeEnd: {} -> here'.format(" -> ".join(hex([_start] + _mid))))
             for _ea in _mid:
@@ -3118,7 +3119,7 @@ def SkipJumps(ea=None,
                 skipCalls=False,
                 skipConditionals=False,
                 skipNops=skipNops,
-                skipShort=skipShort, 
+                skipShort=skipShort,
                 unpatch=unpatch,
                 until=until,
                 untilInclusive=untilInclusive,
@@ -3173,7 +3174,7 @@ def SkipJumps(ea=None,
                     skipConditionals=skipConditionals,
                     skipNops=skipNops,
                     skipObfu=skipObfu,
-                    skipShort=skipShort, 
+                    skipShort=skipShort,
                     unpatch=unpatch,
                     until=until,
                     untilInclusive=untilInclusive,
@@ -3191,7 +3192,7 @@ def SkipJumps(ea=None,
 
         return return_jumps(_else=ea)
 
-    
+
     match_NN_rest = [idaapi.NN_jmp]
     match_NN_initial = [idaapi.NN_jmp]
     mnem_start = IdaGetMnem(ea)
@@ -3204,7 +3205,7 @@ def SkipJumps(ea=None,
     # target should start at ea
     jumps.append(target)
     while target != idc.BADADDR:
-        iterateeAdd(count, target) # target == ea 
+        iterateeAdd(count, target) # target == ea
         count += 1
         if count > 100:
             raise AdvanceFailure("[SkipJumps] Possible recursive jump, origin: {:#x}".format(ea))
@@ -3244,7 +3245,7 @@ def SkipJumps(ea=None,
             endix = max(0, len(targets)-2+untilInclusive)
             # dprint("[debug] endix")
             #  printi("[debug] endix:{}".format(endix))
-            
+
             if isInt(until):
                 if target == until:
                     return return_jumps(_else=targets[endix])
@@ -3301,7 +3302,7 @@ def SkipJumps(ea=None,
                         skipCalls=False,
                         skipConditionals=False,
                         skipNops=skipNops,
-                        skipShort=skipShort, 
+                        skipShort=skipShort,
                         unpatch=unpatch,
                         until=until,
                         untilInclusive=untilInclusive,
@@ -3376,12 +3377,12 @@ def SkipJumps(ea=None,
         skipped = len(jumps) - 1
         # for jmp in [ea] + jumps: # [1:-1]:
         if len(jumps) > 1:
-            
+
             for jmp in jumps: # [1:-1]:
                 # dprint("[SkipJumpsChunkTargetError] jmp")
                 if idc.get_item_size(jmp) >= 5:
                     currentTarget = GetTarget(jmp)
-                    
+
                     if currentTarget != targets[-1]:
                         stmt = "{} 0x{:x}".format(mnem_start if mnem_start and jmp == ea else "jmp", targets[-1])
                         printi("iassemble1(0x{:x}, '{}')".format(jmp, stmt))
@@ -3393,7 +3394,7 @@ def SkipJumps(ea=None,
 
             # dprint("[SkipJumps] jumps, targets")
             # print("[SkipJumps] ea: {}, jumps: {}, targets: {}".format(hex(ea), hex(jumps), hex(targets)))
-            
+
             Commenter(jumps[-1], 'line').add('SkipJumps from jumps: {}'.format(hex(targets)))
             Commenter(targets[-1], 'line').add('SkipJumps from targets: {}'.format(hex(targets)))
 
@@ -3408,7 +3409,7 @@ def SkipJumps(ea=None,
     processIterateeQueue(iterateeQueue, 'end', *args, **kwargs)
     # dprint("[SkipJumpsChunkTargetError] jumps, targets")
     #  print("[SkipJumpsChunkTargetError] jumps:{}, targets:{}".format(hex(jumps), hex(targets)))
-        
+
     return return_jumps()
 
 def FuncSkipJumps(funcea=None):
@@ -3427,16 +3428,16 @@ def FuncSkipJumps(funcea=None):
         return 0
     else:
         funcea = func.start_ea
-    
+
     loop = -1
     while True:
         loop += 1
         changed = 0
-        
+
         for ea in GetFuncHeads(funcea):
             # dprint("[FuncSkipJumps] ea")
             #  print("[FuncSkipJumps] ea: {}".format(hex(ea)))
-            
+
             if not loop:
                 if SkipJumps(ea, apply=1) not in (ea, GetTarget(ea)):
                     changed += 1
@@ -3492,23 +3493,23 @@ def AdvanceToMnem(ea, mnem=None, addrs=None, count=8**8, include=False, visited=
         visited = set()
     if rules is None:
         rules = []
-    
+
     ori_ea = ea
     insn_count = 0
     if mnem is not None:
         mnem = A(mnem)
     # dpt count:int, insn_count:int
-    
+
     if not isinstance(count, int):
         raise TypeError(f'count should be int, not {type(count).__name__}')
     if not isinstance(insn_count, int):
         raise TypeError(f'insn_count should be int, not {type(insn_count).__name__}')
-    
+
     while insn_count < count:
         # dprint("[debug] insn_count, ea")
         if debug: print("[debug] insn_count:{}, ea: {}".format(ahex(insn_count), ahex(ea)))
-        
-        
+
+
         insn_mnem = IdaGetMnem(ea)
         if mnem and not include and IsCode_(ea) and insn_mnem in mnem:
             break
@@ -3529,7 +3530,7 @@ def AdvanceToMnem(ea, mnem=None, addrs=None, count=8**8, include=False, visited=
         for condition, action in rules:
             # dprint("[AdvanceToMnem] condition, action")
             # print("[AdvanceToMnem] condition:{}, action:{}".format(condition, action))
-            
+
             if condition(ea):
                 res = _.last(action(ea)) if callable(action) else action
                 if isinstance(res, int) and IsValidEA(res):
@@ -3562,7 +3563,7 @@ def AdvanceToMnem(ea, mnem=None, addrs=None, count=8**8, include=False, visited=
                 or insn_match(ea, idaapi.NN_jmpni, (idc.o_phrase, None), comment='jmp qword [rax+r8*8]')
                 or insn_match(ea, idaapi.NN_jmpni, (idc.o_reg, None), comment='jmp rax')
                 or not ignoreInt and (
-                    insn_match(ea, idaapi.NN_int3, comment='int 3') or 
+                    insn_match(ea, idaapi.NN_int3, comment='int 3') or
                     insn_match(ea, idaapi.NN_ud2,  comment='ud2'))
                 ):
             break
@@ -3588,7 +3589,7 @@ def AdvanceToMnem(ea, mnem=None, addrs=None, count=8**8, include=False, visited=
         #  # dprint("[AdvanceToMnem] di(ori_ea, ea)")
         #  print("[AdvanceToMnem] {}".format(di(ori_ea, ea)))
         #  raise RuntimeError("DEBUG")
-        
+
     return (insn_count, ea, get_name_by_any(ea))
     # return SimpleAttrDict(_.object(('count', 'ea', 'name'), (calls, ea, get_name_by_any(ea))))
 
@@ -3708,7 +3709,7 @@ def OldAdvanceToMnemEx(ea, term='retn', iteratee=None, **kwargs):
                 if isinstance(response, dict):
                     if 'result' in response:
                         results.append(response['result'])
-                    
+
 
             if label:
                 if len(insns) and re.match(r'\s*j\w+ ' + re.escape(label), insns[-1]):
@@ -3747,7 +3748,7 @@ def OldAdvanceToMnemEx(ea, term='retn', iteratee=None, **kwargs):
 
     # dprint("[flow] flow_refs_to")
     #  printi("[flow] flow_refs_to:{}".format(flow_refs_to))
-        
+
     for _to, _from in flow_refs_to.items():
         for _src in _from:
             flow_refs_from[_src].add(_to)
@@ -3765,7 +3766,7 @@ def OldAdvanceToMnemEx(ea, term='retn', iteratee=None, **kwargs):
 
     return SimpleAttrDict({
         'insns': insns,
-        'insn_count': insn_count, 
+        'insn_count': insn_count,
         'byte_count': byte_count,
         'results': results,
         'refs_from': refs_from,
@@ -3793,7 +3794,7 @@ def RemoveNativeRegistration():
         result = AdvanceToMnemEx(ea, 'retn', lambda x, *a: {'result': (x.ea, x.ea + x.size)})
         if result and len(result) > 2 and isinstance(result[2], list):
             r.extend( result[2] )
-  
+
     printi("ranging results")
     rx = GenericRanger([GenericRange(x[0], last=x[1]) for x in r], sort=1, outsort=1)
     pp(rx[-100:])
@@ -4002,14 +4003,14 @@ def ida_retrace_patch(chunkStart, chunkEnd=None, addressHistory=None, patchedAdd
             if isJmp(ea) or isCall(ea) or isNop(ea):
                 continue
             try:
-                # TODO: have patch alter our queue/visited addresses 
+                # TODO: have patch alter our queue/visited addresses
                 patches = []
                 tmp = obfu.patch(ea)
                 while tmp:
                     patches.extend(A(tmp))
                     # obfu.combed.clear()
                     tmp = obfu.patch(ea)
-                
+
                 for p in patches:
                     count += 1
                     patchedAddresses.update(deep_get(p, 'result.result.patchedAddresses', set()))
@@ -4061,7 +4062,7 @@ def ida_retrace_comb(start, jmps=None, jccs=None, calls=None, combed=None,
         new_addrs=None, insns=None, old_insns=None, block_addrs=None,
         blocks=None, rewind_points=None, visited=None, ignore=None, **kwargs):
 
-    
+
     jmps          = A(jmps)
     jccs          = A(jccs)
     calls         = A(calls)
@@ -4079,7 +4080,7 @@ def ida_retrace_comb(start, jmps=None, jccs=None, calls=None, combed=None,
 
     start = _.first(start)
     ignore_is_container_list = isIterable(ignore) and isIterable(_.first(ignore, None))
-            
+
     def append_helper(q, v):
         if not v in q:
             if hasattr(q, 'add'):
@@ -4136,10 +4137,10 @@ def ida_retrace_comb(start, jmps=None, jccs=None, calls=None, combed=None,
         insnlen = ida_ua.decode_insn(insn, ea)
         meta = 0
         if insnlen:
-            if delayed: 
+            if delayed:
                 [x() for x in delayed]
                 delayed.clear()
-                
+
 
             insns.append(insn)
 
@@ -4203,7 +4204,7 @@ def ida_retrace_extend(ea, addrs=None, visited=None, done=None, call_queue=None,
         raise TypeError("Unhandled type: {} ({})".format(type(ea).__name__, ea))
 
     ea = initial_start
-    
+
     queue = [(initial_start, initial_end)]
     chunks = [(initial_start, initial_end)]
     queue2 = []
@@ -4211,7 +4212,7 @@ def ida_retrace_extend(ea, addrs=None, visited=None, done=None, call_queue=None,
 
     # conditional jmp queue
     #  for x in r:
-        #  if isinstance(x, FuncTailsJump): 
+        #  if isinstance(x, FuncTailsJump):
             #  # frm = x.frm
             #  # dprint("[ida_retrace] x.to.ea")
             #  if debug: print("[ida_retrace] x.to.ea:{:#x}".format(x.to.ea))
@@ -4250,23 +4251,23 @@ def ida_retrace_extend(ea, addrs=None, visited=None, done=None, call_queue=None,
             # dprint("[ida_retrace_extend] ea, addr")
             print("[ida_retrace_extend] ea: {} iter:{}".format(ea, list(NotTails(start, end))))
             raise
-            
+
 
         new_addrs, end = ida_retrace_advance(start, queue, queue2, call_queue, visited, ignoreInt=ignoreInt)
         # dprint("[debug] queue")
         if debug: print("[debug] queue:{}".format(ahex(queue)))
-        
+
         addressHistory.extend(new_addrs)
         if debug:
             # dprint("[ida_retrace_extend] new_addrs")
             print("[ida_retrace_extend] advance: new_addrs:{}".format(hex(new_addrs)))
-            
+
         first = _.firstOr(new_addrs, 0)
-        
-        if first: 
+
+        if first:
             # dprint("[ida_retrace_extend] first")
             if debug: print("[ida_retrace_extend] first:{}".format(hex(first)))
-                
+
             # addrs.extend(new_addrs)
 
             #  end = idc.next_not_tail(_.last(new_addrs))
@@ -4294,13 +4295,13 @@ def ida_retrace_extend(ea, addrs=None, visited=None, done=None, call_queue=None,
     if debug: print("done")
     #  print("[ida_retrace_extend] addrs:{}".format(hex(addrs)))
     return patches
-    
+
 
 @perf_timed()
 def ida_retrace_pre_extend_yield_rewinds(addrs, rewind_points):
     # dprint("[debug] addrs, rewind_points")
     #  print("[debug] addrs:{}, rewind_points:{}".format(ahex(addrs), ahex(rewind_points)))
-    
+
     addressList = []
     for addr in addrs:
         if addr in rewind_points:
@@ -4364,7 +4365,7 @@ def ida_retrace_pre_extend(queue, visited, master_queue, **kwargs):
             rewind_points = []
             _visited       = set()
             _ignore        = [done2, visited] if not funcs and kwargs.get('noDone', 0) else [visited]
-        
+
             if patched:
                 if debug: print("ida_retrace_pre_extend rewound to {}".format(ahex(start)))
             ida_retrace_comb(start, jmps=jmps, jccs=jccs, calls=calls,
@@ -4385,7 +4386,7 @@ def ida_retrace_pre_extend(queue, visited, master_queue, **kwargs):
             if debug:
                 # dprint("[debug] jmps, jccs, calls, combed, new_addrs, blocks, rewind_points")
                 print("[debug] jmps:{}, jccs:{}, calls:{}, combed:{}, new_addrs:{}, blocks:{}, rewind_points:{}".format(ahex(jmps), ahex(jccs), ahex(calls), ahex(combed), ahex(new_addrs), ahex(blocks), ahex(rewind_points)))
-                
+
 
             our_visited.update(_visited)
 
@@ -4397,7 +4398,7 @@ def ida_retrace_pre_extend(queue, visited, master_queue, **kwargs):
             r = list(ida_retrace_pre_extend_yield_rewinds(new_addrs, rewind_points))
             # dprint("[debug] r")
             if debug: print("[debug] r:{}".format(ahex(r)))
-            
+
             try:
                 start = _.firstOr(_.flatten(r), None)
                 if start is None:
@@ -4412,15 +4413,15 @@ def ida_retrace_pre_extend(queue, visited, master_queue, **kwargs):
             for addrs in r:
                 # dprint("[debug] addrs[0]")
                 if debug: print("[debug] addrs[0]:{}".format(ahex(addrs[0])))
-                
+
                 for addr in addrs:
                     # dprint("[debug] addr")
                     if debug: print("[debug] addr:{}".format(ahex(addr)))
                     if addr in patchedAddresses:
                         if debug: print("[debug] addr:{} was previously patched".format(ahex(addr)))
                         continue
-                    
-                    
+
+
                     #  if patched:
                         #  idx = indexOfSet(all_blocks, (addr, addr + 1))
                         #  if ~idx:
@@ -4439,7 +4440,7 @@ def ida_retrace_pre_extend(queue, visited, master_queue, **kwargs):
                             count +=1
                         if count > 1:
                             print("[master_queue] removing addr:{} x {}".format(ahex(addr), count))
-                            
+
                     # dprint("[obfu.patch] addr, combed")
                     if debug: print("[obfu.patch] (IsCode:{}) addr:{}, combed:{}".format(str(IsCode_(addr)), ahex(addr), ahex(combed[0:3])))
                     was_patched = patched
@@ -4447,6 +4448,7 @@ def ida_retrace_pre_extend(queue, visited, master_queue, **kwargs):
                     patches = []
 
                     if isUnlikely(addr):
+                        bad_insns.add(addr)
                         print("{:#x} unlikely insn {}".format(addr, IdaGetMnem(addr)))
 
                     if not no_obfu and addr in flags and flags[addr] & 0x88 == 0:
@@ -4454,7 +4456,7 @@ def ida_retrace_pre_extend(queue, visited, master_queue, **kwargs):
                         while tmp:
                             patches.extend(A(tmp))
                             tmp = obfu.patch(addr)
-                        
+
                         for p in patches:
                             patched += 1
                             patchedAddresses.update(deep_get(p, 'result.result.patchedAddresses', set()))
@@ -4469,7 +4471,7 @@ def ida_retrace_pre_extend(queue, visited, master_queue, **kwargs):
                             except KeyError:
                                 # dprint("[ida_retrace_pre_extend] idx, all_blocks")
                                 print("[ida_retrace_pre_extend] idx:{}, all_blocks:{}".format(idx, ahex(all_blocks)))
-                                
+
 
 
             if patched:
@@ -4511,7 +4513,7 @@ def ida_retrace_func_from_blocks(ea=None, blocks=None):
 
     # dprint("[add_func] *funcBlock")
     print("[add_func] *funcBlock:{}".format(ahex(*funcBlock)))
-    
+
     if IsFunc_(ea):
         if not IsFuncHead(ea):
             raise AdvanceFailure("Can't start func in the middle of existing func {}".format(ahex(ea)))
@@ -4522,18 +4524,18 @@ def ida_retrace_func_from_blocks(ea=None, blocks=None):
     for cs, ce in chunkBlocks:
         # dprint("[append_func_tail] ea, cs, ce")
         print("[append_func_tail] cs:{}, ce:{}".format(ahex(ea), ahex(cs), ahex(ce)))
-        
+
         idc.append_func_tail(ea, cs, ce)
 
 
-    
 
 
 
 
 
 
-    
+
+
 @static_vars(last_ea = getglobal('_ida_retrace_last_ea', None, _set=1))
 @perf_timed()
 def ida_retrace(funcea=None, drip=None, extend=True, zero=False, smart=False, plan=False, force=True, *args, **kwargs):
@@ -4552,7 +4554,7 @@ def ida_retrace(funcea=None, drip=None, extend=True, zero=False, smart=False, pl
             kwargs['forceRemoveChunks'] = force
         if kwargs.get('ignoreChunks', None) is None:
             kwargs['ignoreChunks'] = force
-            
+
     if kwargs.get('funcs', None):
         kwargs['noDone'] = True
 
@@ -4628,7 +4630,7 @@ def ida_retrace(funcea=None, drip=None, extend=True, zero=False, smart=False, pl
 
         if plan:
             # for cs, ce in idautils.Chunks(ea): ida_auto.plan_and_wait(cs, ce)
-            for cs, ce in idautils.Chunks(ea): 
+            for cs, ce in idautils.Chunks(ea):
                 ida_auto.revert_ida_decisions(cs, ce)
                 ida_auto.plan_range(cs, ce)
             ida_auto.auto_wait()
@@ -4640,16 +4642,20 @@ def ida_retrace(funcea=None, drip=None, extend=True, zero=False, smart=False, pl
                     #  if f == ida_funcs.FIND_FUNC_OK:
                         #  if not idc.append_func_tail(ea, func.start_ea, func.end_ea):
                             #  printi('append_func_tail failed')
-def BlockStart(ea=None):
+def BlockStart(ea=None, ease=False, **kwargs):
     """
     BlockStart
 
     @param ea: linear address
     """
     if isinstance(ea, list):
-        return [BlockStart(x) for x in ea]
+        return [BlockStart(x, ease=ease, **kwargs) for x in ea]
 
     ea = eax(ea)
+    if IsTail(ea):
+        ea = idc.get_item_head(ea)
+    if ease:
+        EaseCode(ea, forceStart=1, reverse=1)
     if not IsCode_(ea):
         return idc.BADADDR
     tmp = ea
@@ -4661,42 +4667,40 @@ def BlockStart(ea=None):
 
     return ea
 
-def BlockEnd(ea=None, ease=False):
+def BlockEnd(ea=None, ease=False, **kwargs):
     """
     BlockStart
 
     @param ea: linear address
     """
     if isinstance(ea, list):
-        return [BlockEnd(x, ease=ease) for x in ea]
+        return [BlockEnd(x, ease=ease, **kwargs) for x in ea]
 
-    ea = start_ea = eax(ea)
+    ea = eax(ea)
+    if IsTail(ea):
+        ea = idc.get_item_head(ea)
+    start_ea = ea
+    if ease:
+        EaseCode(ea, forceStart=1, reverse=1)
     if not IsCode_(ea):
-        if ease:
-            EaseCode(ea, forceStart=1)
-        else:
-            return idc.BADADDR
+        return idc.BADADDR
     while IsCode(ea) and (ea == start_ea or IsFlow(ea)):
-        next_ea = idc.next_not_tail(ea)
-        if ease and not IsCode(next_ea):
-            EaseCode(start_ea, forceStart=1)
-            return BlockEnd(start_ea)
         ea = idc.next_not_tail(ea)
 
     return ea
 
 
-def Block(ea=None):
+def Block(ea=None, **kwargs):
     """
     Block
 
     @param ea: linear address
     """
     if isinstance(ea, list):
-        return [Block(x) for x in ea]
+        return [Block(x, **kwargs) for x in ea]
 
     ea = eax(ea)
-    return BlockStart(ea), BlockEnd(ea)
+    return BlockStart(ea, **kwargs), BlockEnd(ea, **kwargs)
 
 
 
@@ -4721,17 +4725,36 @@ def FixThunks():
                 RemoveAllChunks(ea)
                 # ZeroFunction(ea)
                 #
-def FixRexJumps():
-    ea = ida_ida.cvar.inf.min_ea
+def FixRexJumps(ea=None):
+    ea = ea or ida_ida.cvar.inf.min_ea
+    p = ProgressBar((ida_ida.cvar.inf.min_ea, ida_ida.cvar.inf.max_ea))
     while ea < ida_ida.cvar.inf.max_ea:
-        ea = idc.next_head(ea)
-        if not IsCode_(ea):
-            continue
+        ea = next_code(ea)
         if insn_match(ea, (idaapi.NN_call, idaapi.NN_jmp), (idc.o_near, 0), comment='call|jmp sub_14349DB79'):
+            p.update(ea)
             length = IdaGetInsnLen(ea)
             if length > 5:
                 print("{:#x}  {}".format(ea, listAsHex(get_bytes(ea, length))))
-                EaseCode(ea + length - 5, forceStart=1)
+                EaseCode(ea + length - 5, forceStart=1, count=1)
+
+def EaseAllCode(ea=None):
+    global failed
+    if not hasglobal('failed'):
+        setglobal('failed', [])
+    ea = ea or ida_ida.cvar.inf.min_ea
+    p = ProgressBar((ida_ida.cvar.inf.min_ea, ida_ida.cvar.inf.max_ea))
+    while ea < ida_ida.cvar.inf.max_ea:
+        ea = ida_bytes.next_that(ea, ida_ida.cvar.inf.max_ea, lambda F: (F & FF_REF) and ((F & MS_CLS) == FF_CODE))
+        if not IsCodeRef(ea):
+            continue
+        p.update(ea)
+        end = EaseCode(ea, noExcept=1)
+        if IsValidEA(end):
+            # XXX: might skip past unused next_that?
+            pass
+        else:
+            print("[EaseAllCode] Failure: {:#x}".format(ea))
+            failed.append(ea)
 
 TruncateThunks = FixThunks
 
@@ -4874,7 +4897,7 @@ def RecurseCallers(ea=None, width=512, data=0, makeChart=0, exe='dot', depth=5, 
                             namedRefs[target].add(refName)
                             if fixVtables:
                                 ClassMakerFamily(ea=addr, redo=1)
-                            
+
                             break
 
                         addr = idc.prev_head(addr)
@@ -4896,8 +4919,8 @@ def RecurseCallers(ea=None, width=512, data=0, makeChart=0, exe='dot', depth=5, 
             refs |= extra_refs
             refs -= visited
             pending[_depth + 1] |= refs
-            
-            
+
+
         if not silent: printi(("0x%x: processed: %d pending: %d (depth: %d, width: %d)" % (ea, len(depthlist[_depth]), len(pending[_depth]), _depth, width)))
         _depth += 1
 
@@ -4922,7 +4945,7 @@ def RecurseCallers(ea=None, width=512, data=0, makeChart=0, exe='dot', depth=5, 
                     #  break
                 #  visited.add(right)
                 #  if debug: printi(("right: %s" % right))
-  
+
         #  visited = set()
         #  if not includeSubs:
             #  while (left.startswith("loc_") or left.startswith("sub_")) and left in rev and left != rev[left]:
@@ -5079,7 +5102,7 @@ def _unlikely_mnems(): return [
         'in', 'out', 'loop', 'lodsq', 'xlat', 'clc', 'adc', 'stc',
         'iret', 'bswap', 'wait', 'pause', 'retf', 'retnf',
         'scasb', 'cmc', 'insb', 'hlt', 'setnle', 'cwpd', 'loopne',
-        'std', 'retf', 'loop', 'loope', 'loopz', 'fisub', 'enter', 
+        'std', 'retf', 'loop', 'loope', 'loopz', 'fisub', 'enter',
         'iret', 'insd', 'cld', 'rcr', 'ins', 'ffreep', 'fcom', 'jceax',
         'ficom', 'jcrx', 'hnt jb', 'repne', 'lock', 'lock dec', 'bsf', 'hnt',
         'fcmovnbe', 'retnw', 'clc', 'cld', 'cli', 'cmc', 'cmpsb',
@@ -5124,9 +5147,9 @@ def _isRet_mnem(mnem, ea=None, *args, **kwargs):                    return mnem.
 def _isPushPop_mnem(mnem, ea=None, *args, **kwargs):                return mnem.startswith("push") or mnem.startswith("pop")
 def _isPop_mnem(mnem, ea=None, *args, **kwargs):                    return mnem.startswith("pop")
 def _isNop_mnem(mnem, ea=None, *args, **kwargs):                    return mnem.startswith("nop") or mnem.startswith("pop")
-def _isFlowEnd_mnem(mnem, ea=None, 
+def _isFlowEnd_mnem(mnem, ea=None,
         ignoreInt=False, *args, **kwargs):                          return mnem.startswith(('ret', 'jmp', 'int', 'ud2', 'leave', 'iret') if not ignoreInt else ('ret', 'jmp', 'leave', 'iret'))
-def _isInterrupt_mnem(mnem, ea=None, 
+def _isInterrupt_mnem(mnem, ea=None,
         ignoreInt=False, *args, **kwargs):                          return mnem in ('int', 'ud2', 'int1', 'int3')
 
 def isUnlikely(*args, **kwargs):               return preprocessIsX(_isUnlikely_mnem, *args, **kwargs)
@@ -5235,11 +5258,11 @@ def isCallOrObfuCallPatch(ea):
 
 
 
-def isNop(ea): 
+def isNop(ea):
     insn = ida_ua.insn_t()
     insnlen = ida_ua.decode_insn(insn, get_ea_by_any(ea))
     if insnlen == 0:
-        return None 
+        return None
     if insn.itype == idaapi.NN_nop:
         return True
     return idc.get_wide_word(ea) == 0x9066
@@ -5298,13 +5321,13 @@ def last_iterable(iterable, *defaultvalue):
         pass
     return last
 
-    
+
 def all_xrefs_(funcea=None, xref_getter=None, key='unset', iteratee=None, filter=None, pretty=False):
     if isinstance(funcea, list):
         return _.chain([all_xrefs_(x, xref_getter=xref_getter, key=key, iteratee=iteratee, filter=filter, pretty=pretty) for x in funcea]).flatten('shallow').sort().uniq('sorted').value()
     if xref_getter is None:
         xref_getter = idautils.XrefsTo
-    # The first chunk will be the start of the function, from there -- they're sorted in 
+    # The first chunk will be the start of the function, from there -- they're sorted in
     # order of location, not order of execution.
     #
     # Lets gather them all up first, then untangle them
@@ -5326,7 +5349,7 @@ def all_xrefs_(funcea=None, xref_getter=None, key='unset', iteratee=None, filter
     xrefs = []
     for head in GetFuncHeads(funcea):
         xrefs.extend([(
-                getattr(x, key), 
+                getattr(x, key),
                 diida(x.frm),
                 string_between('(', ')', XrefTypeNames(x.type)),
                 diida(x.to))
@@ -5379,7 +5402,7 @@ def skip_jmp_refs_to(dst=None):
         return [skip_jmp_refs_to(x) for x in dst]
 
     dst = eax(dst)
-    
+
     if not IsValidEA(dst):
         return 0
 
@@ -5398,16 +5421,16 @@ def skip_jmp_refs_to(dst=None):
         # SkipJumps(src, apply=1)
         # ida_xref.del_cref(src, dst, 1)
         #  skip_jmp_refs_to(src)
-        
+
 # x[2] == 'fl_JN' and isUnconditionalJmp(x[0]), iteratee=lambda x: x[0])
 
 #  def all_xrefs_from(funcea, iteratee=None, filter=None, pretty=0):
     #  if isinstance(funcea, list):
         #  return _.chain([all_xrefs_from(x, iteratee=iteratee, filter=filter, pretty=pretty) for x in funcea]).flatten('shallow').sort().uniq('sorted').value()
-#  
+#
     #  functionName = idc.get_func_name(funcea)
-    #  
-    #  # The first chunk will be the start of the function, from there -- they're sorted in 
+    #
+    #  # The first chunk will be the start of the function, from there -- they're sorted in
     #  # order of location, not order of execution.
     #  #
     #  # Lets gather them all up first, then untangle them
@@ -5427,23 +5450,23 @@ def skip_jmp_refs_to(dst=None):
         #  20 : 'Code_User (20)',
         #  ida_xref.fl_F : 'Ordinary_Flow (fl_F)'
     #  }
-#  
+#
     #  def XrefTypeNames(typecode):
         #  """
         #  Convert cross-reference type codes to readable names
-#  
+#
         #  @param typecode: cross-reference type code
         #  """
         #  assert typecode in _ref_types, "unknown reference type %d" % typecode
         #  return _ref_types[typecode]
-#  
-#  
-#  
+#
+#
+#
     #  if iteratee is None:
         #  iteratee = _.identity
     #  if filter is None:
         #  filter = lambda x: x
-#  
+#
     #  #
     #  xrefs = []
     #  for (startea, endea) in Chunks(funcea):
@@ -5451,13 +5474,13 @@ def skip_jmp_refs_to(dst=None):
             #  xrefs.extend([(x.to, diida(x.frm) or idc.get_func_name(x.to) or idc.get_name(x.to) or hex(x.to), string_between('(', ')', XrefTypeNames(x.type)), diida(x.to)) for x in idautils.XrefsFrom(head) if x.type not in [ida_xref.fl_F]])
     #  #  xrefs = [x for x in xrefs if idc.get_func_name(x[0]) != functionName]
     #  xrefs = _.chain([iteratee(x) for x in xrefs if filter(x) and idc.get_func_name(x[0]) != functionName]).sort().uniq('sorted').value()
-#  
+#
     #  if pretty:
         #  for x in _.uniq(sorted(xrefs, key=lambda x: (x[2], x[0])), 1):
             #  printi("0x{:09x} {:48} {:6} {}".format(*x))
         #  return
     #  return xrefs
-#  
+#
 @static_vars(_ref_types = {
     0: 'Data_Unknown (fl_U)',
     1: 'Data_Offset (dr_O)',
@@ -5492,10 +5515,10 @@ def XrefTypeNames(typecode=None, pattern=None):
             pattern = [pattern]
 
         return [x for x, y in XrefTypeNames._ref_types.items() if _.any(pattern, lambda p, *a: not not re.search(p, y, flags=re.I))]
-        
+
 
 #  def all_xrefs_to(funcea, iteratee = None):
-    #  # The first chunk will be the start of the function, from there -- they're sorted in 
+    #  # The first chunk will be the start of the function, from there -- they're sorted in
     #  # order of location, not order of execution.
     #  #
     #  # Lets gather them all up first, then untangle them
@@ -5503,7 +5526,7 @@ def XrefTypeNames(typecode=None, pattern=None):
     #  # Xref type names table
     #  if iteratee is None:
         #  iteratee = _.identity
-#  
+#
     #  xrefs = []
     #  for (startea, endea) in Chunks(funcea):
         #  for head in Heads(startea, endea):
@@ -5522,7 +5545,7 @@ def SkipJumpsTo(ea=None, **kwargs):
         return [SkipJumpsTo(x) for x in ea]
 
     ea = eax(ea)
-    for addr in xrefs_to(ea, filter=lambda x: isUnconditionalJmpOrCall(x.frm)): 
+    for addr in xrefs_to(ea, filter=lambda x: isUnconditionalJmpOrCall(x.frm)):
         SkipJumps(ea, apply=1, **kwargs)
     # for addr in xrefs_to(xrefs_to(ea, filter=lambda x: isUnconditionalJmp(x.frm)), filter=lambda x: isUnconditionalJmp(x.frm)): SkipJumps(ea, apply=1, **kwargs)
 
@@ -5533,7 +5556,7 @@ def label_import_thunks():
         l = xrefs_to(ea, filter=lambda v: isJmp(v.frm))
         name = idc.get_name(ea, ida_name.GN_VISIBLE)
         if l:
-            for addr in l: 
+            for addr in l:
                 if IsFuncHead(addr):
                     print("FuncHead: {}: {:x}".format(name, addr))
                     LabelAddressPlus(addr, name)
@@ -5553,7 +5576,7 @@ def func_refs_to(ea=None):
     return [x for x in xrefs_to(ea, iteratee=GetFuncStart) if x != idc.BADADDR]
 
 def shared_xrefs_to(list_ea, iteratee = None):
-    # The first chunk will be the start of the function, from there -- they're sorted in 
+    # The first chunk will be the start of the function, from there -- they're sorted in
     # order of location, not order of execution.
     #
     # Lets gather them all up first, then untangle them
@@ -5591,9 +5614,9 @@ def xrefs_to_ex(ea=None, flow=1, iteratee=None, filter=None):
         xrefs = [iteratee(x) for x in idautils.XrefsTo(ea) if flow or x.type != ida_xref.fl_F]
     else:
         xrefs = [SimpleAttrDict({
-            'frm': x.frm, 
-            'frm_insn': 'offset' if IsOff0(x.frm) else diida(x.frm), 
-            'type': string_between('(', ')', XrefTypeNames(x.type)), 
+            'frm': x.frm,
+            'frm_insn': 'offset' if IsOff0(x.frm) else diida(x.frm),
+            'type': string_between('(', ')', XrefTypeNames(x.type)),
             'type_code': x.type,
             'to': x.to,
             'to_insn': diida(x.to),
@@ -5612,7 +5635,7 @@ def xrefs_to(ea, include=None, iteratee=None, filter=None):
     filter is passed {'frm': 0x140a66258, 'iscode': 1, 'to': 0x140a6625c, 'type': 0x15, 'user': 0}
     >> for xref in XrefsTo(here(), 0):
          printi(xref.type, XrefTypeNames(xref.type), 'from', hex(xref.frm), 'to', hex(xref.to))
-    
+
     21 Ordinary_Flow (fl_F) from 0x140a66258 to 0x140a6625c
         if isinstance(ea, list):
             return [xrefs_to(x) for x in ea]
@@ -5637,7 +5660,7 @@ def xrefs_to(ea, include=None, iteratee=None, filter=None):
 
     return list(collect(ea))
 
-#  
+#
     #  if callable(iteratee):
         #  return [iteratee(x.frm) for x in idautils.XrefsTo(ea)]
     #  return [x.frm for x in idautils.XrefsTo(ea)]
@@ -5724,12 +5747,12 @@ def GetDisasmFuncHeads(funcea=None):
 
     hash1 = GetFuncHash(funcea)
     for start, end in idautils.Chunks(funcea):
-        for ea in idautils.Heads(start, EaseCode(start)): 
+        for ea in idautils.Heads(start, EaseCode(start)):
             GetDisasm(ea)
     hash2 = GetFuncHash(funcea)
     if hash1 != hash2:
         printi("[GetDisasmFuncHeads] hash changed")
-    
+
 
 def GetMinSpd(ea = None):
     ea = eax(ea)
@@ -5748,9 +5771,9 @@ def bad_as_none(ea=None):
         return [bad_as_none(x) for x in ea]
 
     if ea == idc.BADADDR:
-        return None 
+        return None
     return ea
-    
+
 
 
 
@@ -5763,7 +5786,7 @@ def GetSpds(funcea = None, verbose=False):
         #  return False
     func_heads = GetFuncHeads(ea)
     last_head = func_heads[-1]
-    spds = [idc.get_spd(head) for head in GetFuncHeads(ea) if 
+    spds = [idc.get_spd(head) for head in GetFuncHeads(ea) if
             (insn_match(head, idaapi.NN_retn, comment='retn')
                     or insn_match(head, idaapi.NN_jmpni, (idc.o_displ, None), comment='jmp qword [reg+0x28]')
                     or insn_match(head, idaapi.NN_jmpni, (idc.o_mem, 5), comment='jmp qword [rel UnhandledExceptionFilter]')
@@ -5779,7 +5802,7 @@ def GetSpds(funcea = None, verbose=False):
             # dprint("[GetSpds] ma, mi, idc.get_spd(last_head), IsFuncHead(last_head)")
             print("[GetSpds] ma:{}, mi:{}, idc.get_spd(last_head):{}, IsFuncHead(last_head):{}".format(ma, mi, idc.get_spd(last_head), IsFuncHead(last_head)))
             print("insn_match: {}".format(insn_match(last_head, idaapi.NN_jmp, (idc.o_near, 0), comment='jmp loc_140112E28')))
-            
+
         if ma == 0 and mi < 0 and insn_match(last_head, idaapi.NN_jmp, (idc.o_near, 0), comment='jmp loc_140112E28') and idc.get_spd(last_head) == 0 and not IsFuncHead(last_head):
             _ft = func_tails(ea, returnErrorObjects=1, quiet=1)
             if verbose: print("_ft: {}".format(_ft))
@@ -5893,7 +5916,7 @@ def IsFuncSpdBalanced(funcea=None, nonzero=False):
         if spds[0] <= (-1 if nonzero else 0) and spds[1] == 0:
             return True
     return False
-    
+
 
 def IsFuncSpdZero(funcea=None):
     ea = eax(funcea)
@@ -6011,7 +6034,7 @@ __DOT = """digraph G {
     node [ shape="box" style="filled" fillcolor="#ffffff" fontname="Roboto" fontsize=14 ]
     fontname="Roboto"
     shape=box
-    fillcolor="#ffffff" 
+    fillcolor="#ffffff"
     graph [splines=ortho]
     // ratio=compress
     compound=true
@@ -6038,7 +6061,7 @@ digraph G {
     node [ shape="box" style="filled" fillcolor="#ffffff" fontname="Roboto" fontsize=14 ]
     fontname="Roboto"
     shape=box
-    fillcolor="#ffffff" 
+    fillcolor="#ffffff"
     // graph [splines=ortho]
     // ratio=compress
     compound=true
@@ -6069,14 +6092,14 @@ def is_prime(n):
   # since all primes > 3 are of the form 6n ± 1
   # start with f=5 (which is prime)
   # and test f, f+2 for being prime
-  # then loop by 6. 
+  # then loop by 6.
   f = 5
   while f <= r:
     print('\t',f)
     if n % f == 0: return False
     if n % (f+2) == 0: return False
     f += 6
-  return True    
+  return True
 
 def is_possible_cygwin_symlink(fn):
     if not os.path.isfile(fn):
@@ -6113,11 +6136,11 @@ def process_cygwin_symlinks(fn):
         fn = os.path.join(_cygroot, fn[7:])
         # dprint("[debug] _abs, fn")
         printi("[debug] _abs:{}, fn:{}".format(_abs, fn))
-        
+
 
     else:
         _abs = os.path.normcase(os.path.abspath(fn))
-    
+
     _is_cygrooted = _abs.startswith(fn)
     # could probably have checked here to see if _abs.startswith(_cygroot)
     # or os.path.commonpath(paths) >=py3.5
@@ -6153,7 +6176,7 @@ def process_cygwin_symlinks(fn):
 
     # dprint("[_] _nfn")
     printi("[_] _nfn:{}".format(_nfn))
-    
+
 
     res = None
     if not os.path.isfile(fn):
@@ -6169,7 +6192,7 @@ def process_cygwin_symlinks(fn):
         return res
 
     # printi("symlink: {} -> {}".format(fn, res))
-    
+
     new = ''
     if res.startswith('/cygdrive/'):
         parts = res.split('/')[2:]
@@ -6405,7 +6428,7 @@ def remove_func_or_chunk(func):
             #  #  if not idc.del_items(addr, 0, 1):
             #  if not idc.MakeUnknown(addr, 1, 0):
                 #  printi("[warn] couldn't del item at {:x} | fn: {:x} chunk: {:x}\u2013{:x}".format(addr, start, start, end))
-#  
+#
         #  if idc.is_code(idc.get_full_flags(addr)):
             #  # seems to be that deleting the code and remaking it is the only way to ensure everything works ok
             #  if debug: printi("[info] code already existing instruction at {:x} | fn: {:x} chunk: {:x}\u2013{:x}".format(addr, addr, start, end))
@@ -6433,14 +6456,14 @@ def remove_func_or_chunk(func):
             #  else:
                 #  happy = 1
                 #  addr += insn_len
-#  
+#
         #  if not happy:
             #  return (addr-start, start, end, trimmed_end)
-#  
+#
         #  mnem = IdaGetMnem(last_addr).split(' ', 2)[0]
         #  if mnem in ('jmp', 'ret', 'retn', 'int'):
             #  last_jmp_or_ret = last_addr
-#  
+#
     #  return (addr-start, start, end, trimmed_end)
 
 def CheckThunk(ea, skipShort=0):
@@ -6465,7 +6488,7 @@ def ForceFunction(start, unpatch=False, denyJmp=False):
     """
     This needs a good reworking
     """
-    # dprint("[ForceFunction] start")   
+    # dprint("[ForceFunction] start")
     if debug: printi("[ForceFunction] start:{:x}".format(start))
     if not IsValidEA(start):
         return False
@@ -6496,7 +6519,7 @@ def ForceFunction(start, unpatch=False, denyJmp=False):
         if isStartChunk and fnStart < itemHead < idc.BADADDR:
             # dprint("[SetFuncEnd #1] fnStart, start")
             print("[SetFuncEnd #1] fnStart:{:#x}, start:{:#x}".format(fnStart, start))
-            
+
             if not SetFuncEnd(fnStart, idc.get_item_head(start)):
                 printi("[warn] ForceFunction (inside funchead) SetFuncEnd({:x}, {:x}) failed".format(fnStart, idc.get_item_head(start)))
                 ZeroFunction(ea, total=1)
@@ -6510,7 +6533,7 @@ def ForceFunction(start, unpatch=False, denyJmp=False):
             if func.start_ea < start:
                 # dprint("[SetFuncEnd #2] func.start_ea, start")
                 print("[SetFuncEnd #2] func.start_ea:{}, start:{}".format(func.start_ea, start))
-                
+
                 if not SetFuncEnd(func.start_ea, start):
                     printi("[warn] SetFuncEnd({:x}, {:x}) failed".format(func.start_ea, start))
                     globals()['warn'] += 1
@@ -6939,7 +6962,7 @@ def ShowAppendFchunkReal(ea, start, end, old):
             #  if debug: sprint("SmartAddChunk: {:x} has multiple owners".format(start))
             #  RemoveAllChunkOwners(start)
             #  # raise ChunkFailure("SmartAddChunk: {:x} has multiple owners".format(start))
-        #  elif fstart in owners: 
+        #  elif fstart in owners:
             #  if debug: sprint("SmartAddChunk: {:x} we own this chunk".format(start))
             #  return
         #  else:
@@ -7007,7 +7030,7 @@ def ShowAppendFchunkReal(ea, start, end, old):
                 pp(r)
             # dprint("[about-to-append-func-tail] r.start, GetFuncName(r.start)")
             #  printi("[about-to-append-func-tail] r.start:{:x}, GetFuncName(r.start):{}".format(r.start, GetFuncName(r.start)))
-            
+
             for e in Heads(r.start, r.trend):
                 if IsFuncHead(e):
                     #  begin, end = GetChunkStart(e), GetChunkEnd(e)
@@ -7025,7 +7048,7 @@ def ShowAppendFchunkReal(ea, start, end, old):
                     printi("[warn] avoided crash: append_func_tail(0x{:x}, 0x{:x}, 0x{:x}) [overlaps existing function chunk belonging to 0x{:x} at 0x{:x}]".format(
                         funcea, r.start, r.trend, GetChunkOwner(_ea), _ea))
                     globals()['warn'] += 1
-                    return 
+                    return
 
             #  del _func
 
@@ -7041,7 +7064,7 @@ def ShowAppendFchunkReal(ea, start, end, old):
                     printi("[warn] avoided crash: append_func_tail(0x{:x}, 0x{:x}, 0x{:x}) [overlaps existing function chunk belonging to 0x{:x} at 0x{:x}]".format(
                         funcea, r.start, r.trend, GetChunkOwner(_ea), _ea))
                     globals()['warn'] += 1
-                    return 
+                    return
             if IsHead(r.trend) or  \
                     PrevHead(r.trend) + IdaGetInsnLen(PrevHead(r.trend)) == r.trend or \
                     IsCode(r.trend) or (IsCode(PrevNotTail(r.trend) + IdaGetInsnLen(PrevNotTail(r.trend))) and PrevNotTail(r.trend) + IdaGetInsnLen(PrevNotTail(r.trend)) == r.trend):
@@ -7144,9 +7167,9 @@ def ShowAppendFchunkReal(ea, start, end, old):
     #  if not not_ours:
         #  # printi("[info] not not_ours: {:x} {:x}".format(start, end))
         #  return 0
-#  
+#
     #  appendRanges = GenericRanger(not_ours)
-#  
+#
     #  results = []
     #  for r in appendRanges:
         #  printi("[info] appendRanged: {:x} {:x}".format(r.start, r.last))
@@ -7205,7 +7228,7 @@ def _EndOfFlow(ea=None, soft=False, limit=16, ignoreInt=False):
     while limit and not flow_ending and GetChunkOwners(insn_end) == owners:
         #  insn_mnem = IdaGetMnem(insn_end)
         insn_len = InsnLen(insn_end)
-        if isFlowEnd(insn_end, ignoreInt=ignoreInt or soft): 
+        if isFlowEnd(insn_end, ignoreInt=ignoreInt or soft):
             flow_ending = True
             # if soft and isInterrupt(insn_end) and insn_mnem != last_mnem: flow_ending = False
         if not insn_len:
@@ -7342,14 +7365,14 @@ def SetFuncStart(funcea, start):
         return l[rv]
 
 
-    
+
 
 def SetFuncEnd(funcea, end):
     # func = clone_items(ida_funcs.get_func(funcea))
     # if func:
     # idc.auto_wait()
     if not IsFunc_(funcea):
-        return False 
+        return False
     # global_chunks[funcea].update(idautils.Chunks(funcea))
     if IsTail(end):
         new_end = idc.get_item_head(end)
@@ -7372,13 +7395,13 @@ def SetFuncEnd(funcea, end):
     cstart, cend = GetChunkStart(funcea), GetChunkEnd(funcea)
     # dprint("[SetFuncENd] funcea, func_start, end, func_end")
     if debug: printi("[SetFuncEnd] funcea:{:x}, end:{:x}, func_start:{:x}, func_end:{:x}".format(funcea, end, func_start, func_end))
-    
+
     #  if cstart != func_start:
         #  printi("[warn] Not a head chunk, consider using SetChunkEnd | {:x}\u2013{:x}" \
                 #  .format(
-                    #  #  idc.get_func_name(func_start), 
-                    #  #  func_start, func_end, 
-                    #  #  idc.get_func_name(cstart), 
+                    #  #  idc.get_func_name(func_start),
+                    #  #  func_start, func_end,
+                    #  #  idc.get_func_name(cstart),
                     #  cstart, cend
                 #  ))
         #  return SetChunkEnd(funcea, end)
@@ -7386,15 +7409,15 @@ def SetFuncEnd(funcea, end):
     if debug: printi("func {}: {:x}\u2013{:x}  chunk {}: {:x}\u2013{:x}".format(idc.get_name(func_start), func_start, func_end, idc.get_name(cstart), cstart, cend))
     if end == cend:
         return True
-    
+
     if not ida_funcs.is_same_func(funcea, idc.prev_head(end)):
         # if debug: printi("[warn] set_func_end: end {:#x} or {:#x} should be part of function {:#x} or {:#x}".format(end, idc.prev_head(end), func_start, funcea))
         printi("[warn] SetFuncEnd({:#x}, {:#x}) chunk owner '{}' does not match func owner '{}' | {:x}\u2013{:x}" \
                 .format(
                     funcea,
                     end,
-                    idc.get_func_name(funcea), 
-                    idc.get_func_name(idc.prev_head(end)), 
+                    idc.get_func_name(funcea),
+                    idc.get_func_name(idc.prev_head(end)),
                     cstart, cend,
                 ))
         globals()['warn'] += 1
@@ -7418,7 +7441,7 @@ def SetFuncEnd(funcea, end):
         if happy:
             if heads:
                 printi("[info] deleting func_heads: {}".format(hex(heads)))
-            for head in heads: 
+            for head in heads:
                 idc.del_func(head)
             ce = GetChunkEnd(ptr)
             idc.del_items(ce, DELIT_NOTRUNC, end-ce)
@@ -7521,7 +7544,7 @@ def modify_chunks(funcea, chunks, keep=None, remove=None):
                             printi("[info] (2) changed start of {} to {:#x}".format(describe_chunk(cstart, cend), end))
 
                     continue
-                
+
                 # else count(subs) > 1
                 # first remove entire chunk
                 if not IsChunk(tail):
@@ -7574,12 +7597,12 @@ def chunk_remove_range(sEA, eEA):
         heads = Heads(sEA, eEA)
         groups = _.groupBy(asList([0] + asList(heads)), lambda x, *a: GetChunkStart(x))
         printi("groups: {}".format(groups))
-        
+
         for cstart, addresses in groups.items():
             chunks = [GenericRange(cstart, trend=GetChunkEnd(cstart))]
             remove = GenericRanger([GenericRange(a, trend=a + IdaGetInsnLen(a)) for a in addresses], sort = 1)
             if modify_chunks(GetFuncStart(sEA), chunks, remove=remove) == False:
-                result = False 
+                result = False
 
     return result
 
@@ -7639,7 +7662,7 @@ def transpose(value, sourceRange, targetRange):
         for v, s, t in zip(value, sourceRange, targetRange):
             result.append(make_transpose_fn(s, t)(v))
         return result
-    
+
     return make_transpose_fn(sourceRange, targetRange)(value)
 
 def gradient(begin, end, steps):
@@ -7657,7 +7680,7 @@ def gradient(begin, end, steps):
     for i in range(steps):
         vals = [i] * 3
         target_range = (hr, hs, hv)
-        
+
         result.append(rgb_to_hex(colorsys_rgb_to_rgb(colorsys.hsv_to_rgb(*transpose(vals, source_range, target_range)))))
 
     return result
@@ -7670,7 +7693,7 @@ def hex_to_rgb(value):
     result = tuple(int(value[i:i + lv // 3], 16) for i in range(0, lv, lv // 3))
     if lv == 3:
         return tuple([x * 0x11 for x in result])
-    
+
     return result
 
 
@@ -7679,7 +7702,7 @@ def hex_to_rgb_dword(value):
         src = hex_to_rgb(value)
     else:
         src = value
-    
+
     t = [x for x in src]
     dw = 0
     sw = 16
@@ -7728,7 +7751,7 @@ def call_everything(insn, *args):
     object_methods = [method_name for method_name in dir(insn) if not method_name.startswith('__') and method_name != 'clear' and not method_name.startswith('set')]
     # dprint("[call_everything] object_methods")
     printi("[call_everything] object_methods:{}".format(object_methods))
-    
+
     can_call = []
     for method_name in object_methods:
         try:
@@ -7777,14 +7800,14 @@ def call_everything(insn, *args):
     results = []
     # dprint("[debug] should_call")
     printi("[debug] should_call:{}".format(should_call))
-    
+
     for method_name in should_call:
         try:
             printi("[calling] method_name:{}".format(method_name))
             result = getattr(insn, method_name)(*args)
             # dprint("[called] method_name, result")
             printi("[called] method_name:{}, result:{}".format(method_name, result))
-            
+
             if isinstance(result, integer_types) and result > 9:
                 result = hex(result)
             results.append((method_name, result))
@@ -7799,18 +7822,18 @@ def clone_items(insn, filter_iteratee=None):
     for item in [
             (method_name, getattr(insn, method_name))
             for method_name in dir(insn)
-            if hasattr(insn, method_name) 
-            and not method_name.startswith('_') 
+            if hasattr(insn, method_name)
+            and not method_name.startswith('_')
             and not re.match(r'.*(method|proxy|Swig)', str(getattr(insn, method_name)), re.I)]:
         if not filter_iteratee or filter_iteratee(*item):
             obj[item[0]] = item[1]
     return obj
-        
+
 
 def read_everything(insn):
-    return [(method_name, hex(getattr(insn, method_name)), str(type(getattr(insn, method_name)))) 
+    return [(method_name, ahex(getattr(insn, method_name)), type(getattr(insn, method_name)).__name__)
             for method_name in dir(insn)
-            if hasattr(insn, method_name) 
+            if hasattr(insn, method_name)
             and not method_name.startswith('_') and method_name not in ('copyright', 'credits')
             and not re.match(r'.*(method|proxy|Swig)', str(getattr(insn, method_name)), re.I)
             and not issubclass(type(getattr(insn, method_name)), (Exception, BaseException))
@@ -7855,10 +7878,10 @@ def UnChunk(ea):
 """
 Python>DebugChunks(ERROREA())
 Chunks belonging to: _0x58bb377bec7cd5f4_impl
-    140a56d50 - 140a56d78  DATA     140a6ea3a  sub_140A8208B  loc_140A6EA3A  lea     rcx, _0x58bb377bec7cd5f4_impl; fn 
+    140a56d50 - 140a56d78  DATA     140a6ea3a  sub_140A8208B  loc_140A6EA3A  lea     rcx, _0x58bb377bec7cd5f4_impl; fn
                            FLOW     140a56d4f                                int     3                     ; Trap to Debugger
 
- *  140390dd8 - 140390e27  JMP      140a56d5f  _0x58bb377bec7cd5f4_impl      jmp     loc_140390DD8 
+ *  140390dd8 - 140390e27  JMP      140a56d5f  _0x58bb377bec7cd5f4_impl      jmp     loc_140390DD8
                            JMP      140a56d73  _0x58bb377bec7cd5f4_impl      jmp     loc_140390DD8
                            SEGMENT  142dd05b8 .pdata
                            DATA     144a44fdc  APP::_0x9BD7BD55E4533183_0    lea     rbp, loc_140390DD8
@@ -7900,12 +7923,39 @@ def FindAll(patternHex):
 
     return addresses
 
+def IsCodeRef(ea=None):
+    """
+    IsCodeRef
+
+    @param ea: linear address
+    """
+    if isinstance(ea, list):
+        return [IsCodeRef(x) for x in ea]
+
+    ea = eax(ea)
+    return list(idautils.CodeRefsTo(ea, 0))
+
+def IsDataRef(ea=None):
+    """
+    IsCodeRef
+
+    @param ea: linear address
+    """
+    if isinstance(ea, list):
+        return [IsDataRef(x) for x in ea]
+
+    ea = eax(ea)
+    return list(idautils.DataRefsTo(ea))
+
+
+
+
 def RefsTo(ea = None):
     if ea is None:
         ea = idc.get_screen_ea()
 
-    for xref in XrefsTo(here(), 0):                          
-        printi(xref.type, XrefTypeNames(xref.type),            
+    for xref in XrefsTo(here(), 0):
+        printi(xref.type, XrefTypeNames(xref.type),
                   'from', hex(xref.frm), 'to', hex(xref.to))
 
     refs = [x for x in XrefsTo(ea, 0)]
@@ -7948,7 +7998,7 @@ def AllRefsTo(ea):
 
     _jmpRefs = jmpRefs
     jmpRefs = set()
-    for a in _jmpRefs.copy():  
+    for a in _jmpRefs.copy():
         insn = idautils.DecodeInstruction(a)
         if insn is not None:
             if insn.get_canon_mnem() == 'call':
@@ -7964,8 +8014,8 @@ def AllRefsTo(ea):
         if debug: printi("deleting suspect jmpref: {:x} {}".format(a, diida(a)))
         ida_xref.del_cref(a, ea, 0)
 
-    for a in dataRefs: 
-        if SegName(a) != ".text": 
+    for a in dataRefs:
+        if SegName(a) != ".text":
             segRefNames.add(SegName(a))
             segRefs.add(a)
 
@@ -8033,7 +8083,7 @@ def AllRefsFrom(ea):
     jcRefs   = set()
     segRefNames = set()
 
-    for a in jmpRefs:  
+    for a in jmpRefs:
         insn = idautils.DecodeInstruction(a)
         if insn is not None:
             if insn.get_canon_mnem() == 'call':
@@ -8043,8 +8093,8 @@ def AllRefsFrom(ea):
             elif insn.get_canon_mnem().startswith('j'):
                 jcRefs.add(a)
 
-    for a in dataRefs: 
-        if SegName(a) != ".text": 
+    for a in dataRefs:
+        if SegName(a) != ".text":
             segRefNames.add(SegName(a))
             segRefs.add(a)
 
@@ -8104,7 +8154,7 @@ def find_function_callees( func_ea, maxlvl ):
 
             ALL_XREFS = 0
             refs = idautils.CodeRefsFrom(line, ALL_XREFS)
-            refs = set( filter( lambda x: not (x >= func_ea and x <= func_end), 
+            refs = set( filter( lambda x: not (x >= func_ea and x <= func_end),
                                 refs) )
             all_refs |= refs
 
@@ -8172,13 +8222,13 @@ def GetChunks(ea = 0, silent = True):
         owners = GetChunkOwners(chunkStart)
 
         refList = list()
-        chunks.append({ 
+        chunks.append({
             'name': chunkName,
             'func': GetFunctionName(chunkStart),
             'names': GetAllNames(chunkStart),
-            'start': chunkStart, 
-            'end': chunkEnd, 
-            'allRefs': allRefs - flowRefs, 
+            'start': chunkStart,
+            'end': chunkEnd,
+            'allRefs': allRefs - flowRefs,
             'refs': refs,
             'owners': owners,
             'current': True if chunkStart <= ea < chunkEnd else False
@@ -8224,12 +8274,12 @@ def split_chunks(chunks, endea=None, ignoreInt=False):
         e.g.
 
         ; START OF FUNCTION CHUNK FOR func_1
-        
-        loc_140CA17AD:                      
+
+        loc_140CA17AD:
                         jmp     loc_143DF57E6
         ; ---------------------------------------------------------------------------
-        
-        loc_140CA17B2:                     
+
+        loc_140CA17B2:
                         jmp     loc_140D79FF4
         ; END OF FUNCTION CHUNK FOR func_1
     """
@@ -8244,11 +8294,11 @@ def split_chunks(chunks, endea=None, ignoreInt=False):
                 # if debug > 1: printi("*** {:x} split_chunks".format(pos))
                 insn_len = IdaGetInsnLen(pos)
                 while (
-                        insn_len and 
+                        insn_len and
                         pos < endea and
                         (
-                            pos == startea or 
-                            IsFlow(pos) or 
+                            pos == startea or
+                            IsFlow(pos) or
                             (ignoreInt and isInterrupt(idc.prev_not_tail(pos)))
                         )
                     ):
@@ -8261,7 +8311,7 @@ def split_chunks(chunks, endea=None, ignoreInt=False):
                         pos += IdaGetInsnLen(pos)
                         insn_len = IdaGetInsnLen(pos)
                 # if debug > 1: printi("*** ".format(pos))
-                
+
                 if pos > startea:
                     yield startea, pos
                     if pos < endea:
@@ -8293,7 +8343,7 @@ def _fix_spd_wrapper_compact(l):
         l.sort()
         for i, x in enumerate(l):
             # ea = x[0]; csp = 0 - x[1]; asp = idc.get_spd(ea)
-            csp, asp, ad = 0 - x[1], idc.get_spd(x[0]), idc.get_sp_delta(x[0]) 
+            csp, asp, ad = 0 - x[1], idc.get_spd(x[0]), idc.get_sp_delta(x[0])
             if asp is None or ad is None: return
             adj = csp - asp; nd = adj + ad
             if debug: printi("{} -- {:x} current spd: {:x}  desired spd: {:x}  current spdiff: {:x}  new spdiff: {:x}".format(i, x[0], asp, csp, ad, nd))
@@ -8312,7 +8362,7 @@ def OurGetChunkStart(ea, chunks):
     for cstart, cend in chunks:
         # dprint("[debug] cstart, cend, ea")
         #  printi("[debug] cstart:{:x}, cend:{:x}, ea:{:x}".format(cstart, cend, ea))
-        
+
         if cstart <= ea < cend:
             #  printi("[debug] cstart:{:x}, cend:{:x}, ea:{:x} **FOUND**".format(cstart, cend, ea))
             return cstart
@@ -8328,7 +8378,7 @@ def OurGetChunkEnd(ea, chunks):
     for cstart, cend in chunks:
         #  dprint("[debug] cstart, cend, ea")
         # if debug > 1: printi("[debug] cstart:{:x}, cend:{:x}, ea:{:x}".format(cstart, cend, ea))
-        
+
         if cstart <= ea < cend:
             # if debug > 1: printi("[debug] cstart:{:x}, cend:{:x}, ea:{:x} **FOUND**".format(cstart, cend, ea))
             return cend
@@ -8405,7 +8455,7 @@ def RemoveChunk(*args):
             # dprint("[RemoveChunk] funcStart, chunkAddr")
             print("[RemoveChunk] funcStart:{}, chunkAddr:{}".format(hex(funcStart), hex(chunkAddr)))
             raise
-        
+
 
 def RemoveThisChunk(ea = 0):
     """RemoveThisChunk.
@@ -8514,7 +8564,7 @@ def GetFuncType(funcea=None):
 
     if not IsFuncHead(funcea):
         return None
-    
+
     #  GN_VISIBLE = ida_name.GN_VISIBLE     # replace forbidden characters by SUBSTCHAR
     #  GN_COLORED = ida_name.GN_COLORED     # return colored name
     #  GN_DEMANGLED = ida_name.GN_DEMANGLED # return demangled name
@@ -8527,7 +8577,7 @@ def GetFuncType(funcea=None):
     fnName = idc.get_name(funcea, ida_name.GN_VISIBLE)
     if not fnName:
         fnName = "invalid"
-    fnType = idc.get_type(funcea) 
+    fnType = idc.get_type(funcea)
     if fnType:
         return fnType.replace('(', ' ' + fnName + '(', 1)
 
@@ -8543,7 +8593,7 @@ def MyGetType(ea=None):
         return [MyGetType(x) for x in ea]
 
     ea = eax(ea)
-    
+
     if IsFuncHead(ea):
         return GetFuncType(ea)
     return idc.get_type(ea)
@@ -8640,7 +8690,7 @@ def AddRelocSegment(start_ea = None, size = 0x1000000, base = 1, use32 = 2, alig
         LabelAddressPlus(start_ea, "next_relocation", force = 1)
     except:
         pass
-    
+
     return r
 
 def _fix_spd(l, addresses=None):
@@ -8663,7 +8713,7 @@ def _fix_spd(l, addresses=None):
 
         #  if not chunkStart == ea:
             #  continue
-        
+
         correct_sp = 0 - x[1]   # -0x88
         actual_sp = idc.get_spd(ea)  # -0x8
         actual_delta = idc.get_sp_delta(ea) # -0x8
@@ -8767,10 +8817,10 @@ def join2(l):
 def fix_split_segment_jump(ea):
     s = ida_lines.generate_disasm_line(ea, 1)
 
-    '\x01\x05jg\x02\x05      \x01)\x01\x1a\x01(0000000143019000loc_143019000\x02\x1a\x01\t-\x02\t\x01\x0c231CCA5h\x02\x0c\x02)' 
+    '\x01\x05jg\x02\x05      \x01)\x01\x1a\x01(0000000143019000loc_143019000\x02\x1a\x01\t-\x02\t\x01\x0c231CCA5h\x02\x0c\x02)'
 
     """
-    \x01\x05jg\x02\x05      
+    \x01\x05jg\x02\x05
     \s+
     \x01)
         \x01\x1a
@@ -8871,7 +8921,7 @@ def remove_crappy_funcs():
     lame = all - pdaddy
     # dprint("[remove_crappy_funcs] len(pdaddy), len(all), len(lame)")
     print("[remove_crappy_funcs] len(pdaddy):{}, len(all):{}, len(lame):{}".format(len(pdaddy), len(all), len(lame)))
-    
+
     for ea in lame:
         if idc.get_name(ea, ida_name.GN_VISIBLE).startswith('sub_'):
             idc.del_func(ea)
@@ -8930,9 +8980,9 @@ def fix_dualowned_chunk(ea):
     if not tail:
         return
     if tail.refqty < 2:
-        return 
+        return
     if not tail.flags & ida_funcs.FUNC_TAIL:
-        return 
+        return
     cstart = tail.start_ea
     # printi("[info] fixing tail chunk @ {:x}".format(ea))
     labellen = 0
@@ -8940,7 +8990,7 @@ def fix_dualowned_chunk(ea):
     fnNames = []
     fnLocs = []
     cName = idc.get_name(tail.start_ea, GN_VISIBLE).lower()
-    while tail and tail.flags & ida_funcs.FUNC_TAIL: 
+    while tail and tail.flags & ida_funcs.FUNC_TAIL:
         fnName = idc.get_name(tail.owner, GN_VISIBLE).lower()
         fnLocs.append(tail.owner)
         fnNames.append(fnName)
@@ -8969,7 +9019,7 @@ def fix_dualowned_chunk(ea):
             #  if similar:
                 #  fnName = cName
             #  else:
-                #  printi("Ignoring dissimilar location name: {}".format(cName))    
+                #  printi("Ignoring dissimilar location name: {}".format(cName))
                 #  Commenter(ea, 'line').add("{}".format(cName))
 
 
@@ -9002,7 +9052,7 @@ def fix_dualowned_chunk(ea):
         return
 
     return True
-    
+
 def fix_dualowned_chunks():
     fix_queue = []
     printi("fixing double-owned chunks")
@@ -9126,7 +9176,7 @@ bad_insns = getglobal('bad_insns', default=set())
 def _EaseCode(ea=None, end=None, forceStart=False, check=False, verbose=False,
         forceStartIfHead=False, noExcept=False, noFlow=False, unpatch=False,
         ignoreInt=False, ignoreMnem=None, create=None, fixChunks=False,
-        origin=None):
+        origin=None, reverse=False, count=8**8):
     """
     EaseCode
 
@@ -9141,7 +9191,7 @@ def _EaseCode(ea=None, end=None, forceStart=False, check=False, verbose=False,
         raise AdvanceFailure("Invalid Address 0x{:x}".format(ea))
     if verbose and debug:
         printi("[EaseCode] {:x}".format(ea))
-    if verbose and debug: 
+    if verbose and debug:
         printi("[EaseCode] {:x}".format(ea))
         stk = []
         for i in range(len(inspect.stack()) - 1, 0, -1):
@@ -9166,13 +9216,19 @@ def _EaseCode(ea=None, end=None, forceStart=False, check=False, verbose=False,
     if ignoreInt:
         if verbose and debug: printi("[EaseCode] ignoreInt")
         _bad_mnems = _.without(_bad_mnems, 'int', 'ud2', 'int1', 'int3')
-    
+
     if not IsCode_(ea):
         if verbose and debug: printi("{:#x} not IsCode: {}".format(ea, diida(ea)))
         if forceStartIfHead and IsHead(ea):
             r = forceCode(ea, IdaGetInsnLen(ea), origin=origin)
             if verbose and debug: printi("forceStartIfHead: {:x} {}".format(ea, diida(ea)))
         elif forceStart:
+            # idc.GetDisasm(ea)
+            if reverse:
+                PrevMakeHead(ea)
+                ea = idc.prev_not_tail(ea + 1)
+                # while IsValidEA(ea) and not IsCode_(ea): ea = ea - 1
+                # while not IdaGetInsnLen(ea): ea -= 1
             try:
                 r = forceCode(ea, IdaGetInsnLen(ea), origin=origin)
             except AdvanceFailure as e:
@@ -9202,6 +9258,9 @@ def _EaseCode(ea=None, end=None, forceStart=False, check=False, verbose=False,
         else:
             prev_ea = ea
             ea = ea + insn_len
+            count -= 1
+            if count == 0:
+                break
             if prev_ea == start_ea and at_flow_end:
                 if verbose and debug:
                     printi("[EaseCode] ignoring at_flow_end during second loop")
@@ -9210,7 +9269,7 @@ def _EaseCode(ea=None, end=None, forceStart=False, check=False, verbose=False,
                 if verbose and debug:
                     # dprint("[_EaseCode] at_end, at_flow_end")
                     print("[_EaseCode] at_end:{}, at_flow_end:{}".format(at_end, at_flow_end))
-                    
+
                 break
 
         if unpatch:
@@ -9300,7 +9359,7 @@ def _EaseCode(ea=None, end=None, forceStart=False, check=False, verbose=False,
         if unknown:
             # dprint("[debug] next_head, ea, insn_len")
             if verbose and debug: printi("[debug] next_head:{:x}, ea:{:x}, insn_len:{:x}".format(next_head, ea, insn_len))
-            
+
             if next_head == ea + insn_len:
                 pass
                 #  printi("0x{:x} next_head == ea + insn_len".format(ea))
@@ -9380,49 +9439,48 @@ def FixAllFixups():
 def FindObfu():
     import time
     patterns = [
-                "48 89 e0 48 05 f8 ff ff ff 48 89 c4 48 89 1c 24",                                                                                     
-                "48 89 e0 48 05 f8 ff ff ff 50 5c 48 89 1c 24",                                                                                        
-                "48 8d 64 24 08 ff 64 24 f8",                                                                                                          
-                "48 8d 64 24 f8 48 89 ?? 24",                                                                                                          
-                "48 8d 64 24 f8 4c 89 ?? 24",                                                                                                          
-                "54 58 48 05 f8 ff ff ff 50 5c 48 89 1c 24",                                                                                           
-                "54 58 48 83 e8 08 50 5c",                                                                                                             
-                "55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24 48 8d 64 24 08 ff 64 24 f8",                                                                      
-                "55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24 c3",                                                                                              
-                "55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24",                                                                                                 
-                "55 48 bd ?? ?? ?? ?? ?? ?? 00 00 48 87 2c 24 ?? ?? 48 8b ?? 24 10 48 ?? ?? ?? ?? ?? ?? ?? 00 00 48 0f ?? ?? 48 89 ?? 24 10 ?? ?? c3", 
-                "55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24 55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24 c3", 
-                "48 89 e0 48 05 f8 ff ff ff 48 89 c4 48 89 1c 24", 
-                "55 48 bd ?? ?? ?? ?? ?? ?? 00 00 48 87 2c 24 ?? ?? 48 8b ?? 24 10 48 ?? ?? ?? ?? ?? ?? ?? 00 00 48 0f ?? ?? 48 89 ?? 24 10 ?? ?? c3", 
-                "55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24", 
-                "48 89 6c 24 f8 48 8d 64 24 f8", 
-                "48 8d 64 24 f8 48 89 2c 24", 
-                "48 89 5c 24 f8 48 8d 64 24 f8", 
-                "48 8d 64 24 f8 48 89 1c 24", 
-                "55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24 c3",
-                "48 8d 64 24 08 ff 64 24 f8", 
                 "48 05 f8 ff ff ff",
-                "48 87 ?? 24", 
-                "48 89 ?? 24", 
-                "48 89 c4",
-                "48 89 e0",
+                "48 89 5c 24 f8 48 8d 64 24 f8",
+                #  "48 89 6c 24 f8 48 8d 64 24 f8 48 8d 2d",
+                "48 89 6c 24 f8 48 8d 64 24 f8",
+                "48 89 e0 48 05 f8 ff ff ff",
+                #  "48 89 e0 48 05 f8 ff ff ff 48 89 c4 48 89 1c 24",
+                #  "48 89 e0 48 05 f8 ff ff ff 50 5c 48 89 1c 24",
                 "48 8b ?? 24 10 48 ?? ?? ?? ?? ?? ?? ??",
-                "48 8d 2d ?? ?? ?? ??",
-                "48 8d ?? 24", 
-                "55 48 8d 2d", 
-                "55 48 bd", 
+                #  "48 8d 2d ?? ?? ?? ??",
+                "48 8d 64 24 08",
+                "48 8d 64 24 f8",
+                #  "48 8d 64 24 08 ff 64 24 f8",
+                #  "48 8d 64 24 f8 ?? 89 1c 24",
+                #  "48 8d 64 24 f8 48 89 2c 24",
+                #  "48 8d 64 24 f8 48 89 ?? 24",
+                #  "48 8d 64 24 f8 4c 89 ?? 24",
+                "54 58 48 05 f8 ff ff ff 50 5c 48 89 1c 24",
+                "54 58 48 83 e8 08 50 5c",
+                #  "48 8d 64 24 f8 48 89 2c 24 48 8d 2d ??",
+                #  "55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24 48 8d 64 24 08 ff 64 24 f8",
+                #  "55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24 55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24 c3",
+                #  "55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24 c3",
+                #  "55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24 c3",
+                "55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24",
+                "55 48 bd ?? ?? ?? ?? ?? ?? 00 00 48 87 2c 24 ?? ?? 48 8b ?? 24 10 48 ?? ?? ?? ?? ?? ?? ?? 00 00 48 0f ?? ?? 48 89 ?? 24 10 ?? ?? c3",
+                "55 48 8d 2d",
+                "48 8d ?? 24",
+                "48 87 ?? 24",
+                "48 89 ?? 24",
+                "55 48 bd",
                 ]
     """
-                "55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24 55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24 c3", 
-                "48 89 e0 48 05 f8 ff ff ff 48 89 c4 48 89 1c 24", 
-                "55 48 bd ?? ?? ?? ?? ?? ?? 00 00 48 87 2c 24 ?? ?? 48 8b ?? 24 10 48 ?? ?? ?? ?? ?? ?? ?? 00 00 48 0f ?? ?? 48 89 ?? 24 10 ?? ?? c3", 
-                "55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24", 
-                "48 89 6c 24 f8 48 8d 64 24 f8", 
-                "48 8d 64 24 f8 48 89 2c 24", 
-                "48 89 5c 24 f8 48 8d 64 24 f8", 
-                "48 8d 64 24 f8 48 89 1c 24", 
+                "55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24 55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24 c3",
+                "48 89 e0 48 05 f8 ff ff ff 48 89 c4 48 89 1c 24",
+                "55 48 bd ?? ?? ?? ?? ?? ?? 00 00 48 87 2c 24 ?? ?? 48 8b ?? 24 10 48 ?? ?? ?? ?? ?? ?? ?? 00 00 48 0f ?? ?? 48 89 ?? 24 10 ?? ?? c3",
+                "55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24",
+                "48 89 6c 24 f8 48 8d 64 24 f8",
+                "48 8d 64 24 f8 48 89 2c 24",
+                "48 89 5c 24 f8 48 8d 64 24 f8",
+                "48 8d 64 24 f8 48 89 1c 24",
                 "55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24 c3",
-                "48 8d 64 24 08 ff 64 24 f8", 
+                "48 8d 64 24 08 ff 64 24 f8",
     """
 
     found = set()
@@ -9463,9 +9521,9 @@ def GetFunc(ea=None):
     ea = eax(ea)
     """
     Determine a new function boundaries
-    
+
     @param ea: address inside the new function
-    
+
     @return: if a function already exists, then return its end address.
             If a function end cannot be determined, the return BADADDR
             otherwise return the end address of the new function
@@ -9478,9 +9536,9 @@ def GetFuncStart(ea=None):
     ea = eax(ea)
     """
     Determine a new function boundaries
-    
+
     @param ea: address inside the new function
-    
+
     @return: if a function already exists, then return its end address.
             If a function end cannot be determined, the return BADADDR
             otherwise return the end address of the new function
@@ -9497,9 +9555,9 @@ def GetFuncStartOrEa(ea=None):
     ea = eax(ea)
     """
     Determine a new function boundaries
-    
+
     @param ea: address inside the new function
-    
+
     @return: if a function already exists, then return its end address.
             If a function end cannot be determined, the return BADADDR
             otherwise return the end address of the new function
@@ -9516,9 +9574,9 @@ def GetFuncEnd(ea=None):
     ea = eax(ea)
     """
     Determine a new function boundaries
-    
+
     @param ea: address inside the new function
-    
+
     @return: if a function already exists, then return its end address.
             If a function end cannot be determined, the return BADADDR
             otherwise return the end address of the new function
@@ -9533,9 +9591,9 @@ def MakeCodeAndWait(ea, force = False, comment = ""):
     """
     MakeCodeAndWait(ea)
         Create an instruction at the specified address, and idc.auto_wait() afterwards.
-        
+
         @param ea: linear address
-        
+
         @return: 0 - can not create an instruction (no such opcode, the instruction
         would overlap with existing items, etc) otherwise returns length of the
         instruction in bytes
@@ -9603,7 +9661,7 @@ def MakeCodeAndWait(ea, force = False, comment = ""):
 
 def partial(func, *args):
     def part(*args_rest):
-        return func(*(args + args_rest)) 
+        return func(*(args + args_rest))
     return part
 
 def return_value(func, value, *args, **kwargs):
@@ -9619,7 +9677,7 @@ def return_value_lambda_args(func, value, *args, **kwargs):
 def setTimeout(func, timeout, *args, **kwargs):
     def part():
         func(*args, **kwargs)
-        return -1 
+        return -1
 
     # timer = ida_kernwin.register_timer(part, timeout)
     # timer = ida_kernwin.register_timer(lambda: return_zero(lambda: func(*args, **kwargs)), timeout)
@@ -9650,25 +9708,25 @@ if 'CircularList' in globals():
         if debug:
             # dprint("[forceCode] start, end, trim, delay")
             printi("[forceCode] start:{:x}, end:{:x}, trim:{}, delay:{}".format(start, end, trim, delay))
-            
+
         last_jmp_or_ret = 0
         last_addr = 0
         trimmed_end = 0
         happy = 0
         # dprint("[forceCode] start")
         #  printi("[forceCode] start:{:x}".format(start))
-        
+
         func_end = GetFuncEnd(start)
         # dprint("[forceCode] func_end")
         #  printi("[forceCode] func_end:{:x}".format(func_end))
-        
+
         func_start = GetFuncStart(start)
         chunk_end = GetChunkEnd(start)
         chunk_start = GetChunkStart(start)
         if debug:
             printi("func_start: {}, func_end: {}".format(hex(func_start), hex(func_end)))
             printi("chunk_start: {}, chunk_end: {}".format(hex(func_start), hex(func_end)))
-        
+
         #  idc.del_items(start, idc.DELIT_EXPAND, end - start)
         if IdaGetInsnLen(ea) == 2 and GetMnemDi(ea) == 'push' and IdaGetMnem(ea) == '':
             log.append("{:x} insnlen == 2".format(ea))
@@ -9747,7 +9805,7 @@ if 'CircularList' in globals():
                         happy = 0
                         break
                     if not trim:
-                        msg = "[warn] (1) couldn't create instruction at {:x}".format(ea)
+                        msg = "[warn] (1) couldn't create instruction at {:#x}-{:#x}".format(start, ea)
                         # bad_insns.add(ea)
                         printi("{}\n{}".format(msg, '\n'.join(log)))
                         raise AdvanceFailure(msg)
@@ -9783,7 +9841,7 @@ def ReinforceFunc(ea, *args, **kwargs):
             bad.append( r[1], r[2] )
 
     return good, bad
-    
+
 
 def forceAllAsCode(ea, length, hard = 0, comment = ""):
     return forceCode(ea, length)[0]
@@ -9876,7 +9934,7 @@ def LabelAddressPlus(ea, name, force=False, append_once=False, unnamed=False, no
         return [LabelAddressPlus(x, name, force, append_once, unnamed, nousername, named, throw, flags) for x in ea]
 
     ea = eax(ea)
-    
+
 
     if nousername:
         unnamed = nousername
@@ -9991,7 +10049,7 @@ def get_ea_by_any(val, d=object):
 
     if isinstance(val, (FuncTailsInsn, AdvanceInsnList)):
         return val.ea
-            
+
     if isinstance(val, list):
         return [get_ea_by_any(x, d) for x in val]
     if isinstance(val, str):
@@ -10025,7 +10083,7 @@ def get_ea_by_any(val, d=object):
             if hasattr(val, attr_name):
                 return getattr(val, attr_name)
     except AttributeError:
-        pass 
+        pass
 
     raise ValueError("Don't know how to convert {} '{}' to address".format(type(val), val))
 
@@ -10197,7 +10255,7 @@ def MyMakeUnknown(ea, nbytes=None, flags=0x4): # ida_bytes.DELIT_NOTRUNC
     @return: true on sucessful operation, otherwise false
 
     Convert item (instruction/data) to unexplored bytes. The whole item
-    (including the head and tail bytes) will be destroyed. 
+    (including the head and tail bytes) will be destroyed.
     """
     # check if caller has invoked with (start_ea, end_ea)
     if isinstance(ea, GenericRange) or isinstance(ea, tuple) and len(ea) == 2:
@@ -10206,15 +10264,15 @@ def MyMakeUnknown(ea, nbytes=None, flags=0x4): # ida_bytes.DELIT_NOTRUNC
             _e -= _s
         ea, nbytes = _s, _e
     assert nbytes is not None
-        
+
 
     if nbytes > ea:
         nbytes = nbytes - ea
     result = idaapi.del_items(ea, flags, nbytes)
     if not result:
         return result
-    
-    # check for fixups that must be removed 
+
+    # check for fixups that must be removed
     # https://reverseengineering.stackexchange.com/questions/27339/
 
     fx = idaapi.get_next_fixup_ea(ea - 1)
@@ -10252,7 +10310,7 @@ def MakeThunk(ea=None):
     @param ea: linear address
     """
     ea = eax(ea)
-    
+
     def set_thunk_flag():
         if idc.get_func_flags(ea) & idc.FUNC_THUNK == 0:
             SetFuncFlags(ea, lambda f: f | idc.FUNC_THUNK)
@@ -10425,12 +10483,12 @@ def RecreateFunction(funcea=None):
     idc.auto_wait()
     for i, tpl in enumerate(chunks):
         start, end = tpl
-        
+
         if i == 0:
             idc.add_func(start, end)
         else:
             idc.append_func_tail(funcea, start, end)
-        
+
     #  func = ida_funcs.func_t()
     #  func.start_ea = funcea
     #  r = ida_funcs.find_func_bounds(func, ida_funcs.FIND_FUNC_DEFINE | ida_funcs.FIND_FUNC_IGNOREFN)
@@ -10439,7 +10497,7 @@ def RecreateFunction(funcea=None):
     #  SetFuncStart(funcea, func.start_ea)
     #  SetFuncEnd(funcea, func.end_ea)
     #  EaseCode(funcea)
-#  
+#
     #  for ea in GetFuncHeads(funcea):
         #  ida_auto.auto_recreate_insn(ea)
 
@@ -10498,10 +10556,10 @@ def oget(obj, key, default=None, call=False):
     >>> oget(sys.modules['__main__'], 'oget')
     <function oget at 0x000001A9A1920378>
     """
-    if not isString(key):
-        raise TypeError("oget(): attribute ('{}') name must be string".format(key))
     r = None
 
+    if isinstance(key, int) and isListlike(obj):
+        return list(list(zip(obj))[key])[0]
     if isinstance(obj, dict):
         return obj.get(key, default)
     try:
@@ -10509,12 +10567,15 @@ def oget(obj, key, default=None, call=False):
     except TypeError:
         # TypeError: 'module' object is not subscriptable
         r = getattr(obj, key, default)
+    except AttributeError:
+        if not isinstance(key, str):
+            raise TypeError("oget(): attribute ('{}') name must be string".format(key))
+        raise
 
     if call and callable(r):
         r = r()
 
     return r
-
 
 def dotted(key):
     """Convert dotted heirachical notation into list of keys
@@ -10575,9 +10636,18 @@ def deep_get(obj, path, default=AttributeError):
     >>> deep_get(sys, 'modules.__main__.deep_get')
     <function deep_get at 0x000001A9A57DA1E0>
     """
+    if ',' in path:
+        path = [x.strip() for x in path.split(',')]
+
+    if isIterable(path):
+        return [deep_get(obj, x, default=default) for x in path]
+
     name = getattr(obj, '__name__', 'object')
     for piece in dotted(path):
-        obj = oget(obj, piece, AttributeError)
+        tmp = piece
+        if _.isNumeric(piece):
+            tmp = int(piece, 0)
+        obj = oget(obj, tmp, AttributeError)
         if obj == AttributeError:
             if default==AttributeError:
                 # AttributeError: module '__main__' has no attribute 'xax'
@@ -10592,7 +10662,7 @@ def deep_get(obj, path, default=AttributeError):
 def getmanyattr(o, *args):
     """
     getmanyattr(object, name1[, name2 ,[name3 ,...]], default]) -> value
-    
+
     Get a name attributes from an object; getmanyattr(x, 'y', 'z', None) is
     equivalent to [x.y, x.z].  The default argument it is returned when the
     attribute doesn't exist.
@@ -10604,7 +10674,8 @@ def isDictlike(o):
     return _.all(getmanyattr(o, 'values', 'keys', 'get', None), lambda x, *a: callable(x))
 
 def isListlike(o):
-    return _.all(getmanyattr(o, 'append', 'remove', '__len__', None), lambda x, *a: callable(x))
+    return isinstance(o, tuple) or isinstance(o, list) or  _.all(_.getmanyattr(o, 'append', 'remove', '__len__', None), lambda x, *a: callable(x))
+    # return _.all(getmanyattr(o, 'append', 'remove', '__len__', None), lambda x, *a: callable(x))
 
 def isSliceable(o):
     try:
@@ -10617,7 +10688,7 @@ def hascallable(obj, name):
     """
     hascallable(obj, name, /)
         Return whether the object has a callable attribute with the given name.
-        
+
         This is done by calling callable(getattr(obj, name, None))
     """
     return callable(oget(obj, name, None))
@@ -10895,7 +10966,7 @@ def iter_overlap_test(range1, ranges2):
 def not_overlap3(ranges1, ranges2):
     return ( [r1 for r1 in ranges1 if not iter_overlap_test(r1, ranges2)],
              [r2 for r2 in ranges2 if not iter_overlap_test(r2, ranges1)] )
-        
+
 def format_chunk_range(ea):
     return "{:x}\u2013{:x}".format(GetChunkStart(ea), GetChunkEnd(ea))
 
@@ -10915,7 +10986,7 @@ def describe_target(ea=None):
         defines an address with additional information regarding entry
         position, chunks, and such
         """
-    
+
         def __init__(self, ea):
             """
             __init__
@@ -10985,7 +11056,7 @@ def bestOf3Names(container, iteratee=None):
     q = _.reverse(_.sortBy(_.map(counted, lambda count, ea, *a: {'count': count, 'ea': ea}), 'count'))
     # dprint("[bestOf3Names] q")
     # print("[bestOf3Names] q:{}".format(q))
-    
+
     # return q
     best = ''
     e = q
@@ -10996,7 +11067,7 @@ def bestOf3Names(container, iteratee=None):
         best = e[0]['ea']
     else:
         # dprint("[bestOf3Names] e[0]['count'], e[1]['count']")
-        
+
         if e[0]['count'] >= (2 * e[1]['count']):
             # print("[bestOf3Names] e[0]['count']:{}, e[1]['count']:{}... q:{}".format(e[0]['count'], e[1]['count'], q))
             best = e[0]['ea']
@@ -11021,7 +11092,7 @@ def name_common_function(ea=None, dryRun=False):
         return
     #  if not IsFuncStart(ea):
         #  return "Is not function start: {}".format(describe_target(ea))
-    
+
     r = RecurseCallers(ea, width=1000, depth=1, new=1, silent=1)
     if 'named' in r:
         named = r['named']
@@ -11110,7 +11181,7 @@ def diStripNatives():
                 diStrip(cs)
 
 
-    
+
 def fix_func_tails(l, extra_args=dict()):
     printi("[fix_func_tails] ")
     #  [error] 0x144758f25: external conditional jump to 0x14469e5d9 start of function "sub_14469E5D9" (0x14469e5d9)
@@ -11118,7 +11189,7 @@ def fix_func_tails(l, extra_args=dict()):
     patched = 0
     for e in l:
         if issubclass(type(e), FuncTailsError):
-            if isinstance(e, FuncTailsJump): 
+            if isinstance(e, FuncTailsJump):
                 # FuncTailsJump(True, head, describe_target(target)
                     #  def __init__(self, conditional, frm, to):
                         #  self.conditional = conditional
@@ -11147,7 +11218,7 @@ def fix_func_tails(l, extra_args=dict()):
 
             if isinstance(e, FuncTailsUnusedChunk): pass
             if isinstance(e, FuncTailsNoppedChunk): pass
-            if isinstance(e, FuncTailsBadTail): 
+            if isinstance(e, FuncTailsBadTail):
                 if e.tail_ea and isInterrupt(e.tail_ea):
                     if not extra_args.get('ignoreInt', None):
                         printi("interupt found at 0x{:x}, pass it as ok".format(e.tail_ea))
@@ -11167,7 +11238,7 @@ def funcname(func):
     # <built-in method append of list object at 0x0000024BC770C388>
     return string_between('function ', ' at ', str(func)) \
             or string_between(' method ', ' of ', str(func))
-        
+
 def my_append_func_tail(funcea, ea1, ea2):
     """
     Append a function chunk to the function
@@ -11234,9 +11305,9 @@ def GetBase64String(ea=None, length = -1, strtype = 0, hex=False):
     return base64.b64decode(coded_string)
 
 def stacktrace():
-    stk = []                                         
+    stk = []
     raw = []
-    for i in range(len(inspect.stack()) - 1, 0, -1): 
+    for i in range(len(inspect.stack()) - 1, 0, -1):
         s = inspect.stack()[i]
         s2 = s[0]
         raw.append((
@@ -11252,7 +11323,7 @@ def stacktrace():
 
         #  stk.append(s2.f_code.co_firstlineno)
         #  pp(inspect.stack()[i])
-        #  stk.append(inspect.stack()[i])            
+        #  stk.append(inspect.stack()[i])
     printi("\n".join(stk))
     return raw
 
@@ -11336,7 +11407,7 @@ def join_helper_functions():
                 if not IsFuncHead(ref):
                     print("considering: {:x} -> {:x}".format(ref, ea))
                     if isAnyJmp(ref): #  and not len(all_xrefs_from(ea, filter=lambda x: not x[2].startswith('fl_'))):
-                        print("trying: {:x}".format(ea)) 
+                        print("trying: {:x}".format(ea))
                         retrace(ref, once=1)
                         if not IsFuncStart(ea): print("joined {:x}".format(ea))
 
@@ -11380,7 +11451,7 @@ def process_balance(ea=None, compact=False):
             #  ], groupiter=lambda o: o, gettext=lambda o: o.insn, predicate=lambda o: not o.insn.startswith('jmp'))
         #  if m:
             #  return m
-#  
+#
     m = sti.multimatch([
         r'({push}push.*)**',
         r'lea rsp, .*',
@@ -11426,7 +11497,7 @@ def process_balance(ea=None, compact=False):
                     printi("[process_balance] nopRanges: {}".format(nopRanges, nop))
                     for r in nopRanges:
                         print("[process_balance] r.start:{:x}, r.trend:{:x}".format(r.start, r.trend))
-                        
+
                         PatchNops(r.start, r.length, "compacted stack balance")
                     printi("[patch_stack_align] assembling at {:x}".format(m.push[0].ea))
                     if m.extra[0].insn == 'retn':
@@ -11452,7 +11523,7 @@ def process_balance(ea=None, compact=False):
                     printi("[patch_stack_align] len(push) or len(extra) wrong")
                     # dprint("[process_balance] len(m.push) > 8, len(m.extra) == 1, m.extra[0] == 'retn'")
                     print("[process_balance] len(m.push) > 8:{}, len(m.extra) == 1:{}, m.extra[0] == 'retn':{}".format(len(m.push) > 8, len(m.extra) == 1, m.extra[0] == 'retn'))
-                    
+
             else:
                 printi("[patch_stack_align] extra or push not in m")
         return m
@@ -11465,13 +11536,13 @@ def call_if_callable(func, *args, default=None, **kwargs):
     #  if func: printi("[call_if_callable] func.__name__:{}, args:{}, kwargs:{}".format(func.__name__, args, kwargs))
     if not func or not callable(func):
         return default
-    
+
     # dprint("[call_if_callable] func.__name__, args, kwargs")
-    
+
     return func(*args, **kwargs)
-    
+
 def fix_sub_args():
-    for fn in decompile_regex(EA(), r'(\w+\(ptr_gta5\))'): 
+    for fn in decompile_regex(EA(), r'(\w+\(ptr_gta5\))'):
         ea = eax(string_between('', '(', fn))
         _type = idc.get_type(ea)
         if _type:
@@ -11480,19 +11551,19 @@ def fix_sub_args():
             SetType(ea, '__int64 sub(char* p_gta5);')
 
 def fix_sub_args_unknown():
-    for fn in decompile_regex(EA(), r'(\w+\(a1t\))'): 
+    for fn in decompile_regex(EA(), r'(\w+\(a1t\))'):
         ea = eax(string_between('', '(', fn))
         _type = idc.get_type(ea)
         if _type:
             SetType(ea, GetType(ea).replace('__int64 a1', '__int64 a1t'))
         else:
             SetType(ea, '__int64 sub(__int64 a1t);')
-            
+
 def namesource(source):
     # source = list(later)
     n = xrefs_to(source)
     results = []
-            
+
     addrs = [x for x in n if idc.get_segm_name(x) == '.text' and IsFunc_(x) and GetFuncSize(x) > 5 and not isConditionalJmp(x)]
     u = _.uniq(GetFuncName(addrs))
     if len(u) == 1:
@@ -11536,7 +11607,7 @@ prngSeed = 0x13C938FF # (0x214013 * 2531011) & 0xffffffff
 
 #  def prngSeedNext():
     #  global prngSeed
-#  
+#
     #  # prngSeed        = 214013 * prngSeed + 2531011;
     #  prngSeed          = ((0xffffffff & (214013 * prngSeed)) + 2531011) & 0xffffffff;
     #  return prngSeed
@@ -11617,7 +11688,7 @@ def rngtest(ea=None, verbose=False):
             if verbose:
                 printi("0x{:x} data: 0x{:08x} (seeds were not sequential) d:{:08x} dn:{:08x} s0:{:08x} s:{:08x}".format(ea, das ^ dans, das, dans, seed0, seed))
             return None
-        
+
         else:
             if verbose:
                 printi("0x{:x} data: 0x{:08x} d:{:08x} dn:{:08x} s0:{:08x} s:{:08x}".format(ea, das ^ dans, das, dans, seed0, seed))
@@ -11723,7 +11794,7 @@ bool PolyMul(uint32_t from, uint32_t to, uint32_t& out_mul)
     while (uint32_t v = (from * result) ^ to) {
         result |= v & -int32_t(v);
     }
-    
+
     out_mul = result;
 
     return true;
@@ -11815,7 +11886,7 @@ def codeguard():
         #  .text:0000000143AAB04C  85 C0                                         test    eax, eax
         #  .text:0000000143AAB04E  0F 8D B8 DD EC FF                             jge     loc_143978E0C
         #  .text:0000000143AAB054  E9 E5 1B C2 00                                jmp     loc_1446CCC3E
-	# // ARXAN(R) PATENTED CODE GUARD(TM) TECHNOLOGY 
+	# // ARXAN(R) PATENTED CODE GUARD(TM) TECHNOLOGY
 	# auto integrityPattern = hook::pattern("8b 05 ? ? ? ? 83 c0 ff 89 45 ? 8b 45 ? 85 c0 0f 8d").count_hint(UINT32_MAX);
         # integrityPattern = 0x143AAB03D
         #
@@ -11828,36 +11899,36 @@ def codeguard():
         #  .text:000000014025E650  E9 EC 3F 35 01                                jmp     loc_1415B2641
         #
         """
-        v11 = &v16;                                                          v11 = &v16;                                                      
-        v12 = &word_14021900E;                                               v12 = &word_14021900E;                                           
-        for ( i = dword_1430DF03B - 1; i >= 0; --i )                         for ( i = dword_1430DF03B - 1; i >= 0; --i )                     
-          *((_DWORD *)sub_14010B91A + i) = v11[i];                             *((_DWORD *)sub_14010B91A + i) = v11[i];                       
-        i = dword_1430DF03B - 1;                                             for ( i = dword_1430DF03B - 1; i >= 0; --i )                     
-        dword_1402BB609 = dword_1422061B0;                                   {                                                                
-        result = qword_140267D60 + v7;                                         if ( v11[i] != *(_DWORD *)&v12[2 * i] )                        
-        *(&v21 + qword_140267D60 + v7) = (__int64)off_14001749E;                 break;                                                       
-        return result;                                                       }                                                                
-                                                                             if ( i >= 0 )                                                    
-                                                                             {                                                                
-                                                                               LOBYTE(result) = SetReturnAddressTo_14009b951_0(v9, &v21);     
-                                                                               result = (unsigned int)result;                                 
-                                                                               if ( (_DWORD)result )                                          
-                                                                                 return result;                                               
-                                                                             }                                                                
-                                                                             dword_1402BB609 = dword_1422061B0;                               
-                                                                             result = qword_140267D60 + v7;                                   
-                                                                             *(&v21 + qword_140267D60 + v7) = (__int64)off_14001749E;         
-                                                                             return result;                                                   
-                                                                      
+        v11 = &v16;                                                          v11 = &v16;
+        v12 = &word_14021900E;                                               v12 = &word_14021900E;
+        for ( i = dword_1430DF03B - 1; i >= 0; --i )                         for ( i = dword_1430DF03B - 1; i >= 0; --i )
+          *((_DWORD *)sub_14010B91A + i) = v11[i];                             *((_DWORD *)sub_14010B91A + i) = v11[i];
+        i = dword_1430DF03B - 1;                                             for ( i = dword_1430DF03B - 1; i >= 0; --i )
+        dword_1402BB609 = dword_1422061B0;                                   {
+        result = qword_140267D60 + v7;                                         if ( v11[i] != *(_DWORD *)&v12[2 * i] )
+        *(&v21 + qword_140267D60 + v7) = (__int64)off_14001749E;                 break;
+        return result;                                                       }
+                                                                             if ( i >= 0 )
+                                                                             {
+                                                                               LOBYTE(result) = SetReturnAddressTo_14009b951_0(v9, &v21);
+                                                                               result = (unsigned int)result;
+                                                                               if ( (_DWORD)result )
+                                                                                 return result;
+                                                                             }
+                                                                             dword_1402BB609 = dword_1422061B0;
+                                                                             result = qword_140267D60 + v7;
+                                                                             *(&v21 + qword_140267D60 + v7) = (__int64)off_14001749E;
+                                                                             return result;
+
         """
-                                                                  
-                                                                
-                                                                
-                                                                
-                                                                
-                                                                
-                                                                
-                                                                
+
+
+
+
+
+
+
+
 
         #
         p = 0x143141102
@@ -12001,7 +12072,7 @@ def recursive_map(seq, func):
 
 
 def _makeSequenceMapper(f, pre=None, post=None):
-    def _identity(o): 
+    def _identity(o):
         return o
     pre = pre or _identity
     post = post or _identity
@@ -12023,11 +12094,11 @@ def _makeSequenceMapper(f, pre=None, post=None):
 def hexmap(seq):
     return recursive_map(seq, hex)
 
-def hex_callback(item):    
+def hex_callback(item):
     """
     hex(...)
         hex([number|list]) -> string
-        
+
         Return the hexadecimal representation of [list of] integer or long integer.
     """
     def builtin_hex(number):
@@ -12055,12 +12126,14 @@ def hex_callback(item):
 
 def ahex(*items):
     if len(items) == 1:
-        if isIterable(items[0]):
-            return str([ahex(x) for x in items[0]]).replace("'", "")
-        if isinstance(items[0], six.integer_types):
-            if items[0] > 9 or items[0] < 9:
-                return hex(items[0])
-        return str(items[0])
+        item = _.first(items)
+        if isIterable(item):
+            return str([ahex(x) for x in item]).replace("'", "")
+        if isinstance(item, six.integer_types):
+            if abs(item) < 10:
+                return str(item)
+            return hex(item)
+        return str(item)
     return str([ahex(x) for x in items]).replace("'", "")
 
 def listComp(item):
@@ -12096,7 +12169,7 @@ def addrAsVtable(ea=None, m=True):
         return [addrAsVtable(x) for x in ea]
 
     ea = eax(ea)
-    
+
     if SegName(ea) == '.rdata':
         addr = ea
 
@@ -12209,20 +12282,20 @@ def name_vtable_refs():
             # dprint("[name_vtable_refs] fnName")
             tgt = GetTarget(ea)
             print("[name_vtable_refs] fnName:{} - {}".format(fnName, ean(tgt)))
-            
+
             dem = idc.demangle_name(ean(tgt), DEMNAM_NAME)
             # dprint("[name_vtable_refs] dem")
             print("[name_vtable_refs] dem:{}".format(dem))
-            
+
             if not dem:
                 continue
             vtbl_name = string_between('const ', "::`vftable'", dem)
             # dprint("[name_vtable_refs] vtbl_name")
             print("[name_vtable_refs] vtbl_name:{}".format(vtbl_name))
-            
+
             # dprint("[name_vtable_refs] ean(fnLoc)")
             print("[name_vtable_refs] ean(fnLoc):{}".format(ean(fnLoc)))
-            
+
             if vtbl_name and not HasUserName(fnLoc) or ean(fnLoc).startswith(('au_', 'allocsub_', 'possible_')):
                 LabelAddressPlus(fnLoc, 'possible_init_{}'.format(vtbl_name))
 
@@ -12265,7 +12338,7 @@ def expand_spdlist(c):
     for x in l: x = (x[0] + j, x[1] + k); j, k = x; yield x
 
 def expand_chunklist(c):
-    l = iter(c); x = next(l); yield (x[0], x[0] + x[1]); j, k = x; 
+    l = iter(c); x = next(l); yield (x[0], x[0] + x[1]); j, k = x;
     for x in l: x = (x[0] + j, x[0] + j + x[1]); j, k = x; yield x
 
 def compact_chunklist(spdList):
@@ -12282,9 +12355,9 @@ def compact_chunklist(spdList):
         yield "({},{})".format(*x)
 
 def expand_chunklist(c):
-    l = iter(c); x = next(l); yield (x[0], x[0] + x[1]); j, k = x; 
+    l = iter(c); x = next(l); yield (x[0], x[0] + x[1]); j, k = x;
     for x in l: x = (x[0] + j, x[0] + j + x[1]); j, k = x; yield x
-    
+
 def NotTails(start=None, end=None):
     """
     Get a list of heads (instructions or data items)
@@ -12342,7 +12415,7 @@ def apply_xrefs():
     frms = [eax(x[1]) for x in file_enumerate_lines('i:/ida/gtasc-2699.16/xrefs.txt') if x[1]]
     srcs = [x[0] for x in [(ea, dii(ea)) for ea in frms] if x[1] and (x[1].startswith(('jmp', 'call')) or 'rip' in x[1])]
     failures = []
-    for ea in srcs: 
+    for ea in srcs:
         if ea in failures:
             continue
         create_insn(ea)
@@ -12376,7 +12449,7 @@ def nop_unused_chunks(addrs=None, dryRun=False, put=False, nonfuncs=None):
     remove = set()
     keep = set()
     funcs = set()
-    
+
     for addr in addrs:
         addr = eax(addr)
         func = ida_funcs.get_func(addr)
@@ -12431,7 +12504,7 @@ def nop_unused_chunks(addrs=None, dryRun=False, put=False, nonfuncs=None):
     rse2 = GenericRanger([GenericRange(x[0], trend=x[1]) for x in keep], sort=1)
     # dprint("[nop_unused_chunks] rse1, rse2")
     # print("[nop_unused_chunks] rse1:{}, rse2:{}".format(rse1, rse2))
-    
+
     print("difference")
     kill = difference(rse1, rse2)
 
@@ -12558,28 +12631,28 @@ def rename_native_helpers(funcea=None):
             # dprint("[rename_native_helpers] _funcproc")
             # dprint("[rename_native_helpers] _u, _hash, _ns, _funcproc")
             print("[rename_native_helpers] r[0]:{}, _u:{}, _hash:{}, _ns:{}, _funcproc:{}".format(r[0], _u, _hash, _ns, _funcproc))
-            
-            
+
+
         _args = [string_between('', '=', x, retn_all_on_fail=1) for x in _.filter(string_between('(', ')', bn).split(', '))]
         # list(filter(lambda x: x, ''.split(',')))
-        
+
         fnName = GetFuncName(ea).replace('NATIVE::', '')
         "common2:NETSHOPPING::NET_GAMESERVER_TRANSFER_WALLET_TO_BANK_ACT"
         filter = lambda x: x.type not in (ida_xref.fl_F, )
         all_helpers = external_refs_from(ea)
-        helpers = [helper for helper in all_helpers 
-                if not _.any(xrefs_to(helper, filter=lambda x: x.type in (idc.fl_JN, idc.fl_CN)), 
-                    lambda v, *a: 
+        helpers = [helper for helper in all_helpers
+                if not _.any(xrefs_to(helper, filter=lambda x: x.type in (idc.fl_JN, idc.fl_CN)),
+                    lambda v, *a:
                         IsFunc_(v) and 'NATIVE::' in GetFuncName(v) and not ida_funcs.is_same_func(ea, v)
                         # or 'common2' in GetFuncName(v) and GetFuncName(v)[8:-4] not in fnName
                         )
                 ]
         # dprint("[rename_native_helpers] x")
         # print("[rename_native_helpers] helpers:{}".format(ean(helpers)))
-        
+
         # dprint("[rename_native_helpers] _names")
         # print("[rename_native_helpers] _names:{}".format(_names))
-        
+
 
         # helpers = _.filter([external_refs_from_unique(ea, lambda x: len(xrefs_to(x)) == 1)])
         if not all_helpers:
@@ -12610,7 +12683,7 @@ def rename_native_helpers(funcea=None):
                 # idc.msg(str(_advanced))
                 if ctr_interval_count > 2 and _advanced > 3 and ctr_hpos > -1:
                     idc.msg("\n")
-                    ctr_hpos = 0 
+                    ctr_hpos = 0
                 else:
                     ctr_hpos = _msgline
                 idc.msg(ctr_text[ctr] + " ")
@@ -12631,11 +12704,11 @@ def rename_native_helpers(funcea=None):
                 continue
             # dprint("[rename_native_helpers] call")
             #  print("[rename_native_helpers] call:{}".format(_call))
-            
+
             _cargs = string_between(nicename + '(', ')', _call, greedy=1)
             # dprint("[rename_native_helpers] _type, _cargs")
             # print("[rename_native_helpers] _type:{}, _cargs:{}".format(_type, _cargs))
-            
+
             while True:
                 _cast, _cargs = string_between_splice('(', ')', _cargs, repl='', inclusive=1)
                 if not _cast: break
@@ -12658,7 +12731,7 @@ def rename_native_helpers(funcea=None):
             'char *__fastcall(__int64)'
             if y in helpers:
                 LabelAddressPlus(
-                    y, 
+                    y,
                     fnName
                         .replace('NATIVE::', '')
                         .replace('_ACTUAL', '_impl')
@@ -12688,8 +12761,14 @@ def Plan(*args, name='unknown'):
     'SmartAddChunk.shorten'
     'SmartAddChunk.lengthen'
     'SmartAddChunk.new'
+    if not IsValidEA(args):
+        return 0
+
+    Plan.planned = getglobal('_Plan_planned', type, set, _set=1)
+
     if debug:
         print("Plan({}, '{}')".format(ahex(args), name))
+    Plan.planned.add((args[0], args[1]))
     ida_auto.revert_ida_decisions(*args[0:2])
     ida_auto.plan_range(*args[0:2])
     return 1
@@ -12724,13 +12803,13 @@ def xchg_pprev(l4=None, deobfu=False):
             '48 8d 64 24 f8 48 89 ?? 24',
             '48 8d 64 24 08 48 8b ?? 24 f8',
 
-            ("55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24",), 
+            ("55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24",),
             ("55 48 bd ?? ?? ?? ?? 01 00 00 00 48 87 2c 24",),
             ("48 89 2c 24 48 8d 2d ?? ?? ?? ?? 48 87 2c 24",),
             ("48 89 6c 24 f8 48 8d 64 24 f8",),
             ("48 8d 2d ?? ?? ?? ?? 48 87 2c 24",),
-            ("48 8d 2d ?? ?? ?? ?? 48 87 2c 24",), 
-            
+            ("48 8d 2d ?? ?? ?? ?? 48 87 2c 24",),
+
 
 
     ]):
@@ -12749,7 +12828,7 @@ def xchg_pprev(l4=None, deobfu=False):
             l = [ea]
             # dprint("[debug] ea")
             # print("[debug] ea: {}".format(ahex(ea)))
-            
+
             if isinstance(pattern, tuple):
                 EaseCode(ea, forceStart=1)
             tmp = pprev(ea, quiet=1, short=1, count=8, iteratee=lambda path: l.append(path.ea))
@@ -12758,7 +12837,7 @@ def xchg_pprev(l4=None, deobfu=False):
                     while obfu.patch(ea): patched += 1
             # dprint("[debug] ea, tmp")
             #  print("[debug] ea: {}, tmp: {} ; {}".format(ahex(ea), ahex(tmp), diida(ea)))
-            
+
             if IsValidEA(tmp):
                 yield(tmp)
             # l.reverse()
@@ -12804,7 +12883,7 @@ if hasglobal('PerfTimer'):
 # r = read_emu_glob(['lobby_idaho_alert', 'total_bleed_alan', 'scent_seek_alive', 'drain_novel_alert', 'gun_fear_alert'])
 # ['drain_novel_alert', 'cali_cream_alan', 'were_site_air', 'hal_trend_alike', 'rank_civic_orgy', 'film_been_alan', 'sour_style_alike', 'gash_tool_alert', 'lobby_idaho_alert', 'rigid_hen_alert', 'mine_sum_air', 'total_bleed_alan', 'god_tie_alert', 'suit_hello_orgy', 'stood_screw_air', 'spoke_noon_alert', 'acres_tale_alike', 'fed_bring_alfa', 'onset_roman_air', 'sew_lean_orgy', 'slave_asked_ally', 'greek_life_alive', 'grew_story_air', 'voice_roof_air', 'gun_fear_alert', 'some_papa_alike']
 # b16
-# r = read_emu_glob('rub_duck_aim') 
+# r = read_emu_glob('rub_duck_aim')
 # r.extend(read_emu_glob('moved_shell_aim'))
 # r.extend(read_emu_glob('pip_obey_air'))
 # r.extend(read_emu_glob('set_win_orgy'))
@@ -12818,15 +12897,15 @@ if hasglobal('PerfTimer'):
 # post-unpack: register_native_namespaces: 'fail_jump_alert', 'piano_daily_acid', 'hair_greed_aim'
 # already included in dump: 'piano_daily_acid', 'hair_greed_aim'
 # pb = unpatch_all()
-# r = read_emu_glob(['piano_daily_acid', 'hair_greed_aim', 'gear_among_aim', 'admit_arm_orgy', 'apply_nail_air', 'beam_agree_aim', 'belt_just_alert', 'bet_buy_acid', 'check_silk_aim', 'desk_honey_air', 
-#    'error_site_aim', 'house_fog_alert', 'moved_catch_air', 'moved_shell_aim', 'phone_null_alert', 'pip_obey_air', 'pity_rob_orgy', 'pogo_shelf_aim', 'rub_duck_aim', 'set_win_orgy', 'still_lift_aim', 
+# r = read_emu_glob(['piano_daily_acid', 'hair_greed_aim', 'gear_among_aim', 'admit_arm_orgy', 'apply_nail_air', 'beam_agree_aim', 'belt_just_alert', 'bet_buy_acid', 'check_silk_aim', 'desk_honey_air',
+#    'error_site_aim', 'house_fog_alert', 'moved_catch_air', 'moved_shell_aim', 'phone_null_alert', 'pip_obey_air', 'pity_rob_orgy', 'pogo_shelf_aim', 'rub_duck_aim', 'set_win_orgy', 'still_lift_aim',
 #     'alert_hear_air',     'fail_jump_alert'] , 'balance', put=0)
 # for x, y in pb: ida_bytes.patch_byte(x, y)
 # r2 = emujoin(_.flatten(r, 1))
-# 
+#
 # pb = unpatch_all()
-# r = read_emu_glob(['gear_among_aim', 'admit_arm_orgy', 'apply_nail_air', 'beam_agree_aim', 'belt_just_alert', 'bet_buy_acid', 'check_silk_aim', 'desk_honey_air', 
-#    'error_site_aim', 'house_fog_alert', 'moved_catch_air', 'moved_shell_aim', 'phone_null_alert', 'pip_obey_air', 'pity_rob_orgy', 'pogo_shelf_aim', 'rub_duck_aim', 'set_win_orgy', 'still_lift_aim', 
+# r = read_emu_glob(['gear_among_aim', 'admit_arm_orgy', 'apply_nail_air', 'beam_agree_aim', 'belt_just_alert', 'bet_buy_acid', 'check_silk_aim', 'desk_honey_air',
+#    'error_site_aim', 'house_fog_alert', 'moved_catch_air', 'moved_shell_aim', 'phone_null_alert', 'pip_obey_air', 'pity_rob_orgy', 'pogo_shelf_aim', 'rub_duck_aim', 'set_win_orgy', 'still_lift_aim',
 #     'alert_hear_air',] , 'balance', put=1)
 # for x, y in pb: ida_bytes.patch_byte(x, y)
 # r2 = emujoin(_.flatten(r, 1))
@@ -12852,15 +12931,15 @@ if hasglobal('PerfTimer'):
 # for ea in FindInSegments("55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24 c3", 'any'): obfu.patch(ea)
 # for ea in FindInSegments("55 48 8d 2d ?? ?? ?? ?? 48 87", 'any'): obfu.patch(ea)
 # l1 = [x[0] for x in r if x[1][1] in (4,) and xrefs_to_ex(x[0], flow=0, filter=lambda x: x.type.startswith('d'))]; l2 = [x[0] for x in r if x[1][1] in (4,) and not xrefs_to_ex(x[0], flow=0, filter=lambda x: not x.type.startswith('d'))]; r = [x for x in r if x[0] not in l1 and x[0] not in l2]
-# 
+#
 # ZeroFunction([ea for ea in Functions() if _.any(ean(GetFuncStart(list(DataRefsTo(ea)))), lambda v, *a: v.startswith('Arxan'))], total=1)
 # for ea in ([x for x in NamesMatching('.*BunnyCave') if len(xrefs_to(x)) == 0], ''): (LabelAddressPlus(ea, ''), RemoveChunk(GetFuncStart(ea), ea))
 # ZeroFunction([ea for ea in Functions() if _.any(GetFuncName(_.flatten(xrefs_to(GetFuncStart(xrefs_to(ea))))), lambda v, *a: v.startswith('Arxan'))], total=1)
 # pprev
 # nice = _.countBy([insn_preview(ea) for ea in [x for x in FunctionsPdata() if GetNumChunks(x) == 0 and IsFuncSpdBalanced(x, nonzero=1) ]])
-#  _.filter(xrefs_to(helper, filter=lambda x: x.type in (idc.fl_JN, idc.fl_CN)), 
-    #  lambda v, *a: 
-    #  'NATIVE::' in ean(v) and ean(v) != fnName or 
+#  _.filter(xrefs_to(helper, filter=lambda x: x.type in (idc.fl_JN, idc.fl_CN)),
+    #  lambda v, *a:
+    #  'NATIVE::' in ean(v) and ean(v) != fnName or
     #  'common2' in ean(v) and ean(v)[8:-4] not in fnName)
     #
 #  r = read_emu_glob(['piano_daily_acid', 'hair_greed_aim', 'gear_among_aim', 'admit_arm_orgy', 'apply_nail_air', 'beam_agree_aim', 'belt_just_alert', 'bet_buy_acid', 'check_silk_aim', 'desk_honey_air',
@@ -12872,8 +12951,8 @@ if hasglobal('PerfTimer'):
 # l3 = [x.ea for x in r2 if isinstance(x, FuncTailsInsn)] + [x for x in r2 if isinstance(x, int)] + [x.ea for x in failed] + list(l) + \
 #      list(_.flatten(shifty)) + [x for x in FindInSegments('e8 ?? ?? ?? ?? 90 e9 ?? ?? ?? ??') if IsValidEA(GetTarget(x)) and IsValidEA(GetTarget(x + 6))] + list(FindObfu())
 # ida_retrace(ea, zero=0, smart=0, calls=1, forceRemoveFuncs=1, ignoreChunks=1)
-# r = read_emu_id_glob(['gear_among_aim', 'admit_arm_orgy', 'apply_nail_air', 'beam_agree_aim', 'belt_just_alert', 'bet_buy_acid', 'check_silk_aim', 'desk_honey_air', 
-#     'error_site_aim', 'house_fog_alert', 'moved_catch_air', 'moved_shell_aim', 'phone_null_alert', 'pip_obey_air', 'pity_rob_orgy', 'pogo_shelf_aim', 'rub_duck_aim', 'set_win_orgy', 'still_lift_aim', 
+# r = read_emu_id_glob(['gear_among_aim', 'admit_arm_orgy', 'apply_nail_air', 'beam_agree_aim', 'belt_just_alert', 'bet_buy_acid', 'check_silk_aim', 'desk_honey_air',
+#     'error_site_aim', 'house_fog_alert', 'moved_catch_air', 'moved_shell_aim', 'phone_null_alert', 'pip_obey_air', 'pity_rob_orgy', 'pogo_shelf_aim', 'rub_duck_aim', 'set_win_orgy', 'still_lift_aim',
 #     'alert_hear_air', 'piano_daily_acid', 'hair_greed_aim', 'fail_jump_alert'] , 'balance')
 #
 #     2802
@@ -12885,17 +12964,29 @@ if hasglobal('PerfTimer'):
 #     'fruit_touch_aids'])
 #     [   'bit_bet_acre', 'beak_moved_aim', 'none_lisa_aim', 'beak_moved_aim',
 #     'rear_tin_alert', 'bar_pinch_air', 'have_sent_alert', 'penis_bank_aim',
-#     'beak_moved_aim', 'none_lisa_aim', 'okay_alike_orgy', 'louis_draft_aim',
+#     'beak_moved_aim', 'none_lisa_aim', 'okay_alike_orgy',
 #     'shame_pilot_aim', 'shame_pilot_aim', 'bob_plan_air', 'plow_look_alert',
 #     'sharp_sock_alert', 'wall_town_air', 'rear_tin_alert', 'flesh_rob_aim',
-#     'page_knee_alert', 'thick_ben_orgy', 'felt_louis_aids']
+#     'felt_louis_aids']
 #
-#     good: felt_louis_aids[register_natives] swear_apart_air joint_anger_aim brick_pan_aids beak_moved_aim sharp_sock_alert[exact_told_aids] say_fool_air[plow_look_alert|] 
-#     bad: page_knee_alert louis_draft_aim thick_ben_orgy
+#     good="felt_louis_aids[register_natives] swear_apart_air joint_anger_aim brick_pan_aids beak_moved_aim sharp_sock_alert[exact_told_aids] say_fool_air[plow_look_alert] angle_car_air " \
+#          "bar_pinch_air china_dog_aim sell_arc_aim drama_train_alert funny_dine_aim full_shall_orgy shame_pilot_aim penis_bank_aim pinch_good_aim fruit_touch_aids"
+#     r = read_emu_glob([string_between('[', ']', s, inclusive=1, repl='') for s in good.split(' ')])
+#     bad: page_knee_alert louis_draft_aim thick_ben_orgy bob_plan_air tap_bake_air
 #     0xFCFA31AD, 0xBC537E0D, 0xAE04310C
 #     ['exact_told_aids', 'sharp_sock_alert', 'alert_close_air', 'net_deed_acid', 'kind_cloud_air', 'five_baby_aim', 'tap_bake_air', 'shot_sixth_air', 'sweet_sheet_add', 'blame_stock_air']
+#     Python>pb = FindPatchedBy()
+#  angle_car_air
+#  beak_moved_aim
+#  ought_chest_orgy
+#  fruit_touch_aids
+#  swear_apart_air
+#  brick_pan_aids
+#  joint_anger_aim
+#  pinch_good_aim
 #
-#     ['angle_car_air', 
+#
+# ['angle_car_air', 'beak_moved_aim', 'brick_pan_aids', 'felt_louis_aids', 'fruit_touch_aids', 'joint_anger_aim', 'ought_chest_orgy', 'pinch_good_aim', 'say_fool_air', 'sharp_sock_alert', 'swear_apart_air']
 #     str((_.map(_.pluck(_.filter(obfu.patterns, lambda v, *a: v.used), 'search'), lambda v, *a: listAsHex(v)))).replace('-1', '??')
 #     FindInSegments([
 #        '48 89 e0 48 05 f8 ff ff ff 48 89 c4 48 89 1c 24',
@@ -12907,7 +12998,7 @@ if hasglobal('PerfTimer'):
 #        '54 58 48 83 e8 08 50 5c',
 #        '55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24 48 8d 64 24 08 ff 64 24 f8',
 #        '55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24 c3',
-#        '55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24', 
+#        '55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24',
 #        '55 48 bd ?? ?? ?? ?? ?? ?? 00 00 48 87 2c 24 ?? ?? 48 8b ?? 24 10 48 ?? ?? ?? ?? ?? ?? ?? 00 00 48 0f ?? ?? 48 89 ?? 24 10 ?? ?? c3',
 #        ]
 #        later.clear(); later2.clear()
@@ -12925,3 +13016,99 @@ if hasglobal('PerfTimer'):
 #        retrace_list(j)
 #
 #        ida_retrace(l, zero=0, smart=0, calls=1, forceRemoveFuncs=1, ignoreChunks=1)
+#
+#  addrs = []
+#  addrs2 = []
+def fixret():
+    global addrs, addrs2
+    pr = ProgressBar(len(p))
+    count = 0
+    addrs = []
+    for ea, b in p.items():
+        count += 1
+        pr.update(count)
+        skip = False
+        if len(b) < 512:
+            for head in idautils.Heads(idc.get_item_head(ea), ea + len(b)):
+                if head == 0x143AEC5C7:
+                    # dprint("[debug] head, ean(head)")
+                    print("[debug] head: {}, ean(head): {}".format(ahex(head), ahex(ean(head))))
+
+                if IsCode_(head) and GetFuncName(head).startswith(('FillerBunny', 'Balance')) or ean(head).startswith(('FillerBunny', 'Balance')):
+                    skip = True
+                    break
+        if skip:
+            continue
+        if IsCode_(idc.get_item_head(ea)):
+            # if 0xc3 in b:
+            unpatch(ea, len(b))
+            addrs.append(ea)
+            # hotkey_patch(ea, ea + len(b))
+        elif not idc.get_qword(ea) == 0:
+            unpatch(ea, len(b))
+            addrs2.append(ea)
+        else:
+            if not idc.get_qword(ea) == 0:
+                print("[not iscode] ea: {}".format(ahex(ea)))
+    # ida_retrace(addrs, calls=0)
+
+def next_code(ea, maxea=BADADDR):
+    """
+    Get next defined item (instruction or data) in the program
+
+    @param ea: linear address to start search from
+    @param maxea: the search will stop at the address
+        maxea is not included in the search range
+
+    @return: BADADDR - no (more) defined items
+    """
+    return ida_bytes.next_that(ea, maxea, ida_bytes.is_code)
+
+def prev_code(ea, minea=0):
+    return ida_bytes.prev_that(ea, minea, ida_bytes.is_code)
+
+def prev_func(ea, minea=0):
+    """
+    Get previous defined item (instruction or data) in the program
+
+    @param ea: linear address to start search from
+    @param minea: the search will stop at the address
+            minea is included in the search range
+
+    @return: BADADDR - no (more) defined items
+    """
+    return ida_bytes.prev_that(ea, minea, ida_bytes.is_func)
+
+def prev_ref(ea, minea=0):
+    return ida_bytes.prev_that(ea, minea, idc.isRef)
+
+def easechunks():
+    p = ProgressBar(ida_funcs.get_fchunk_qty())
+    count = 0
+    for cs, ce in GetAllChunks():
+        count += 1
+        p.update(count)
+        if _.any(idautils.Heads(cs, ce), lambda v, *a: not IsCode_(v)):
+            EaseCode(cs, forceStart=1)
+
+def whileba():
+    ba2 = []
+    while True:
+        try:
+            ba2 = [Block(x, ease=1) for x in addrs if x >= EA()]
+        except AdvanceFailure as e:
+            # __main__.AdvanceFailure: 0x1431d2166 EaseCode couldn't advance past 0x1431d2178
+            addr = int(string_between('', ' ', str(e)), 16)
+            jump(addr)
+        print("Returning without exception")
+        return ba2
+
+def patchba():
+    print("patchba...")
+    p = ProgressBar(len(ba2))
+    count = 0
+    for cs, ce in gr2:
+        count += 1
+        p.update(count)
+        hotkey_patch(cs, ce)
+

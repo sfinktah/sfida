@@ -1427,24 +1427,72 @@ class underscore(object):
         Produce an array that contains every item shared between all the
         passed-in arrays.
         """
-        if type(self.obj[0]) is int:
-            a = self.obj
-        else:
-            a = tuple(self.obj[0])
-        setobj = set(a)
-        for i, v in enumerate(args):
-            setobj = setobj & set(args[i])
-        return self._wrap(list(setobj))
+        try:
+            if type(self.obj[0]) is int:
+                a = self.obj
+            else:
+                a = tuple(self.obj[0])
+            setobj = set(a)
+            for i, v in enumerate(args):
+                setobj = setobj & set(args[i])
+            return self._wrap(list(setobj))
+        except TypeError:
+            result = _values(self.obj)
+            for i, v in enumerate(args):
+                for item in result:
+                    if item not in v:
+                        result.remove(item)
+
+            return self._wrap(result)
 
     def difference(self, *args):
         """
         Take the difference between one array and a number of other arrays.
         Only the elements present in just the first array will remain.
         """
-        setobj = set(self.obj)
-        for i, v in enumerate(args):
-            setobj = setobj - set(args[i])
-        return self._wrap(self._clean._toOriginal(setobj))
+        try:
+            setobj = set(self.obj)
+            for i, v in enumerate(args):
+                setobj = setobj - set(args[i])
+            return self._wrap(self._clean._toOriginal(setobj))
+        except TypeError:
+            result = _values(self.obj)
+            for i, v in enumerate(args):
+                for item in v:
+                    if item in result:
+                        result.remove(item)
+
+            return self._wrap(result)
+
+    def symmetric_difference(self, other):
+        """
+        Return the symmetric difference of two sets as a new set.
+        (i.e. all elements that are in exactly one of the sets.)
+        """
+        # TODO: fancy set way (such as in difference and intersection)
+        # return _.intersection(_.difference(self.obj, other), _.difference(other, self.obj))
+        result = []
+        our_values = _values(self.obj)
+        other_values = _values(other)
+        for item in _.union(our_values, other_values):
+            if item in our_values and item in other_values:
+                continue
+            result.append(item)
+
+        return self._wrap(result)
+
+        result = _values(self.obj)
+        _other = _values(other)
+        for item in result:
+            if item in _other:
+                _other.remove(item)
+        for item in _other:
+            if item in result:
+                result.remove(item)
+
+        return self._wrap(result)
+
+
 
     def zip(self, *args):
         """

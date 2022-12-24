@@ -134,7 +134,7 @@ def myassert(condition, message):
 
 def PrevGap(ea=None):
     ea = eax(ea)
-    gap = ea - idc.prev_head(ea) #  + InsnLen(idc.prev_head(ea))
+    gap = ea - prev_func(ea) #  + InsnLen(idc.prev_head(ea))
     if gap > 256:
         return 256
     return gap
@@ -148,16 +148,25 @@ def MakePrevHeadSuggestions(ea=None):
 
 def PrevMakeHead(ea=None):
     ea = eax(ea)
+    if not IsCode_(idc.prev_not_tail(ea)) and not IsCode_(idc.next_not_tail(ea)):
+        tmp = next_code(ea)
+        if IsCode_(idc.next_not_tail(tmp)):
+            ea = tmp
+    next_code_ea = next_code(ea)
     unlikely = ['db'] + _unlikely_mnems()
     suggestions = [x for x in MakePrevHeadSuggestions(ea)]
     count = 0
     for start, _suggestion in suggestions:
-        length, suggestion = _suggestion
-        print("Suggestion {:#x}:\n{}".format(start, indent(4, suggestion)))
+        length, suggestion, *a = _suggestion
+        if a:
+            # dprint("[PrevMakeHead] _suggestion")
+            print("[PrevMakeHead] _suggestion: {}".format(_suggestion))
+            raise RuntimeError('suggestion')
+        #  print("Suggestion {:#x}:\n{}".format(start, indent(4, suggestion)))
 
         failed = False
         end = start + length
-        if end != ea:
+        if end != ea and end != next_code_ea:
             print("  bad end: {:x} {}".format(end, suggestion))
             continue
         for mnem in unlikely:
@@ -167,6 +176,7 @@ def PrevMakeHead(ea=None):
                 break
         if failed:
             continue
+
         if count == 0:
             print("  Easing code {:x} - {:x}".format(start, ea))
             new_start = start
@@ -176,9 +186,17 @@ def PrevMakeHead(ea=None):
                     print("  Got stuck at {:#x}".format(start))
                     return
                 start = new_start
+            print("huh... happy?")
             return
 
         count += 1
+
+    # dprint("[PrevMakeHead] count")
+    print("[PrevMakeHead] count: {}".format(count))
+    
+    if count == 0:
+        print("trying this")
+        EaseCode(ida_bytes.prev_that(ea, 0, isRef), forceStart=1)
 
 
 
@@ -654,10 +672,9 @@ def unpatch(start, end = None):
         end = start + end
 
     count = 0
-    if isinstance(start, (int, long)) and isinstance(end, (int, long)):
+    if IsValidEA((start, end)):
         while start < end:
-            if start in obfu.combed:
-                obfu.combed.clear()
+            #  if start in obfu.combed: obfu.combed.clear()
             #  if idc.get_cmt(start, 0):
             idc.set_cmt(start, '', 0)
             if ida_bytes.revert_byte(start):
@@ -666,12 +683,10 @@ def unpatch(start, end = None):
 
         return count
 
-    print("Unexpected type: %s" + type(start))
+    print("InvalidEAs: ({}, {})".format(start, end))
         #  ida_bytes.visit_patched_bytes(start, end, lambda ea, fpos, org_val, patch_val:
                 #  #  print("ida_bytes.visit_patched_bytes: {}, {}, {}, {}".format(ea, fpos, org_val, patch_val))
                 #  __unpatch_worker(ea))
-
-unpatch = unpatch
 
 def UnpatchFunc(funcea=None):
     """
@@ -873,8 +888,14 @@ def get_patches():
 
 
     idaapi.visit_patched_bytes(0, idaapi.BADADDR, get_patch_byte)
-    return pickle.dumps( ns.patchedBytes ).hex()
     return ns.patchedBytes
+    # return pickle.dumps( ns.patchedBytes ).hex()
+
+def get_patches_idarest():
+    return pickle.dumps(get_patches()).hex()
+
+def save_patches(fn):
+    pickle.dump(smart_path(fn), get_patches())
 
 def unpatch_all_count():
     patchedBytes=[]
@@ -2161,6 +2182,7 @@ HELPER_HOTKEYS.append(MyHotkey("Shift-Ctrl-Alt-U", UnpatchUn))
 HELPER_HOTKEYS.append(MyHotkey("Shift-Ctrl-J", hotkey_join_to_parent))
 HELPER_HOTKEYS.append(MyHotkey("Shift-J", lambda: hotkey_switch_jumptype(shift=1)))
 HELPER_HOTKEYS.append(MyHotkey("Shift-Alt-E", hotkey_edit_nasm))
+HELPER_HOTKEYS.append(MyHotkey("Ctrl-Alt-E", hotkey_ease_code))
 
 
 #  

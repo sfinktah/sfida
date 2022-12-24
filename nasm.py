@@ -47,6 +47,8 @@ def nasm_process_mapfile():
 nasm_cache = getglobal('_nasm._cache', type, dict, _set=True)
 def nasm64(ea, string, quiet=False):
     global nasm_cache
+    string = string.replace('\r', '')
+    string = string.strip()
     input = list()
 
     if len(string.splitlines()) == 1 and string.startswith(('j', 'call')):
@@ -68,15 +70,17 @@ def nasm64(ea, string, quiet=False):
         shift = ea - adjusted_ea
 
     if isinstance(string, list):
+        raise RuntimeError('can nasm64 be passed a list?')
         string = '\n'.join(string)
 
-    string = string.replace('\r', '')
-    string = re.sub(r'\n0x([0-9a-fA-F]+)(?=:)', r'\nloc_\1', "\n" + string)
+    string = re.sub(r'\n0x([0-9a-fA-F]+)(?=:)', r'\nloc_\1', string)
 
-    ori_string = string
+    ori_string = string.strip()
     if ori_string in nasm_cache:
-        if nasm_debug: print("cached: {}".format(ori_string))
+        if nasm_debug: print("cached: '{}'".format(ori_string))
         return nasm_cache[ori_string]
+    else:
+        print("[nasm64] not cached: '{}'".format(ori_string))
 
     options = dict()
     for line in string.split('\n'):
@@ -102,7 +106,6 @@ def nasm64(ea, string, quiet=False):
 
     input.insert(0, "[org 0x{:x}]".format(adjusted_ea))
     input.insert(0, "[bits {}]".format(options.get('bits', '64')))
-    input.insert(0, "")
 
     #  if isinstance(string, list):
         #  input.extend(string)
@@ -208,7 +211,7 @@ def nasm64(ea, string, quiet=False):
                         # if retry > 0
                         if not _.any(deCode(bytes(assembled)), lambda v, *a: v.rawFlags & 0x80 or v.meta & 0xf in (1, 4, 5)):
                             if nasm_debug: print("[caching]\n{}".format(indent(8, ori_string)))
-                            nasm_cache[ori_string] = True, {'output': assembled, 'input': input}
+                            nasm_cache[ori_string.strip()] = True, {'output': assembled, 'input': input}
                         else:
                             if nasm_debug: print("[not caching]\n{}".format(indent(8, ori_string)))
 
