@@ -1080,7 +1080,8 @@ class RelocationAssemblerError(ObfuError):
 later = globals().get('later', set())
 later2 = globals().get('later2', set())
 done2 = globals().get('done2', set())
-done3 = globals().get('done3', GenericRanges())
+if 'GenericRanges' in globals():
+    done3 = globals().get('done3', GenericRanges())
 global_chunks = globals().get('global_chunks', defaultdict(set))
 if 'arxan_comments' not in globals():
     arxan_comments = dict()
