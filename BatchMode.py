@@ -4,16 +4,21 @@ import idc
 class BatchMode(object):
     old_batch_mode = None
     new_batch_mode = None
-    def __init__(self, new_batch_mode):
+    def __init__(self, new_batch_mode, old_batch_mode=None):
         self.new_batch_mode = new_batch_mode
-        self.old_batch_mode = idc.batch(self.new_batch_mode)
+        if old_batch_mode is not None:
+            self.old_batch_mode = old_batch_mode
 
     def __enter__(self):
         # self.old_batch_mode = idc.batch(self.new_batch_mode)
+        if self.old_batch_mode is None:
+            self.old_batch_mode = idc.batch(self.new_batch_mode)
+        print('[BatchMode] Mode {} engaged'.format(self.new_batch_mode))
         return self.old_batch_mode
 
     def __exit__(self, exc_type, exc_value, traceback):
         if self.old_batch_mode is not None:
+            print('[BatchMode] Mode {} resumed'.format(self.old_batch_mode))
             idc.batch(self.old_batch_mode)
 
 class InfAttr(object):

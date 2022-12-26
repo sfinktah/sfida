@@ -767,26 +767,33 @@ def color_patches():
         
 patchedBytes=[]
 
-def FindPatchedBy():
+def FindPatchedBy(pattern='Pateched by: ', return_addrs=False, return_all=False):
     patchedBytes=[]
 
     def get_patch_byte(ea, fpos, org_val, patch_val):
         patchedBytes.append([ea, org_val])
 
-    idaapi.visit_patched_bytes(0, idaapi.BADADDR, get_patch_byte)
-    idc.auto_wait()
+    with BatchMode(True):
+        idaapi.visit_patched_bytes(0, idaapi.BADADDR, get_patch_byte)
 
-    pbs = set()
+    pbs = list()
+    p = ProgressBar((ida_ida.cvar.inf.min_ea, ida_ida.cvar.inf.max_ea))
     for ea, x in patchedBytes:
+        p.update(ea)
         cmt = idc.get_cmt(ea, False)
         if isinstance(cmt, str):
-            c = Commenter(ea, "line").matches('Patched by: ')
+            c = Commenter(ea, "line").matches(pattern)
             if c:
-                pb = [string_between('Patched by: ', '', x) for x in c]
-                for x in pb:
-                    if x not in pbs:
-                        print(x)
-                        pbs.add(x)
+                if return_all:
+                    pbs.append((ea, c))
+                if return_addrs:
+                    pbs.append(ea)
+                else:
+                    pb = [string_between(pattern, '', x) for x in c]
+                    for x in pb:
+                        if x not in pbs:
+                            print(x)
+                            pbs.append(x)
 
     return pbs
 
@@ -853,8 +860,6 @@ def unpatch_all():
         patchedBytes.append([ea, patch_val])
 
     idaapi.visit_patched_bytes(0, idaapi.BADADDR, get_patch_byte)
-    idc.auto_wait()
-    patchedBytes.sort()
     count = 0
 
     for x, y in patchedBytes: 
@@ -864,7 +869,7 @@ def unpatch_all():
             count += 1
             ida_bytes.revert_byte(x)
             # idaapi.patch_byte(x, y)
-    return patchedBytes
+    # return patchedBytes
 
 class Namespace(object):
 

@@ -316,6 +316,8 @@ def _values(o):
 __asList = _makeSequenceMapper(lambda x: x)
 def _asList(o):
     l = []
+    if o is None:
+        return l
     if _isIterable(o):
         l = [x for x in o]
     else:

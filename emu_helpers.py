@@ -408,7 +408,60 @@ def compare_bytes(ea, buf):
 
     return count
     
+def make_all_patchfile(outFilename=None, noImport=False, width=76):
+    import base64
+    """ 
+    @param outFilename: filename or [fn1, fn2, ...]
+    """
+    if not noImport:
+        result = [
+                "def base64_patch_tmp():",
+                "    import idc, ida_ida, idautils, idaapi, pickle",
+                "    from base64 import b64decode as b",
+                "    from ida_bytes import put_bytes, patch_bytes",
+                "    from lzma import decompress as d",
+                "    min_ea = ida_ida.cvar.inf.min_ea & ~0xffff",
+                "    max_ea = (ida_ida.cvar.inf.max_ea + 1) & ~0xffff",
+                "    def unbase(a):",
+                "        if isinstance(a, int): a = [a]",
+                "        if len(a) > 1: return [ea - {:#x} + min_ea for ea in a]".format(ida_ida.cvar.inf.min_ea),
+                "        else: return a[0] - {:#x} + min_ea".format(ida_ida.cvar.inf.min_ea),
+                "    def lzp64(b64):",
+                "        for ea, p in pickle.loads(d(b(b64))).items():",
+                "            patch_bytes(unbase(ea), bytes(p))"
+                "",
+                ]
+    else:
+        result = []
+    
+    p = get_patches()
+    b = pickle.dumps(p)
+    c = lzma.compress(b)
+    b = c
+    cmd = 'lzp64'
+    if b:
+        b64 = base64.b64encode(b).decode('raw_unicode_escape')
+        if len(b64) < (width - 9 - 4):
+            bout = '    {}("{}")'.format(cmd, b64)
+            result.append(bout)
+        else:
+            bout = '    {}("""'.format(cmd) + b64
+            bout = indent(8, bout, width=width, joinWith=None, skipFirst=True)
+            result.extend(bout)
+            if len(result[-1]) < (width - 3 - 4):
+                result[-1] += '""")'
+            else:
+                result.append('        """)')
+        #  result.append('')
 
+    result.extend([
+        "",
+        "base64_patch_tmp()"
+        ])
+    if outFilename:
+        return file_put_contents(outFilename, "\n".join(result))
+    else:
+        return result
 
 
 @static_vars(_nulls=set())
@@ -1093,7 +1146,7 @@ def spread_files(path):
 match_emu(ea=0x13fffffff)
 
 if not getglobal('emu_stacks', None):
-    for fn in glob(os.path.join(os.path.dirname(idc.get_idb_path()), 'gtasc-*balance.lst')):
+    for fn in glob(os.path.join(os.path.dirname(idc.get_idb_path()), 'gtasc-*balance.txt')):
         emu_stacks = read_uc_emu_stack(fn)
 
 

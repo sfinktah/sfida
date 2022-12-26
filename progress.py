@@ -35,7 +35,7 @@ def _get_console_width():
 
 
 _block = "█▒▓░"
-_block_half = "▏▎▍▋▊█" # half-_block: ▌  almost-fll-_block: ▉
+_block_half = "▏▎▍▋▊█" # left-half-block: ▌  almost-full-block: ▉   right-half-block: ▐▌
 
 class ProgressBar:
     """Show a progress bar"""
@@ -44,6 +44,7 @@ class ProgressBar:
         self.count = len(maxvals)
         self.compound = True
         self.transpose_fns = []
+        self.percent_format = None
         self.maxval = 100
         for v in maxvals:
             if v is not None and hasattr(v, '__len__') and len(v) > 1:
@@ -92,7 +93,7 @@ class ProgressBar:
         
 
     def print_blocks(self):
-        #  # blocks = "▁▂▃▅▆▇░▒▓█"
+        #  # blocks = "▁▂▃▅▆▇░▒▓█"  ▐⣹⣹⣹
         #  blocks = b'\xe2\x96\x81\xe2\x96\x82\xe2\x96\x83\xe2\x96\x85\xe2\x96\x86\xe2\x96\x87\xe2\x96\x91\xe2\x96\x92\xe2\x96\x93\xe2\x96\x88'.decode('utf-8')
         #  blocks = b'\xe2\x96\x91\xe2\x96\x92\xe2\x96\x93\xe2\x96\x91\xe2\x96\x92\xe2\x96\x93\xe2\x96\x91\xe2\x96\x92\xe2\x96\x93\xe2\x96\x88'.decode('utf-8')
 
@@ -108,14 +109,18 @@ class ProgressBar:
             if i == 0:
                 bh = b
                 bh = _block_half[self.remainders[i]]
-            if block_v > 8: #  and len(self.blocks) > 1:
-                p = "{}%".format(int(actual_v))
-                block_v -= len(p)
+            if self.percent_format:
+                pf = self.percent_format(self.raw_value[i], actual_v)
+            else:
+                pf = "{}%".format(int(actual_v))
+            if block_v > len(pf) + 6: #  and len(self.blocks) > 1:
+                p = pf # "{}%".format(int(actual_v))
+                block_v -= len(p) + 2
                 r = block_v // 2
                 l = block_v - r
                 lhs = b * l
                 rhs = b * r
-                s = "{}{}{}".format(lhs, p, rhs)
+                s = "{}▌{}▐{}".format(lhs, p, rhs)
             else:
                 s = b * block_v
             s += bh

@@ -1239,8 +1239,10 @@ def FindInSegments(searchstr, segments=None, start=None, stop=None, limit=None, 
     if isinstance(searchstr, list):
         results = []
         for search in searchstr:
-            results.extend(FindInSegments(search, start=start, stop=stop, segments=segments, limit=limit, predicate=predicate, iteratee=iteratee, binary=binary))
-        return results
+            yield from FindInSegments(search, start=start, stop=stop, segments=segments, limit=limit, predicate=predicate, iteratee=iteratee, binary=binary)
+            # results.extend(FindInSegments(search, start=start, stop=stop, segments=segments, limit=limit, predicate=predicate, iteratee=iteratee, binary=binary))
+        return
+        #  return results
 
     if isinstance(searchstr, int):
         if searchstr < 0:
@@ -1259,10 +1261,12 @@ def FindInSegments(searchstr, segments=None, start=None, stop=None, limit=None, 
     searchstr = _double_questions(searchstr)
     if not re.match(r'([0-9a-f][0-9a-f] |\?\? )+([0-9a-f][0-9a-f])$', searchstr):
         print("Invalid binary searchstring: '{}'".format(searchstr))
-        return [];
+        return 
+        # return [];
 
     ea = 0
-    results = []
+    #  results = []
+    count = 0
 
     if start is not None and stop is not None:
         if stop < start:
@@ -1281,14 +1285,19 @@ def FindInSegments(searchstr, segments=None, start=None, stop=None, limit=None, 
                 if iteratee and callable(iteratee):
                     r = iteratee(r)
 
-                results.append(r)
+                count += 1
+                yield r
+                #  results.append(r)
 
-                if limit and len(results) > limit:
-                    return results
+                # if limit and len(results) > limit:
+                if limit and count > limit:
+                    return
+                    # return results
             #  with MemBatchMode(1):
             ea = ida_search.find_binary(ea, stop, searchstr, 16,
                                         SEARCH_CASE | SEARCH_DOWN | SEARCH_NEXT | SEARCH_NOSHOW)
 
+        return
         return results
 
     seg_names = set()
@@ -1314,21 +1323,12 @@ def FindInSegments(searchstr, segments=None, start=None, stop=None, limit=None, 
                 if iteratee and callable(iteratee):
                     r = iteratee(r)
 
-                results.append(r)
-                #  if not predicate or not callable(predicate):
-                    #  results.append(ea)
-                #  else:
-                    #  r = predicate(ea)
-                    #  if r and r > 1:
-                        #  results.append(r)
-                        #  if callable(iteratee):
-                            #  iteratee(r)
-                    #  elif r:
-                        #  results.append(ea)
-                        #  if callable(iteratee):
-                            #  iteratee(ea)
+                count += 1
+                yield r
+                # results.append(r)
 
-                if limit and len(results) > limit:
+                if limit and count > limit:
+                # if limit and len(results) > limit:
                     return results
             #  with MemBatchMode(1):
             ea = ida_search.find_binary(ea, seg_end, searchstr, 16,
@@ -1336,7 +1336,8 @@ def FindInSegments(searchstr, segments=None, start=None, stop=None, limit=None, 
     if not ea:
         print("Warning: No segments matched.  Try: {}".format(", ".join(seg_names)))
 
-    return results
+    return
+    #  return results
 
 if can_call('_'):
     def get_vtable(name, exact=True, show=False):

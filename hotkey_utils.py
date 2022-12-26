@@ -1473,7 +1473,7 @@ def create_insns(ea1, ea2):
         ea += n
 
 def hotkey_patch(ea1=None, ea2=None):
-    obfu.combed.clear()
+    total_patches = 0
     if ea1 and ea2:
         chunkStart, chunkEnd = ea1, ea2
     else:
@@ -1486,6 +1486,7 @@ def hotkey_patch(ea1=None, ea2=None):
         reflow = True
         patches = 1
         while reflow or patches:
+            #  print("hotkey_patch")
             patches = 0
             reflow = False
             #  print("reflow:")
@@ -1500,11 +1501,14 @@ def hotkey_patch(ea1=None, ea2=None):
                         #  print("result")
                         for p in r:
                             patches += 1
+                            total_patches += 1
                             if deep_get(p, 'pat.options.reflow', '') == 'reflow':
-                                #  print("reflowing")
+                                print("reflowing")
                                 reflow = True
     else:
         print("hotkey_patch range > 8192 bytes, ignored")
+
+    return total_patches
 
 
 

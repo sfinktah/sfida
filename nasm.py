@@ -51,7 +51,15 @@ def nasm64(ea, string, quiet=False):
     string = string.strip()
     input = list()
 
-    if len(string.splitlines()) == 1 and string.startswith(('j', 'call')):
+    if _.all(string.splitlines(), lambda v, *a: v.strip().startswith(('j', 'call'))):
+        qr = qassemble(ea, string)
+        if isinstance(qr, list):
+            if nasm_debug: print("shunted to qassemble: {}".format(string))
+            return True, {'output': qr, 'input': 'via qassemble'}
+        else:
+            print("Couldn't shunt {} to qassemble".format(string))
+
+    elif len(string.splitlines()) == 1 and string.startswith(('j', 'call')):
         # string = re.sub(r'\b0x([0-9a-fA-F]+)\b', r'\1h', string)
         # string = string.replace('retn', 'ret')
         qr = qassemble(ea, string)

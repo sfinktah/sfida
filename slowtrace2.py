@@ -1431,6 +1431,7 @@ def slowtrace2(ea=None,
 
     @perf_timed()
     def SmartAddChunk(old, new):
+        if debug: sprint("SmartAddChunk({}, {})".format(ahex(old),ahex(new)))
         if noAppendChunks or (not modify and not appendChunks):
             return
 
@@ -1614,6 +1615,7 @@ def slowtrace2(ea=None,
                     slvars.contig = 1
 
     def ChangeTarget(old, new):
+        #  if new == 0x14383d22c: raise RuntimeError('dbgh1')
         if debug: sprint("Changing target 0x{:x}".format(new))
         ShouldAddChunk(old, new)
         return new
@@ -1714,6 +1716,7 @@ def slowtrace2(ea=None,
 
     @static_vars(advance_counter = 0)
     def AdvanceHead(current_ea, new_ea = None):
+        #  if current_ea == 0x1439DE62D: raise RuntimeError('dbgh advhead')
         if debug: sprint("[AdvanceHead] [spd:{:x}] {} -> {}".format(slvars.rsp_diff, ahex(current_ea), ahex(new_ea)))
         #  if (insn_match(current_ea, idaapi.NN_nop, comment='nop') or
                 #  insn_match(current_ea, idaapi.NN_xchg, (idc.o_reg, 0), (idc.o_reg, 0), comment='nop')):
@@ -1769,6 +1772,11 @@ def slowtrace2(ea=None,
         _next_head = idc.next_head(current_ea)
         _next_not_tail = idc.next_not_tail(current_ea)
         _next_mnem = IdaGetMnem(_next_insn)
+        if debug:
+            #  if _next_insn == 0x1439de62d: raise RuntimeError('dbgnextinsn')
+            # dprint("[debug] _next_insn, _next_head, _next_not_tail, _next_mnem")
+            print("[debug] _next_insn: {}, _next_head: {}, _next_not_tail: {}, _next_mnem: {}".format(ahex(_next_insn), ahex(_next_head), ahex(_next_not_tail), ahex(_next_mnem)))
+            
         if isUnconditionalJmp(current_ea):
             raise RuntimeError("Should we be getting UnconditionalJmp's here?")
         if not isRet(current_ea) and not IsCode_(_next_insn):
@@ -1923,7 +1931,7 @@ def slowtrace2(ea=None,
                 # if debug: sprint("considering extending function.. nope")
                 pass
             ShouldAddChunk(current_ea, nextHead)
-            if debug: sprint("AdvanceHead is returning {}".format(hex(nextHead)))
+            if debug: sprint("AdvanceHead is returning {} (last resort)".format(hex(nextHead)))
             return nextHead
         if debug: sprint("AdvanceHead is returning None")
 
@@ -2007,6 +2015,9 @@ def slowtrace2(ea=None,
             idaapi.set_item_color(ea, color[0])
 
     def is_real_func(ea, funcea):
+        #  if ea == 0x1439de627: clear()
+        #  if ea == 0x1439de62d: raise RuntimeError('dbgh')
+        if debug: sprint('is_real_func({}, {})'.format(ahex(ea), ahex(funcea)))
         reason = ["No reason"]
         def setIsRealFunc(_reason):
             if debug: printi("[IsRealFunc] \"{}\" jumping from {:x} to {:x}".format(_reason, ea, funcea))
@@ -2028,6 +2039,7 @@ def slowtrace2(ea=None,
         if not IsCode_(funcea): # idc.is_code(ida_bytes.get_flags(funcea)):
 
             try:
+                if debug: sprint('forceCode({:#x})'.format(funcea))
                 insLen = forceCode(funcea)
             except AdvanceFailure as e:
                 printi("History: {}".format(hex([x.source for x in slvars2.previousHeads])))
@@ -2252,6 +2264,8 @@ def slowtrace2(ea=None,
                 #  else:
                     #  SxmartAddChunk(funcea, ea)
 
+        #  if ea == 0x1439de62d: raise RuntimeError('dbgh1234')
+        if debug: sprint('is_real_func({}, {}) returns'.format(ahex(ea), ahex(funcea)))
         return reason[0] if isRealFunc else False
 
 
@@ -2400,12 +2414,13 @@ def slowtrace2(ea=None,
         while idc.is_code(ida_bytes.get_flags(ea)): # or idc.plan_and_wait(ea, EndOfContig(ea)) or idc.create_insn(ea):
             # if debug: sprint("[WhileIsCode] {} real:{} nops:{} jumps:{} chunks:{} {}".format(ahex(ea), len(slvars.real), len(slvars.nops), len(slvars.jumps), len(slvars.chunks), diida(ea)))
 
+            if debug: sprint('while idc.is_code(ida_bytes.get_flags({:#x}))'.format(ea))
+            #  if ea == 0x1439de62d: raise RuntimeError('dbgaterg')
             if count and len(slvars.addresses) > count:
                 printi("... count reached #3 ({})".format(count))
                 return 0
 
-            if ea == slvars.startLoc and not IsFuncHead(ea):
-                MyMakeFunction(ea)
+            #  if ea == slvars.startLoc and not IsFuncHead(ea): MyMakeFunction(ea)
             if midfunc and ea != slvars.startLoc:
                 printi("jumped to midfunc")
                 slvars2.previousHeads.clear()
@@ -2467,9 +2482,16 @@ def slowtrace2(ea=None,
                     idc.del_stkpnt(slvars.startLoc, addr)
                 # SetSpDiffEx(ea, 0)
             #  forceCode(ea)
-            MakeCodeAndWait(ea)
-            MakeCodeAndWait(idc.next_head(ea), comment=slvars.startFnName)
+            # MakeCodeAndWait(ea)
+            # PROBLEM BETWEEN HERE-->
+            #  if not isFlowEnd(ea):
+                #  if debug: sprint('!isFlowEnd({:#x})'.format(ea))
+                #  if debug: sprint('MakeCodeAndWait({:#x})'.format(idc.next_head(ea)))
+                #  MakeCodeAndWait(idc.next_head(ea), comment=slvars.startFnName)
             #  if ea == 0x140cb33f1:
+
+            # <-- AND HERE
+            #  if ea == 0x1439de62d: raise RuntimeError('dbgaterg')
             if modify:
                 opType0 = GetOpType(ea, 0)  # 4  o_displ
                 opType1 = GetOpType(ea, 1)  # 1  o_reg
@@ -4374,6 +4396,7 @@ def slowtrace2(ea=None,
                         line = output("\t; Strange jump target (invalid segment: %s)" % idc.get_segm_name(target))
 
                     targetString = idc.print_operand(ea, 0)
+                    #  if targetString == 'loc_14383D22C': raise RuntimeError('dbgh1234')
                     if debug: sprint("targetString: {}".format(targetString))
                     targetStringByName = Name(target)
                     if debug: sprint("targetStringByName: {}".format(targetStringByName))
@@ -4657,8 +4680,10 @@ def slowtrace2(ea=None,
                 break
 
             try:
+                # we are in function: slowtrace2. oh srsly? XXXspace
                 ea = AdvanceHead(ea)
-                continue
+                # continue while idc.is_code(ida_bytes.get_flags(ea)): # or idc.plan_and_wait(ea, EndOfContig(ea)) or idc.create_insn(ea):
+                continue 
             except AdvanceFailure as e:
                 next_insn = ea + IdaGetInsnLen(ea)
                 line = output("\nCouldn't advance past 0x%x (%s)" % (ea, str(e)))

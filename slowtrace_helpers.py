@@ -137,20 +137,20 @@ def printi(value, sacrificial=None, depth=None, *args, **kwargs):
 
 
 
-    g_output = getglobal('g_output', None)
+    #  g_output = getglobal('g_output', None)
     if g_depth:
         _str = indent(g_depth, value, width=0x70, indentString=indentString, n2plus=g_depth+4)
     else:
         _str = value
-    if isinstance(g_output, list):
-        g_output.append(_str)
-        return
-    try:
-        if isinstance(g_output, Queue):
-            g_output.put(_str)
-            return
-    except NameError:
-        pass
+    #  if isinstance(g_output, list):
+        #  g_output.append(_str)
+        #  return
+    #  try:
+        #  if isinstance(g_output, Queue):
+            #  g_output.put(_str)
+            #  return
+    #  except NameError:
+        #  pass
     print(_str)
 
 
@@ -2756,7 +2756,7 @@ def insn_match(ea=None, itype=None, op0=None, op1=None, comment=None, verbose=Fa
     elif isinstance(itype, (tuple, list, set)) or isIterable(itype):
         pass
     else:
-        raise TypeError("argument of type '{}' ({}) is not iterable".format(type(itype).__name, itype))
+        raise TypeError("argument of type '{}' ({}) is not iterable".format(type(itype).__name__, itype))
 
 
     if itype and insn.itype not in itype:
@@ -2795,14 +2795,22 @@ def insn_match(ea=None, itype=None, op0=None, op1=None, comment=None, verbose=Fa
 
     return True
 
-def prev_insn_match(ea=None, *args, **kwargs):
+def prev_insn_match(ea=None, itype=None, op0=None, op1=None, skipNops=False, **kwargs):
     ea = eax(ea)
     if not IsValidEA(ea):
         raise AdvanceFailure('not IsValidEA({})'.format(ahex(ea)))
 
-    for frm in xrefs_to(ea):
-        if GetTarget(frm) == ea and insn_match(frm, *args, **kwargs):
-            return frm
+    queue = list(CodeRefsTo(ea, 1))
+    while queue:
+        addr = queue.pop(0)
+        # dprint("[debug] addr, itype, op0, op1")
+        print("[debug] addr: {}, itype: {}, op0: {}, op1: {}".format(ahex(addr), ahex(itype), ahex(op0), ahex(op1)))
+        
+
+        if insn_match(addr, itype=itype, op0=op0, op1=op1, **kwargs):
+            return addr
+        if skipNops and isNop(addr):
+            queue.extend(list(CodeRefsTo(addr, 1)))
 
 def insn_mmatch(ea=None, patterns=None):
     """
@@ -3855,20 +3863,27 @@ def find_element_in_list(element, list_element):
     except ValueError:
         return None
 
-def fixCallAndJmpObfu(func=None, repeat=3):
+def FixCallAndJmpObfu(func=None, repeat=3):
     addrs = []
 
+    repeat = False
     if func is None:
         func = obfu.patch
+        repeat = True
     r = FindInSegments([
             "48 89 6c 24 f8 48 8d 64 24 f8 48 8d 2d",
             "48 8d 64 24 f8 48 89 2c 24 48 8d 2d ??"
             ], 'any')
-    p = ProgressBar(len(r))
-    for i, ea in enumerate(r):
+    p = ProgressBar((ida_ida.cvar.inf.min_ea, ida_ida.cvar.inf.max_ea))
+    p.percent_format = lambda ea, pct: "{:x}".format(ea)
+    for ea in r:
         addrs.append(ea)
-        p.update(i)
-        while obfu.patch(ea): pass
+        p.update(ea)
+        while True:
+            print("loop")
+            if not func(ea) or not repeat:
+                break
+
 
     return addrs
 
@@ -4494,6 +4509,15 @@ def ida_retrace_pre_extend(queue, visited, master_queue, **kwargs):
         # return results
         if kwargs.get('calls', None):
             queue.extend([x for x in _.uniq(calls) if x not in queue])
+        if kwargs.get('comment', None):
+            comment = kwargs.get('comment')
+            [Commenter(x[0], 'line').add(comment) for x in all_blocks]
+        if kwargs.get('nop', None):
+            comment = 'ida_retrace'
+            if kwargs.get('comment', None):
+                comment = kwargs.get('comment')
+            [PatchNops(x[0], x[1] - x[0], comment=comment, nop=0xc3) for x in all_blocks]
+
     return results
 
 @perf_timed()
@@ -4652,10 +4676,10 @@ def BlockStart(ea=None, ease=False, **kwargs):
         return [BlockStart(x, ease=ease, **kwargs) for x in ea]
 
     ea = eax(ea)
-    if IsTail(ea):
-        ea = idc.get_item_head(ea)
     if ease:
         EaseCode(ea, forceStart=1, reverse=1)
+    if IsTail(ea):
+        ea = idc.get_item_head(ea)
     if not IsCode_(ea):
         return idc.BADADDR
     tmp = ea
@@ -4677,11 +4701,11 @@ def BlockEnd(ea=None, ease=False, **kwargs):
         return [BlockEnd(x, ease=ease, **kwargs) for x in ea]
 
     ea = eax(ea)
+    if ease:
+        EaseCode(ea, forceStart=1, reverse=1)
     if IsTail(ea):
         ea = idc.get_item_head(ea)
     start_ea = ea
-    if ease:
-        EaseCode(ea, forceStart=1, reverse=1)
     if not IsCode_(ea):
         return idc.BADADDR
     while IsCode(ea) and (ea == start_ea or IsFlow(ea)):
@@ -4690,16 +4714,20 @@ def BlockEnd(ea=None, ease=False, **kwargs):
     return ea
 
 
-def Block(ea=None, **kwargs):
+def Block(ea=None, ease=False, **kwargs):
     """
     Block
 
     @param ea: linear address
     """
     if isinstance(ea, list):
-        return [Block(x, **kwargs) for x in ea]
+        return [Block(x, ease=ease, **kwargs) for x in ea]
 
     ea = eax(ea)
+    if ease:
+        EaseCode(ea, forceStart=1, reverse=1)
+        if IsTail(ea):
+            ea = idc.get_item_head(ea)
     return BlockStart(ea, **kwargs), BlockEnd(ea, **kwargs)
 
 
@@ -7945,7 +7973,7 @@ def IsDataRef(ea=None):
         return [IsDataRef(x) for x in ea]
 
     ea = eax(ea)
-    return list(idautils.DataRefsTo(ea))
+    return [x for x in list(idautils.DataRefsTo(ea)) if idc.get_segm_name(x) != '.pdata']
 
 
 
@@ -9161,7 +9189,7 @@ def find_ips(start_ea=None, end_ea=None, step=8):
     #  return pins
     #
 
-def EaseCode(ea, *args, **kwargs):
+def EaseCode(ea=None, *args, **kwargs):
     run_twice = lambda *args, **kwargs: _.last(_.times(2, lambda *a: _EaseCode(*args, **kwargs)))
     if isinstance(ea, list):
         return [run_twice(x, *args, **kwargs) for x in ea]
@@ -9189,7 +9217,7 @@ def _EaseCode(ea=None, end=None, forceStart=False, check=False, verbose=False,
         if noExcept:
             return ea
         raise AdvanceFailure("Invalid Address 0x{:x}".format(ea))
-    if verbose and debug:
+    if debug:
         printi("[EaseCode] {:x}".format(ea))
     if verbose and debug:
         printi("[EaseCode] {:x}".format(ea))
@@ -9372,7 +9400,16 @@ def _EaseCode(ea=None, end=None, forceStart=False, check=False, verbose=False,
                 idaapi.del_items(ea, ida_bytes.DELIT_NOTRUNC, insn_len)
 
             if not idc.create_insn(ea):
-                if verbose and debug: printi("0x{:x} couldn't idc.make_insn(0x{:x}); break".format(ea, ea))
+                _next_code = next_code(ea)
+                _next_label = ida_bytes.next_that(ea, BADADDR, ida_bytes.has_any_name)
+                # dprint("[debug] _next_code, _next_label")
+                print("[debug] _next_code: {}, _next_label: {}".format(ahex(_next_code), ahex(_next_label)))
+                
+                if _next_label < _next_code and (_next_label - ea) < 15:
+                    if not idc.set_name(_next_label, '', flags=ida_name.SN_NOWARN):
+                        if verbose and debug: printi("0x{:x} couldn't idc.set_name(0x{:x}, '')".format(ea))
+                    LabelAddressPlus(_next_label, '')
+                if verbose and debug: printi("0x{:x} couldn't idc.create_insn(0x{:x}); break".format(ea, ea))
                 break
 
     if unpatch:
@@ -9686,6 +9723,7 @@ def setTimeout(func, timeout, *args, **kwargs):
 if 'CircularList' in globals():
     @static_vars(last=CircularList(16))
     def forceCode(start, end=None, trim=False, delay=None, origin=None):
+        if debug: printi("[forceCode] start:{:x}".format(start))
         log = []
         if isinstance(start, list):
             return [forceCode(x) for x in start]
@@ -9716,13 +9754,11 @@ if 'CircularList' in globals():
         # dprint("[forceCode] start")
         #  printi("[forceCode] start:{:x}".format(start))
 
-        func_end = GetFuncEnd(start)
-        # dprint("[forceCode] func_end")
-        #  printi("[forceCode] func_end:{:x}".format(func_end))
-
-        func_start = GetFuncStart(start)
-        chunk_end = GetChunkEnd(start)
+        func_start  = GetFuncStart(start)
+        func_end    = GetFuncEnd(start)
         chunk_start = GetChunkStart(start)
+        chunk_end   = GetChunkEnd(start)
+
         if debug:
             printi("func_start: {}, func_end: {}".format(hex(func_start), hex(func_end)))
             printi("chunk_start: {}, chunk_end: {}".format(hex(func_start), hex(func_end)))
@@ -10704,6 +10740,9 @@ IsArrayCount = array_count
 # to return an iterator object.
 def isIterable(o):
     return hasattr(o, '__iter__') and not hasattr(o, 'ljust')
+
+def isIterableOrStringish(o):
+    return hasattr(o, '__iter__')
 
 # An iterator is an object that implements __next__, which is expected to
 # return the next element of the iterable object that returned it, and raise
@@ -12752,6 +12791,8 @@ def top():
                              key= lambda x: -x[1])[:10]:
         print("{:>30}: {:>8}".format(name, sizeof_fmt(size)))
 
+
+@static_vars(planned=getglobal('_Plan_planned', set()))
 def Plan(*args, name='unknown'):
     # from...
     'unpatch_func2'
@@ -12761,10 +12802,10 @@ def Plan(*args, name='unknown'):
     'SmartAddChunk.shorten'
     'SmartAddChunk.lengthen'
     'SmartAddChunk.new'
+    if not args:
+        args = get_selection_or_ea()
     if not IsValidEA(args):
         return 0
-
-    Plan.planned = getglobal('_Plan_planned', type, set, _set=1)
 
     if debug:
         print("Plan({}, '{}')".format(ahex(args), name))
@@ -12773,6 +12814,10 @@ def Plan(*args, name='unknown'):
     ida_auto.plan_range(*args[0:2])
     return 1
     return ida_auto.plan_and_wait(*args)
+
+if 'GenericRanges' in globals() and isinstance(Plan.planned, set):
+    Plan.planned = GenericRanges(Plan.planned)
+    setglobal('_Plan_planned', Plan.planned)
 
 def xchg_pprev(l4=None, deobfu=False):
     perf = dict()
@@ -12871,7 +12916,7 @@ def read_uc_emu_stack(fn):
             print("[read_uc_emu_stack] _packer: '{}', _stack: '{}', _astack: '{}', _addr: {}".format(_packer, _stack, _astack, ahex(_addr)))
             if int(_stack) < 64 and IsValidEA(_addr):
                 while obfu.patch(_addr): pass
-                results[parseHex(_packer)].insert(0, SkipJumps(_addr, skipObfu=1, skipNops=1))
+                resutxt[parseHex(_packer)].insert(0, SkipJumps(_addr, skipObfu=1, skipNops=1))
 
     return results
 
@@ -12970,8 +13015,12 @@ if hasglobal('PerfTimer'):
 #     'felt_louis_aids']
 #
 #     good="felt_louis_aids[register_natives] swear_apart_air joint_anger_aim brick_pan_aids beak_moved_aim sharp_sock_alert[exact_told_aids] say_fool_air[plow_look_alert] angle_car_air " \
-#          "bar_pinch_air china_dog_aim sell_arc_aim drama_train_alert funny_dine_aim full_shall_orgy shame_pilot_aim penis_bank_aim pinch_good_aim fruit_touch_aids"
-#     r = read_emu_glob([string_between('[', ']', s, inclusive=1, repl='') for s in good.split(' ')])
+#          "bar_pinch_air china_dog_aim sell_arc_aim drama_train_alert funny_dine_aim full_shall_orgy shame_pilot_aim penis_bank_aim pinch_good_aim fruit_touch_aids both_quick_aim[check_only?]"
+#     p = get_patches()
+#     unpatch_all()
+#     r = read_emu_glob([string_between('[', ']', s, inclusive=1, repl='') for s in good.split(' ')], put=0)
+#     for ea, b in p.items():
+#         ida_bytes.patch_bytes(ea, bytes(b))
 #     bad: page_knee_alert louis_draft_aim thick_ben_orgy bob_plan_air tap_bake_air
 #     0xFCFA31AD, 0xBC537E0D, 0xAE04310C
 #     ['exact_told_aids', 'sharp_sock_alert', 'alert_close_air', 'net_deed_acid', 'kind_cloud_air', 'five_baby_aim', 'tap_bake_air', 'shot_sixth_air', 'sweet_sheet_add', 'blame_stock_air']
@@ -13017,8 +13066,85 @@ if hasglobal('PerfTimer'):
 #
 #        ida_retrace(l, zero=0, smart=0, calls=1, forceRemoveFuncs=1, ignoreChunks=1)
 #
+#  insn_match(ea, idaapi.NN_mov, (idc.o_reg, 1), (idc.o_imm, 0), comment='mov rcx, 0x141160e7b')
+#  insn_match(ea, idaapi.NN_mov, (idc.o_reg, 0), (idc.o_imm, 0), comment='mov rax, 0x141160ed9')
 #  addrs = []
 #  addrs2 = []
+#  _.filter([prev_insn_match(ea, idaapi.NN_push, (idc.o_reg, 5), comment='push rbp', skipNops=1) for ea in FindInSegments('48 BD ?? ?? ?? ?? 01 00 00 00')])
+#  [EaseCode(x, forceStart=1, noExcept=1) 
+#      for x in FindInSegments(['0f 1f 84 00 00 00 00 00', '0f 1f 80 00 00 00 00', '66 0f 1f 44 00 00', '0f 1f 44 00 00', '0f 1f 40 00', '0f 1f 00', '66 90']) 
+#      if IsUnknown(x)]
+#  [EaseCode(x, forceStart=1, noExcept=1)
+#      for x in FindInSegments(['0f 1f 84 00 00 00 00 00', '0f 1f 80 00 00 00 00', '0f 1f 44 00 00', '66 0f 1f 44 00 00', '0f 1f 40 00'])
+#      if not IsCode_(x)]
+#
+#  l = [x for x in _.filter([prev_insn_match(ea, idaapi.NN_push, (idc.o_reg, 5), comment='push rbp', skipNops=1) for ea in FindInSegments('48 BD ?? ?? ?? ?? 01 00 00 00')])]
+#  ida_retrace(l.copy(), calls=0)
+#
+#  for ea in l:
+#      addrs = []
+#      AdvanceToMnem(ea, 'ret', addrs=addrs)
+#      for cs, ce in _.uniq([Block(x) for x in addrs]):
+#          unpatch(cs, ce)
+#  p = ProgressBar((ida_ida.cvar.inf.min_ea, ida_ida.cvar.inf.max_ea))
+#
+#  #             push r8;  mov r12d, [rsp];  pop r8     ->  mov r12d, r8d
+#  search      = "41 50&f8 44 8b 04&c7 24 41 58&f8"     ->
+#  #                 ^-------[ eq ]----------^       (ensure same reg for push&pop)
+#  search_eval = "y[1*8+5:1*8+8]==y[7*8+5:7*8+8]r" # (bits 5-8 of byte[1] == bits 5-8 of byte[7])
+#  for ea in BitwiseMask(search, search_eval).find_binary():
+#      obfu.patch(ea)
+#
+#  p = ProgressBar((ida_ida.cvar.inf.min_ea, ida_ida.cvar.inf.max_ea))
+#  gr1.clear()
+#  for ea in BitwiseMask('48 b8~bf ?? ?? ?? ?? 01 00 00 00').find_binary():
+#      if not IsCode_(ea):
+#          # EaseCode(prev_ref(ea), noExcept=1, forceStart=1)
+#          EaseCode(ea, noExcept=1, forceStart=1)
+#      idc.op_plain_offset(ea, 1, 0)
+#      if IsCode_(ea) and IdaGetInsnLen(ea) == 10:
+#          p.update(ea)
+#          idc.op_plain_offset(ea, 1, 0)
+#          gr1.add(Block(ea))
+#
+#  gr1.extend([Block(x, ease=1) for x in _.filter([prev_insn_match(ea, idaapi.NN_push, (idc.o_reg, 5), comment='push rbp', skipNops=1) for ea in FindInSegments('48 BD ?? ?? ?? ?? 01 00 00 00')])])
+#  ida_retrace(l.copy(), calls=0)
+#
+#  bitmasks = [
+#      "ff 70&f8 ?? c2&fe",
+#      '48&fe 83 c0&f8 f8',
+#      "ff 30&f8 c2&fe",
+#      "ff 00~10 cc",
+#      "48&fb 8b 04&c7 24 48 8d 64 24 08",
+#      "41 52 8b 04 24 41 5a 87 03",
+#      "48 8d 64 24 08 48~4c 8b 44~7c 24 f8",
+#      "48~4c 89 44~7c 24 f8 48 8d 64 24 f8",
+#  ]
+#  
+#  p = ProgressBar((ida_ida.cvar.inf.min_ea, ida_ida.cvar.inf.max_ea))
+#  for cs, ce in gr1a:
+#      p.update(cs)
+#      hotkey_patch(cs, ce)
+#  if 'gr3' not in globals():
+#      gr3 = GenericRanges([], cmp=overlaps)
+#  
+#  gr3.clear()
+#  for pa in bitmasks:
+#      bw = BitwiseMask(pa)
+#      gr3.extend([Block(x) for x in bw.find_in_segments()])
+#  
+#  p = ProgressBar(len(gr3))
+#  count = 0
+#  for cs, ce in gr3:
+#      count += 1
+#      p.update(count)
+#      hotkey_patch(cs, ce)
+#
+#  l = [x for x in _.filter([prev_insn_match(ea, idaapi.NN_push, (idc.o_reg, 5), comment='push rbp', skipNops=1) for ea in FindInSegments('48 BD ?? ?? ?? ?? 01 00 00 00')])]
+#  ida_retrace(l.copy(), calls=0)
+#
+#  [x.split('–') for x in re.findall(r'14[0-9a-f]{7}–14[0-9a-f]{7}', ' '.join(_.filter(_.flatten(addrs), lambda v, *a: isString(v))))]
+
 def fixret():
     global addrs, addrs2
     pr = ProgressBar(len(p))
@@ -13082,6 +13208,10 @@ def prev_func(ea, minea=0):
 def prev_ref(ea, minea=0):
     return ida_bytes.prev_that(ea, minea, idc.isRef)
 
+def next_ref(ea, maxea=idc.BADADDR):
+    return ida_bytes.next_that(ea, maxea, idc.isRef)
+
+
 def easechunks():
     p = ProgressBar(ida_funcs.get_fchunk_qty())
     count = 0
@@ -13104,11 +13234,37 @@ def whileba():
         return ba2
 
 def patchba():
-    print("patchba...")
-    p = ProgressBar(len(ba2))
-    count = 0
-    for cs, ce in gr2:
-        count += 1
-        p.update(count)
-        hotkey_patch(cs, ce)
+    patches = 1
+    while patches:
+        patches = 0
+        print("patchba...")
+        p = ProgressBar(len(gr2), 10000)
+        p.show_percentage = False
+        count = 0
+        for cs, ce in gr2:
+            count += 1
+            p.update(count, patches)
+            patches += hotkey_patch(cs, ce)
+
+
+def BlockExpandUnpatch(src):
+    result = []
+    for r in src:
+        ea = _.first(r)
+        if not IsValidEA(ea):
+            print("continue_unless: IsValidEA(ea)")
+            continue
+        
+        try:
+            result.append(Block(_.first(ea), ease=1))
+        except AdvanceFailure as e:
+            cs = prev_ref(ea + 1)
+            ce = next_ref(ea)
+            print("unpatching {:#x} - {:#x}".format(cs, ce))
+            if cs - ce < 256:
+                unpatch(cs, ce)
+                src.append(cs)
+
+    return result
+
 

@@ -15,7 +15,7 @@ refresh_obfu_helpers = make_refresh(os.path.abspath(__file__))
 refresh = make_refresh(os.path.abspath(__file__))
 
 
-use_commenter = False
+use_commenter = True
 def GetSize(ea):
     """
     Get instruction size
@@ -251,6 +251,8 @@ except:
 
 def IsCode(ea): return (idc.get_full_flags(ea) & idc.MS_CLS) == idc.FF_CODE
 
+
+
 @perf_timed()
 def PatchBytes(ea, patch=None, comment=None, code=False, put=False, ease=True):
     """
@@ -267,12 +269,14 @@ def PatchBytes(ea, patch=None, comment=None, code=False, put=False, ease=True):
     if 'record_patched_bytes' in globals():
         globals()['record_patched_bytes'].append([ea, patch, comment])
 
-    if isinstance(ea, (list, bytearray) + string_types):
+    if not IsValidEA(_.first(ea))                                \
+            and isIterableOrStringish(ea)                        \
+            and not isIterableOrStringish(patch):
         ea, patch = patch, ea
     if ea is None:
         ea = idc.get_screen_ea()
     # was_code = idc.is_code(idc.get_full_flags(idc.get_item_head(ea)))
-    was_tail, was_code, was_head, was_func = IsTail(ea), IsCode_(ea), IsHead(ea), IsFunc_(ea)
+    was_code = IsCode_(ea)
     #  was_code = code or idc.is_code(idc.get_full_flags(ea))
     #  was_head = code or idc.get_item_head(ea)
     #  was_func = ida_funcs.get_func(ea)
@@ -374,7 +378,7 @@ def PatchBytes(ea, patch=None, comment=None, code=False, put=False, ease=True):
     if comment:
         if use_commenter: Commenter(ea, 'line').add(comment)
 
-    Plan(ea, ea + length, name='PatchBytes')
+    Plan(ea, ea + length, name='PatchBytes:' + str(comment))
         # EaseCode(ea, next_code_head)
 
 
@@ -810,7 +814,7 @@ def contig_ranges(addressList, startIndex = 0, length = None):
     if not length or length > addressLen - startIndex:
         length = addressLen - startIndex
     if length < 2:
-        print("COntigCount: %i: %i" % (startIndex, 1))
+        print("ContigCount: %i: %i" % (startIndex, 1))
         return 1
 
     endIndex = addressLen - 1
@@ -854,7 +858,7 @@ def contig_ranges(addressList, startIndex = 0, length = None):
         print("0x%x: Making %i nops" % (addressList[startIndex], contigCount))
         nopAddresses = [addressList[n] for n in range(startIndex, startIndex + contigCount)]
         print("nopAddresses2", str(nopAddresses))
-        nopRanges = GenericRanger(nopAddresses)
+        nopRanges = GenericRanger(nopAddresses, sort=0, outsort=0)
         for r in nopRanges:
             print("%i nops" % r.length)
             result += MakeNops(r.length)

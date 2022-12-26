@@ -439,6 +439,7 @@ class Obfu(object):
     def process_replacement(self, search, repl, addressList, patternComment, addressListWithNops, addressListFull, pat=None, context=None, length=None, printed=False):
         assemble = nassemble
         if obfu_debug: printi("[process_replacement] repl:{}".format(listAsHex(repl)))
+        patternComment += " at {:#x}".format(_.first(addressList))
         if isinstance(repl, list):
             #  printi("addressList")
             #  pp(addressList)
@@ -595,33 +596,37 @@ class Obfu(object):
                     targetRanges = GenericRanger(addressList[0:_end], sort=0, outsort=0)
                     oriTargetRanges = targetRanges.copy()
                     _targetRanges = str(targetRanges)
-                    while _repl: #  and targetRanges:
-                        r = targetRanges[0]
-                        # spread reversed asm to beginning and start of range where possible
-                        length = min(len(_repl), r.length)
-                        if obfu_debug: print("exact copy at {:#x}".format(r.start))
-                        PatchBytes(r.start, _repl[0:length], code=1, ease=1, comment="{} {}".format(patternComment, _targetRanges))
-                        patchedAddresses.update(list(range(r.start, r.start + length)))
-                        _repl = _repl[length:]
-                        if _repl and len(targetRanges) < 2:
-                            raise ObfuFailure("Not enough targetRanges for exact replacement")
-                        targetRanges = targetRanges[1:]
-                        [Plan(ra.start, ra.start + ra.length) for ra in oriTargetRanges]
-                        #  [Plan(ra[0], EaseCode(ra[0], forceStart=1, noExcept=1)) for ra in oriTargetRanges]
+                    for i in range(min(len(addressList), len(_repl))):
+                        ida_bytes.patch_byte(addressList[i], _repl[i])
+                        if i == 0:
+                            Commenter(addressList[i], 'line').add('{} exact {}'.format(patternComment, _targetRanges))
+                    #  while _repl: #  and targetRanges:
+                        #  r = targetRanges[0]
+                        #  # spread reversed asm to beginning and start of range where possible
+                        #  length = min(len(_repl), r.length)
+                        #  if obfu_debug: print("exact copy at {:#x}".format(r.start))
+                        #  PatchBytes(r.start, _repl[0:length], code=1, ease=1, comment="{} {}".format(patternComment, _targetRanges))
+                        #  patchedAddresses.update(list(range(r.start, r.start + length)))
+                        #  _repl = _repl[length:]
+                        #  if _repl and len(targetRanges) < 2:
+                            #  raise ObfuFailure("Not enough targetRanges for exact replacement")
+                        #  targetRanges = targetRanges[1:]
+                        #  [Plan(ra.start, ra.start + ra.length) for ra in oriTargetRanges]
+                        #  #  [Plan(ra[0], EaseCode(ra[0], forceStart=1, noExcept=1)) for ra in oriTargetRanges]
                     return {'patchedAddresses': patchedAddresses}
 
                 if isinstance(_repl[0], int):
                     # dprint("[process_replacement] _repl")
-                    if obfu_debug: printi("[process_replacement] _repl:{}".format(_repl))
+                    if obfu_debug: printi("[process_replacement] _repl:{} ({})".format(_repl, type(_repl).__name__))
                     
                     _repl = [(bytearray().fromhex(x[3])) for x in diInsnsIter(_repl)]
                     assemble = bytepatch
 
-                elif isinstance(_repl[0], (str, bytearray)):
+                if isinstance(_repl[0], (str, bytearray)):
                     with PerfTimer('obfu.patch.str'):
                         # assemble for length
-                        # reverse = is_int3
-                        reverse = False
+                        reverse = is_int3 # and len(targetRanges) == 1
+                        # reverse = False
                         address = targetRanges[0].start
                         test_assembled = [assemble(x, address) for x in _repl]
                         # this isn't a particualr good check
@@ -787,11 +792,20 @@ class Obfu(object):
                             setglobal('oriTargetRanges', oriTargetRanges)
                             setglobal('patchedRanges', patchedRanges)
 
-                        d = difference(oriTargetRanges, patchedRanges, ordered=1) # usedRanges
+                        #  if reverse:
+                        _usedRanges = str(usedRanges)
+                        for r in usedRanges:
+                            PatchNops(r.start, r.length, patternComment + " usedRanges *["+str(r)+"]* " +  _usedRanges, ease=1)
+                        _targetRanges = str(targetRanges)
+                        for r in targetRanges:
+                            PatchNops(r.start, r.length, patternComment + " targetRanges *["+str(r)+"]* " + _targetRanges, ease=1)
+
+                        # d = difference(oriTargetRanges, patchedRanges, ordered=1) # usedRanges
                         # dprint("[process_replacement] difference")
                         # print("[process_replacement] difference:{}".format(d))
                         
-                        if d:
+                        if False:
+                        # if d:
                             *all, last = d
                             # dprint("[process_replacement] all, last")
                             
@@ -799,12 +813,12 @@ class Obfu(object):
                                 ## ZeroCode(start, length)
                                 if obfu_debug:
                                     printi("remainingRangesNopping: {:#x}-{:#x}".format(r.start, r.trend))
-                                PatchNops(r.start, r.length, patternComment + " " + _targetRanges, ease=0)
+                                PatchNops(r.start, r.length, patternComment + " " + _targetRanges, ease=1)
                                 for _addr in range(r.start, r.start + r.length):
                                     patchedAddresses.add(_addr)
                             if obfu_debug:
                                 printi("lastRangeNopping:       {:#x}-{:#x}".format(last.start, last.trend))
-                            PatchNops(last.start, last.length, patternComment + _targetRanges + " (trailing)", ease=0) # , trailingRet=is_int3 and tail_padded)
+                            PatchNops(last.start, last.length, patternComment + _targetRanges + " (trailing)", ease=1) # , trailingRet=is_int3 and tail_padded)
                             for _addr in range(last.start, last.start + last.length):
                                 patchedAddresses.add(_addr)
                             [Plan(ra.start, ra.start + ra.length) for ra in oriTargetRanges]
@@ -1317,7 +1331,7 @@ class Obfu(object):
 
             tmp = [x[0] for x in self.combed]
             index = _.indexOf(tmp, ea)
-            if -1 < index < len(self.combed) // 2:
+            if False and -1 < index < len(self.combed) // 2:
                 # if obfu_debug: printi("[_patch] cached: {:x} ({} < {})".format(ea, index, len(tmp)))
                 index = _.indexOf(tmp, ea)
                 comb_results_all = self.combed[index:]

@@ -90,6 +90,15 @@ class BitwiseMask(object):
         return " ".join([make_pattern(*x) for x in y])
 
     @property
+    def ida_pattern(self):
+        def make_pattern(v, c, m):
+            if m == 0xff:
+               return "{:02x}".format(v)
+            return "??"
+        y = zip(self.value, self.clear, self.mask)
+        return " ".join([make_pattern(*x) for x in y])
+
+    @property
     def masked_pattern(self):
         def make_pattern(v, c, m):
             if m == 0xff:
@@ -188,8 +197,11 @@ class BitwiseMask(object):
 
         # _.indexOf([bm1.match_addresses(ea) for ea in range(ms(), me())], True) + ms()
 
-    def match(self, b):
-        if isinstance(b, (bytes, bytearray, list)):
+    def match(self, other):
+        if type(other) == type(self):
+            b = other.value
+        elif isinstance(other, (bytes, bytearray, list)):
+            b = other
             value = self.value
             mask = self.mask
             if len(b) < len(self):
@@ -199,17 +211,26 @@ class BitwiseMask(object):
             for i in range(len(self)):
                 if not b[i] & mask[i] == value[i]:
                     return False
+        else:
+            raise TypeError('other: {}'.format(type(other).__name__))
 
-        elif type(b) == type(self):
-            # TODO: perform check similar to above before doing eval
-            if self.eval:
-                for stmt in self.eval:
-                    res = eval(stmt, globals(), {'x': self, 'y': b})
-                    if debug: printi("eval: {} -> {}".format(stmt, res))
-                    if not res:
-                        return False
+        # TODO: perform check similar to above before doing eval
+        if self.eval:
+            for stmt in self.eval:
+                res = eval(stmt, globals(), {'x': self, 'y': b})
+                if debug: printi("eval: {} -> {}".format(stmt, res))
+                if not res:
+                    return False
 
         return True
+
+    def find_in_segments(self, segments=None, start=None, stop=None, limit=None, iteratee=None):
+        def predicate(ea):
+            return self.match(ida_bytes.get_bytes(ea, length))
+        return FindInSegments(self.ida_pattern, segments=segments, start=start, stop=stop, limit=limit, predicate=predicate, iteratee=iteratee)
+
+    def find_binary(self):
+        return self.find_in_segments(segments='any')
 
     def dword(self, places=4):
         # Python>bm1.mask

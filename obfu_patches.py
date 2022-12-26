@@ -1807,7 +1807,7 @@ def obfu_append_patches():
                 replace,
                 safe=1,
                 resume=1,
-                exact=1,
+                # exact=1,
         )
     else:
 

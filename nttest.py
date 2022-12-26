@@ -174,7 +174,7 @@ def emujoin(r, color1=0x280128, color2=0x1F1D00):
                 add_xrefs(x.ea)
 
             if not i:
-                results.append(x)
+                results.append(x.ea)
                 c.append(x.force_labeled_value.replace(': ', _pdata + ':\n    '))
             else:
                 c.append(x.labeled_indented.replace(': ', _pdata + ':\n    '))
