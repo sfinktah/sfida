@@ -5,6 +5,7 @@ from superglobals import *
 from underscoretest import _
 
 perf_debug = getglobal('perf_debug', False)
+perf_timer_enabled = False
 
 _file = os.path.abspath(__file__)
 def refresh_perftimer():
@@ -16,20 +17,25 @@ def perf_timed(*args, **kwargs):
     def func():
         do_stuff()
     """
-    def decorate(func):
-        #  for k in kwargs: setattr(func, k, kwargs[k])
-        #  setattr(func, '__static_vars__', kwargs)
-        # pph(inspect.stack())
-        stack = inspect.stack()
-        outer_name = stack[1].function
-        if outer_name != '<module>':
-            prefix = outer_name
-        else:
-            prefix = ".".join(_.initial(os.path.basename(stack[1].filename).split('.')))
-        name = "{}.{}".format(prefix, func.__name__)
-        setglobal("stack", inspect.stack())
-        # print("[perftimer] binding as {}".format(name))
-        return PerfTimer.bind(func, name)
+    if perf_timer_enabled:
+        def decorate(func):
+            #  for k in kwargs: setattr(func, k, kwargs[k])
+            #  setattr(func, '__static_vars__', kwargs)
+            # pph(inspect.stack())
+            stack = inspect.stack()
+            outer_name = stack[1].function
+            if outer_name != '<module>':
+                prefix = outer_name
+            else:
+                prefix = ".".join(_.initial(os.path.basename(stack[1].filename).split('.')))
+            name = "{}.{}".format(prefix, func.__name__)
+            setglobal("stack", inspect.stack())
+            # print("[perftimer] binding as {}".format(name))
+            return PerfTimer.bind(func, name)
+    else:
+        def decorate(func):
+            return func
+
     return decorate
 
 class PerfTimer(object):
@@ -104,6 +110,9 @@ class PerfTimer(object):
 
 
     def __enter__(self):
+        if not perf_timer_enabled:
+            return self
+
         if self.parent:
             self.parent.pause()
         self.depth.append(self)
@@ -111,6 +120,9 @@ class PerfTimer(object):
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
+        if not perf_timer_enabled:
+            return
+
         self.stop()
         if self.parent:
             self.parent.resume()
@@ -162,6 +174,9 @@ class PerfTimer(object):
         bind a function (or list of functions) to PerfTimer, return
         bound versions
         """
+        if not perf_timer_enabled:
+            return func
+
         if isinstance(func, list):
             return [cls.bind(x, name=name) for x in func]
         if func.__name__ == 'bound':
@@ -181,6 +196,9 @@ class PerfTimer(object):
         """
         binds class (or an instance of a class) methods to PerfTimer
         """
+        if not perf_timer_enabled:
+            return
+
         methods = [name for name in dir(instance)
                 if not name.startswith('_')
                 and isinstance(getattr(instance, name), types.MethodType)
@@ -209,6 +227,9 @@ class PerfTimer(object):
         """
         binds items in a dict-like object (e.g. locals()) to PerfTimer
         """
+        if not perf_timer_enabled:
+            return
+
         for k, v in instance.items():
             try:
                 if v in funcs:
@@ -225,6 +246,9 @@ class PerfTimer(object):
 
     @classmethod
     def bindglobalfunctions(cls, *names, pick=None, omit=None):
+        if not perf_timer_enabled:
+            return
+
         names = _.flatten(names)
         methods = _.filter([getglobal(name, None) for name in names if not name.startswith('_') and isinstance(getglobal(name, None), types.FunctionType)])
         if pick:

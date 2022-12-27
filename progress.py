@@ -146,7 +146,7 @@ def progress_demo():
         # p.update(r)
         if r % 300 == 250:
             print("Sample of interrupting output...")
-        # idc.qsleep(5)
+        idc.qsleep(10)
 
     
     ctr_text = "░▒▓█▓▒░┅"
@@ -160,17 +160,38 @@ def progress_demo():
 def hpos():
     return len(ida_kernwin.msg_get_lines(1)[-1])
 
-@static_vars(hpos=None)
+@static_vars(hpos=None, current='')
 def sameline(s, e=''):
     # s += "\t{}".format(e)
     cur_hpos = hpos()
     if cur_hpos == sameline.hpos:
         idc.msg(chr(13) + s)
+        sameline.current = s
     else:
         idc.msg(s)
+        sameline.current += s
     new_hpos = hpos()
     sameline.hpos = new_hpos
     return (cur_hpos, new_hpos)
+
+def print(*args, **kwargs):
+    """
+    print(value, ..., sep=' ', end='\n', file=sys.stdout, flush=False)
+
+    Prints the values to a stream, or to sys.stdout by default.
+    Optional keyword arguments:
+    file:  a file-like object (stream); defaults to the current sys.stdout.
+    sep:   string inserted between values, default a space.
+    end:   string appended after the last value, default a newline.
+    flush: whether to forcibly flush the stream.
+    """
+    if sameline.current:
+        idc.msg(chr(13) + ' ')
+        #  sameline.current = ''
+        #  sameline.hpos=0
+        builtins.print(*args, **kwargs)
+        idc.msg(sameline.current)
+
 
 def screenwidth_display_test(m):
     clear()
@@ -225,5 +246,12 @@ def binary_search(value, low, high, iterator):
         else:
             high = mid
     return low
+
+def ProgressEnumerate(iteratee):
+    iteratee = list(iteratee)
+    p = ProgressBar(len(iteratee))
+    for i, val in enumerate(iteratee):
+        p.update(i)
+        yield val
 
 # screenwidth_get()

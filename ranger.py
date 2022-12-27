@@ -365,11 +365,18 @@ class GenericRanges:
 
         @param cmp: comparison function (default: adjoins) see also: overlaps
         """
-        self.cmp = cmp
-        self.genericRanges = SortedList(key=lambda v: v[1])
-        if genericRanges:
-            self.genericRanges = SortedList([(get_start(x), get_last(x) + 1) for x in genericRanges])
+
+        # Be intentionally vague to allow "upgrading" of previous iterations of objects
+        if type(genericRanges).__name__ == 'GenericRanges':
+            self.cmp = genericRanges.cmp
+            self.genericRanges = genericRanges.genericRanges.copy()
             self.optimize()
+        else:
+            self.cmp = cmp
+            self.genericRanges = SortedList(key=lambda v: v[1])
+            if genericRanges:
+                self.genericRanges = SortedList([(get_start(x), get_last(x) + 1) for x in genericRanges])
+                self.optimize()
 
     def __repr__(self):
         return 'GenericRanges([' + ', '.join([ahex(x) for x in self.genericRanges]).replace('[', '(').replace(']', ')') + '])'
@@ -413,24 +420,58 @@ class GenericRanges:
     
     def __cmp__(self, other):
         pass
+
+    #  def __copy__(self):
+        #  cls = self.__class__
+        #  result = cls.__new__(cls)
+        #  result.__dict__.update(self.__dict__)
+        #  return result
+
+    def copy(self):
+        # newone = type(self)(self.genericRanges.copy(), cmp=self.cmp)
+        newone = GenericRanges(self.genericRanges.copy(), cmp=self.cmp)
+        return newone
+
+    #  def __deepcopy__(self, memo):
+        #  cls = self.__class__
+        #  result = cls.__new__(cls)
+        #  memo[id(self)] = result
+        #  for k, v in self.__dict__.items():
+            #  setattr(result, k, deepcopy(v, memo))
+        #  return result
     
     def __indexOf__(self, item):
         if isinstance(item, int):
-            right = self.genericRanges.bisect_left((item, item))
-            left = right - 1
+            right = self.genericRanges.bisect_left((item, item)) + 1
+            left = right - 2
+            right = min(right, len(self))
+            left = max(0, left)
             if left < 0:
                 left = 0
-            for i in range(left, right+1):
-                r = self.genericRanges[i]
+            for i in range(left, right):
+                try:
+                    r = self.genericRanges[i]
+                except IndexError:
+                    # dprint("[__indexOf__] i, left, right, len(self), len(self.genericRanges)")
+                    print("[__indexOf__] i: {}, left: {}, right: {}, len(self): {}, len(self.genericRanges): {}".format(i, left, right, len(self), len(self.genericRanges)))
+                    raise
+
                 if get_start(r) <= item < get_last(r):
                     return i
         else:
-            right = self.genericRanges.bisect_left((item))
-            left = right - 1
+            right = self.genericRanges.bisect_left((item)) + 1
+            left = right - 2
+            right = min(right, len(self))
+            left = max(0, left)
             if left < 0:
                 left = 0
-            for i in range(left, right+1):
-                r = self.genericRanges[i]
+            for i in range(left, right):
+                try:
+                    r = self.genericRanges[i]
+                except IndexError:
+                    # dprint("[__indexOf__] i, left, right, len(self), len(self.genericRanges)")
+                    print("[__indexOf__] i: {}, left: {}, right: {}, len(self): {}, len(self.genericRanges): {}".format(i, left, right, len(self), len(self.genericRanges)))
+                    raise
                 if issubset(item, r):
                     return i
         return -1
@@ -526,7 +567,9 @@ class GenericRanges:
         return self.genericRanges.pop(index)
     
     def remove(self, value):
-        self.genericRanges.remove(value)
+        found = self.find(value)
+        if found:
+            self.genericRanges.remove(found)
     
     def asTuples(self):
         for r in self.genericRanges:

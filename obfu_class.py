@@ -625,8 +625,8 @@ class Obfu(object):
                 if isinstance(_repl[0], (str, bytearray)):
                     with PerfTimer('obfu.patch.str'):
                         # assemble for length
-                        reverse = is_int3 # and len(targetRanges) == 1
-                        # reverse = False
+                        # reverse = is_int3 # and len(targetRanges) == 1
+                        reverse = False
                         address = targetRanges[0].start
                         test_assembled = [assemble(x, address) for x in _repl]
                         # this isn't a particualr good check

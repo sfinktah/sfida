@@ -679,10 +679,10 @@ def retrace(address=None, color="#280c01", no_hash=False, _ida_retrace=False, no
             return -1
 
         if _ida_retrace:
-            ida_retrace(address, **kwargs)
-            if IsNiceFunc(address) and not func_tails(address, quiet=1, returnErrorObjects=1, **(_.pick(kwargs, 'ignoreInt'))):
-                # insn_match(ea, idaapi.NN_xchg, (idc.o_reg, 5), (idc.o_phrase, 4), comment='xchg [rsp], rbp')
-                return 0
+            ida_retrace(address, calls=0, **kwargs)
+            #  if IsNiceFunc(address) and not func_tails(address, quiet=1, returnErrorObjects=1, **(_.pick(kwargs, 'ignoreInt'))):
+                #  # insn_match(ea, idaapi.NN_xchg, (idc.o_reg, 5), (idc.o_phrase, 4), comment='xchg [rsp], rbp')
+                #  return 0
         if recreate:
             RecreateFunction(funcea)
 
@@ -918,38 +918,38 @@ def retrace(address=None, color="#280c01", no_hash=False, _ida_retrace=False, no
                 return -1
                 pass
 
-            except AdvanceFailure as e:
-                printi("retrace caught {} {}".format(e.__class__.__name__, str(e)))
-                dontraise = True
-                sb = string_between('advance past ', '', str(e)) or \
-                        string_between('create instruction at ', '', str(e))
-                if sb:
-                    sbi = int(sb, 16)
-                    for x in range(sbi, sbi+8):
-                        if idc.get_wide_dword(x) == 0:
-                            dontraise = True
-                            printi("would have reverted dword at 0x{:x}".format(x))
-                            # UnPatch(sbi, x+4)
-
-
-                if '0xffffffffffffffff' in str(e):
-                    dontraise=1
-                if not dontraise:
-                    printi("not dontraise")
-                    raise
-
-                tb = traceback.format_exc()
-                printi("traceback: {}".format(tb))
-                if type(last_error) == type(e):
-                    printi("returning -2")
-                    return -2
-                    unpatch_func2(ea, unpatch=1)
-                    UnpatchUn()
-                    last_error = None
-                else:
-                    last_error = e
-                #  self.exc_info = sys.exc_info()
-                pass
+            #  except AdvanceFailure as e:
+                #  printi("retrace caught {} {}".format(e.__class__.__name__, str(e)))
+                #  dontraise = True
+                #  sb = string_between('advance past ', '', str(e)) or \
+                        #  string_between('create instruction at ', '', str(e))
+                #  if sb:
+                    #  sbi = int(sb, 16)
+                    #  for x in range(sbi, sbi+8):
+                        #  if idc.get_wide_dword(x) == 0:
+                            #  dontraise = True
+                            #  printi("would have reverted dword at 0x{:x}".format(x))
+                            #  # UnPatch(sbi, x+4)
+#  
+#  
+                #  if '0xffffffffffffffff' in str(e):
+                    #  dontraise=1
+                #  if not dontraise:
+                    #  printi("not dontraise")
+                    #  raise
+#  
+                #  tb = traceback.format_exc()
+                #  printi("traceback: {}".format(tb))
+                #  if type(last_error) == type(e):
+                    #  printi("returning -2")
+                    #  return -2
+                    #  unpatch_func2(ea, unpatch=1)
+                    #  UnpatchUn()
+                    #  last_error = None
+                #  else:
+                    #  last_error = e
+                #  #  self.exc_info = sys.exc_info()
+                #  pass
             except RelocationStackError as e:
                 printi("[retrace] slowtrace threw {}: {}".format(e.__class__.__name__, str(e)))
                 if once:
@@ -2248,7 +2248,7 @@ def slowtrace2(ea=None,
                     # printi("[annoying] depth:{}, hex(funcea):{}, IsCode_(idc.prev_not_tail(funcea)):{}, IsFunc_(idc.prev_not_tail(funcea)):{}".format(depth, hex(funcea), IsCode_(idc.prev_not_tail(funcea)), IsFunc_(idc.prev_not_tail(funcea))))
 
                     msg = ("{:x}: jmp to {} with rsp {}".format(ea, describe_target(funcea), ahex(slvars.rsp)))
-                    if not vim: raise RelocationStackError(msg)
+                    # if not vim: raise RelocationStackError(msg)
                 if not skipAddRsp:
                     slvars.retSps.add(slvars.rsp)
         else:
@@ -2292,8 +2292,8 @@ def slowtrace2(ea=None,
         nextColor = PerfTimer.bind(nextColor, 'slowtrace2.nextColor')
         is_real_func = PerfTimer.bind(is_real_func, 'slowtrace2.is_real_func')
 
-        if popState.__name__ != 'bound':
-            raise RuntimeError('popState didn\'t bind correctly')
+        #  if popState.__name__ != 'bound':
+            #  raise RuntimeError('popState didn\'t bind correctly')
 
         if idc.get_cmt.__name__ != 'bound':
             PerfTimer.bindmethods(idc)
@@ -3855,13 +3855,16 @@ def slowtrace2(ea=None,
                                                     Commenter(ea).add("ArxanCheck with complex returns at {:x}".format(mainLoc))
                                                     Commenter(ea).add("[ARXAN-TEST]")
                                                     #  ...
-                                                    cave_end = GetChunkEnd(balanceLoc)
-                                                    ZeroFunction(balanceLoc, 1)
-                                                    printi("[Cave] {:x} - {:x}".format(balanceLoc, cave_end))
+                                                    cave_start = eax('next_relocation')
+                                                    if not IsValidEA(cave_start):
+                                                        raise RuntimeError('need next_relocation set to build cave, ensure AddRelocSegment() has been run')
+                                                    cave_end = cave_start + 128
+                                                    # ZeroFunction(balanceLoc, 1)
+                                                    printi("[Cave] {:x} - {:x}".format(cave_start, cave_end))
                                                     # asm = nassemble(balanceLoc, "push rcx; push rdx; push 0x10; call 0x{:x}; add rsp, 0x18; retn".format(GetTarget(callLoc)))
-                                                    asm = nassemble(balanceLoc, "call 0x{:x}; int3".format(mainLoc), apply=0)
-                                                    asm_len = len(asm)
-                                                    cave_start = balanceLoc + asm_len
+                                                    #  asm = nassemble(balanceLoc, "call 0x{:x}; int3".format(mainLoc), apply=0)
+                                                    #  asm_len = len(asm)
+                                                    #  cave_start = balanceLoc + asm_len
                                                     remaining = cave_end - cave_start
                                                     cave_pos = cave_start
 
@@ -3921,33 +3924,34 @@ def slowtrace2(ea=None,
                                                     sum_sizes_all = sum(sizes)
                                                     sum_sizes_first = sum(sizes[0:-1])
                                                     if False and 5 + sum_sizes_first < remaining:
-                                                        printi("[ArxanFiller] can fit all 0x{:x} bytes in cave".format(sum_sizes_all))
-                                                        # this should probably only be used for 4-deep (call) arxan routines, since it returns at the end
-                                                        _filler = _.flatten(_.pluck(sections, 'labeled_values')) + ['retn']
-                                                        # _filler = _.filter(_filler, lambda x, *a: not re.match('\s*jmp \w*(locret|nullsub)', x))
-                                                        printi("[Cave Assembling] {}".format(pfh(_filler)))
-                                                        printi("[Cave Location] {:x}".format(cave_pos))
-                                                        if debug: setglobal('debug', 1)
-                                                        asm2 = nassemble(cave_pos, _filler, apply=0)
-                                                        asm2_len = len(asm2)
-                                                        idc.del_items(balanceLoc, idc.DELIT_EXPAND, asm_len + asm2_len)
-                                                        printi("[ArxanFiller] assembled 0x{:x} bytes: {}".format(asm2_len, listAsHex(asm2)))
-                                                        # EaseCode(cave_pos, forceStart=1)
-                                                        #  idc.add_func(cave_pos, cave_pos + asm_len)
-                                                        PatchBytes(cave_pos, asm2, 'Cave for destination of original Arxan Function')
-                                                        printi("[Cave Preserve] {}".format(diida(cave_pos, length=asm2_len)))
-                                                        PatchBytes(balanceLoc, asm, 'Marker for original Arxan function')
-                                                        printi("[Cave Preserve] {}".format(diida(balanceLoc, length=asm_len)))
-                                                        #  idc.add_func(balanceLoc, cave_pos)
-                                                        printi("[BalanceLoc] {:x}".format(balanceLoc))
-                                                        # idc.auto_wait()
-                                                        # EaseCode(balanceLoc)
-                                                        # idc.auto_wait()
-                                                        if debug: setglobal('debug', 0)
-                                                        # PatchBytes(cave_start, _.flatten([x[1] for x in r2]), 'ArxanReturnCode')
-                                                        # dprint("[cave_pos] cave_pos, sum_sizes_all, sizes")
-                                                        cave_pos += asm_len
-                                                        printi("[cave_pos] cave_pos:{:x}, sum_sizes_first sizes:{}".format(cave_pos, sum_sizes_first, sizes))
+                                                        pass
+                                                        #  printi("[ArxanFiller] can fit all 0x{:x} bytes in cave".format(sum_sizes_all))
+                                                        #  # this should probably only be used for 4-deep (call) arxan routines, since it returns at the end
+                                                        #  _filler = _.flatten(_.pluck(sections, 'labeled_values')) + ['retn']
+                                                        #  # _filler = _.filter(_filler, lambda x, *a: not re.match('\s*jmp \w*(locret|nullsub)', x))
+                                                        #  printi("[Cave Assembling] {}".format(pfh(_filler)))
+                                                        #  printi("[Cave Location] {:x}".format(cave_pos))
+                                                        #  if debug: setglobal('debug', 1)
+                                                        #  asm2 = nassemble(cave_pos, _filler, apply=0)
+                                                        #  asm2_len = len(asm2)
+                                                        #  idc.del_items(balanceLoc, idc.DELIT_EXPAND, asm_len + asm2_len)
+                                                        #  printi("[ArxanFiller] assembled 0x{:x} bytes: {}".format(asm2_len, listAsHex(asm2)))
+                                                        #  # EaseCode(cave_pos, forceStart=1)
+                                                        #  #  idc.add_func(cave_pos, cave_pos + asm_len)
+                                                        #  PatchBytes(cave_pos, asm2, 'Cave for destination of original Arxan Function')
+                                                        #  printi("[Cave Preserve] {}".format(diida(cave_pos, length=asm2_len)))
+                                                        #  PatchBytes(balanceLoc, asm, 'Marker for original Arxan function')
+                                                        #  printi("[Cave Preserve] {}".format(diida(balanceLoc, length=asm_len)))
+                                                        #  #  idc.add_func(balanceLoc, cave_pos)
+                                                        #  printi("[BalanceLoc] {:x}".format(balanceLoc))
+                                                        #  # idc.auto_wait()
+                                                        #  # EaseCode(balanceLoc)
+                                                        #  # idc.auto_wait()
+                                                        #  if debug: setglobal('debug', 0)
+                                                        #  # PatchBytes(cave_start, _.flatten([x[1] for x in r2]), 'ArxanReturnCode')
+                                                        #  # dprint("[cave_pos] cave_pos, sum_sizes_all, sizes")
+                                                        #  cave_pos += asm_len
+                                                        #  printi("[cave_pos] cave_pos:{:x}, sum_sizes_first sizes:{}".format(cave_pos, sum_sizes_first, sizes))
 
                                                     elif 5 + sum_sizes_first < remaining:
                                                         printi("[ArxanFiller] can fit some 0x{:x} bytes in cave".format(sum_sizes_all))
@@ -3960,14 +3964,14 @@ def slowtrace2(ea=None,
                                                         if debug: setglobal('debug', 1)
                                                         asm2 = nassemble(cave_pos, _filler, apply=0)
                                                         asm2_len = len(asm2)
-                                                        idc.del_items(balanceLoc, idc.DELIT_EXPAND, asm_len + asm2_len)
+                                                        # idc.del_items(balanceLoc, idc.DELIT_EXPAND, asm_len + asm2_len)
                                                         printi("[ArxanFiller] assembled 0x{:x} bytes: {}".format(asm2_len, listAsHex(asm2)))
                                                         # EaseCode(cave_pos, forceStart=1)
                                                         #  idc.add_func(cave_pos, cave_pos + asm_len)
                                                         PatchBytes(cave_pos, asm2, 'Cave for destination of original Arxan Function')
                                                         printi("[Cave Preserve] {}".format(diida(cave_pos, length=asm2_len)))
-                                                        PatchBytes(balanceLoc, asm, 'Marker for original Arxan function')
-                                                        printi("[Cave Preserve] {}".format(diida(balanceLoc, length=asm_len)))
+                                                        # PatchBytes(balanceLoc, asm, 'Marker for original Arxan function')
+                                                        # printi("[Cave Preserve] {}".format(diida(balanceLoc, length=asm_len)))
                                                         #  idc.add_func(balanceLoc, cave_pos)
                                                         printi("[BalanceLoc] {:x}".format(balanceLoc))
                                                         # idc.auto_wait()
@@ -3976,7 +3980,7 @@ def slowtrace2(ea=None,
                                                         if debug: setglobal('debug', 0)
                                                         # PatchBytes(cave_start, _.flatten([x[1] for x in r2]), 'ArxanReturnCode')
                                                         # dprint("[cave_pos] cave_pos, sum_sizes_all, sizes")
-                                                        cave_pos += asm_len
+                                                        #  cave_pos += asm_len
                                                         printi("[cave_pos] cave_pos:{:x}, sum_sizes_first sizes:{}".format(cave_pos, sum_sizes_first, sizes))
 
 
@@ -3998,19 +4002,20 @@ def slowtrace2(ea=None,
                                                         #  SetFuncEnd(ea, ea + 5)
                                                     # cave_pos += len(nassemble(cave_pos, "ret", apply=1))
                                                     # SetFuncEnd(balanceLoc, cave_start);
-                                                    idc.del_func(balanceLoc)
-                                                    MyMakeUnknown(balanceLoc, cave_end)
+                                                    # idc.del_func(balanceLoc)
+                                                    # MyMakeUnknown(balanceLoc, cave_end)
                                                     # forceCode(balanceLoc, cave_pos)
                                                     # idc.add_func(balanceLoc, cave_start)
                                                     # idc.add_func(cave_start, cave_pos)
-                                                    LabelAddressPlus(balanceLoc, "FillerBunnyOri_{}".format(long_to_words(mainLoc - ida_ida.cvar.inf.min_ea)))
+                                                    # LabelAddressPlus(balanceLoc, "FillerBunnyOri_{}".format(long_to_words(mainLoc - ida_ida.cvar.inf.min_ea)))
+                                                    LabelAddressPlus((cave_end + 16) & ~0x0f, 'next_relocation', force=1)
                                                     LabelAddressPlus(cave_start, "FillerBunnyCave_{}".format(long_to_words(mainLoc - ida_ida.cvar.inf.min_ea)))
                                                     #  ForceFunction(balanceLoc)
                                                     # ForceFunction(cave_start)
                                                     Commenter(cave_start).add("Filler Bunny Code Cave for 0x{:x}".format(ea))
                                                     # SetFuncEnd(cave_start,
 
-                                                    idc.add_func(balanceLoc)
+                                                    #  idc.add_func(balanceLoc)
                                                     ea = ReverseHead(ea)
                                                     continue
 
@@ -4588,7 +4593,7 @@ def slowtrace2(ea=None,
                                 pass
                             elif insn_match(ea, idaapi.NN_sub, (idc.o_reg, 4), (idc.o_reg, None), comment='sub rsp, reg'):
                                 if _.any(slvars2.instructions[-16:], lambda v, *a: v == 'call __alloca_probe'):
-                                    printi("*** we know what this is ****")
+                                    printi("*** call __alloca_probe ****")
                                     _alloca = _.last(_.filter(slvars2.instructions[-16:], lambda v, *a: v == 'call __alloca_probe'))
                                     if idc.get_sp_delta(_alloca.ea + len(_alloca)) == 0:
                                         idc.add_user_stkpnt(ea, -0x1000)
@@ -4596,7 +4601,7 @@ def slowtrace2(ea=None,
                                         Commenter(ea, "line").remove_matching(r'.*SPD.*')
                                         Commenter(ea, "line").add("[SPD+={:#x}]".format(slvars.rsp_diff))
                                     else:
-                                        printi("*** we know what this is, but there seems to already be an spd set on __alloca_probe *** {:#x}".format(_alloca.ea))
+                                        printi("*** call __alloca_probe, but there seems to already be an spd set on __alloca_probe *** {:#x}".format(_alloca.ea))
                                 else:
                                     if noSti:
                                         print("*** need to disable 'noSti' option in order to find __alloca_probe ***")

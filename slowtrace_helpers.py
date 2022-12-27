@@ -3586,11 +3586,13 @@ def AdvanceToMnem(ea, mnem=None, addrs=None, count=8**8, include=False, visited=
             ea1 = ea + IdaGetInsnLen(ea)
             ea2 = idc.next_not_tail(ea)
             if ea1 != ea2:
+                GetDisasm(ea)
+                idc.auto_wait()
                 ea1 = ea + IdaGetInsnLen(ea)
                 ea2 = idc.next_not_tail(ea)
                 if ea1 != ea2:
-                    pph(addrs)
-                    RuntimeError("ea1(InsnLen) != ea2(NextNotTail) {:#x} != {:#x} (ea: {:#x}, ori_ea: {:#x})".format(ea1, ea2, ea, ori_ea))
+                    # pph(addrs)
+                    raise RuntimeError("ea1(InsnLen) != ea2(NextNotTail) {:#x} != {:#x} (ea: {:#x}, ori_ea: {:#x}) IsCode_: {}".format(ea1, ea2, ea, ori_ea, IsCode_(ea)))
             ea = ea1
         # if IsCode_(ea) and IsFlow(ea): continue
     #  if ori_ea ==  0x14383FADA:
@@ -3864,6 +3866,9 @@ def find_element_in_list(element, list_element):
         return None
 
 def FixCallAndJmpObfu(func=None, repeat=3):
+    """
+    [EaseCode(ea, forceStart=1, noExcept=1) for ea in FixCallAndJmpObfu()]
+    """
     addrs = []
 
     repeat = False
@@ -3872,17 +3877,17 @@ def FixCallAndJmpObfu(func=None, repeat=3):
         repeat = True
     r = FindInSegments([
             "48 89 6c 24 f8 48 8d 64 24 f8 48 8d 2d",
-            "48 8d 64 24 f8 48 89 2c 24 48 8d 2d ??"
+            "48 8d 64 24 f8 48 89 2c 24 48 8d 2d ??",
+            "55 48 8d 2d ?? ?? ?? ?? 48 87 2c 24 c3",
             ], 'any')
     p = ProgressBar((ida_ida.cvar.inf.min_ea, ida_ida.cvar.inf.max_ea))
     p.percent_format = lambda ea, pct: "{:x}".format(ea)
     for ea in r:
         addrs.append(ea)
-        p.update(ea)
         while True:
-            print("loop")
             if not func(ea) or not repeat:
                 break
+        p.update(ea)
 
 
     return addrs
@@ -3987,7 +3992,7 @@ def is_in_later2(ea, **kwargs):
     return ea in later2
 
 def is_in_done2(ea, **kwargs):
-    done2.clear()
+    # done2.clear()
     if kwargs.get('noDone', 0):
         return False
     #  if ea in done2:
@@ -4127,7 +4132,7 @@ def ida_retrace_comb(start, jmps=None, jccs=None, calls=None, combed=None,
 
     delayed = []
 
-    def next_block(*insn):
+    def jmp_insn(*insn):
         block_addrs.append(insns)
         blocks.append((insns[0].ea, insns[-1].ea + insns[-1].size))
 
@@ -4136,7 +4141,7 @@ def ida_retrace_comb(start, jmps=None, jccs=None, calls=None, combed=None,
         # delayed, so that any future functions can read from current insns before cleared
         delayed.append(lambda: insns.clear())
 
-    def no_rewind(insn):
+    def jcc_insn(insn):
         delayed.append(lambda: rewind_points.append(insn.ea))
 
     def call_insn(insn):
@@ -4161,11 +4166,11 @@ def ida_retrace_comb(start, jmps=None, jccs=None, calls=None, combed=None,
 
             if insn_match(insn, idaapi.NN_jmp, (idc.o_near, 0), comment='jmp loc_143A8E11B'):
                 queueAppend(jmps, insn.ops[0].addr, ease=1)
-                next_block(insn)
+                jmp_insn(insn)
                 meta = 4
             elif insn_match(insn, NN_jcc, (idc.o_near, 0), comment='jl loc_143A8E11B'):
                 queueAppend(jccs, insn.ops[0].addr, ease=1)
-                no_rewind(insn)
+                jcc_insn(insn)
                 meta = 5
             elif insn_match(insn, idaapi.NN_xchg, (idc.o_reg, 0), (idc.o_reg, 0), comment='nop') or \
                     insn_match(insn, idaapi.NN_nop):
@@ -4190,7 +4195,13 @@ def ida_retrace_comb(start, jmps=None, jccs=None, calls=None, combed=None,
     count, end, *a = AdvanceToMnem(start, include=True, addrs=new_addrs, visited=visited, rules=[(flex, None)],
             **(_.pick(kwargs, 'ignoreInt')))
 
-    next_block()
+    jmp_insn()
+
+    while jccs:
+        start = _.first(jccs.pop(0))
+        if start not in visited:
+            count, end, *a = AdvanceToMnem(start, include=True, addrs=new_addrs, visited=visited, rules=[(flex, None)],
+                    **(_.pick(kwargs, 'ignoreInt')))
 
     return count, end
 
@@ -4349,7 +4360,7 @@ def ida_retrace_pre_extend(queue, visited, master_queue, **kwargs):
             print('ida_retrace_pre_extend removing duplicate from queue')
             queue.remove(ea)
         while ea in master_queue:
-            # print('ida_retrace_pre_extend removing duplicate from master-queue')
+            print('ida_retrace_pre_extend removing duplicate from master-queue')
             master_queue.remove(ea)
         #  if is_in_later2(ea, **kwargs):
             #  if debug: print('ida_retrace {:#x} in later2'.format(ea))
@@ -4383,6 +4394,8 @@ def ida_retrace_pre_extend(queue, visited, master_queue, **kwargs):
 
             if patched:
                 if debug: print("ida_retrace_pre_extend rewound to {}".format(ahex(start)))
+                patched = False
+            print("combing from {:#x}".format(start))
             ida_retrace_comb(start, jmps=jmps, jccs=jccs, calls=calls,
                     combed=combed, new_addrs=new_addrs, insns=insns,
                     old_insns=old_insns, block_addrs=block_addrs, blocks=blocks,
@@ -4405,6 +4418,19 @@ def ida_retrace_pre_extend(queue, visited, master_queue, **kwargs):
 
             our_visited.update(_visited)
 
+            for bl in blocks:
+                if bl[0] in master_queue:
+                    master_queue.remove(bl[0])
+                    new_q_size = len(master_queue)
+                    print("block {:#x}-{:#x} in master_queue, removing. mqlen: {}".format(bl[0], bl[1], new_q_size))
+
+            #  for na in new_addrs:
+                #  if na in master_queue:
+                    #  old_q_size = len(master_queue)
+                    #  master_queue.remove(na)
+                    #  new_q_size = len(master_queue)
+                    #  print("{:#x} in master_queue, removing. mqlen: {}".format(na, new_q_size))
+
             for addr in _visited.intersection(master_queue):
                 # dprint("[removing from master_queue/queue] addr")
                 print("[removing from master_queue/queue] addr:{}".format(addr))
@@ -4425,7 +4451,10 @@ def ida_retrace_pre_extend(queue, visited, master_queue, **kwargs):
             patched = 0
             patchedAddresses = set()
             if debug: print("for addrs in r: {}".format([ahex(x[0]) for x in r]))
-            for addrs in r:
+            for addrs in ProgressEnumerate(r):
+                if patched:
+                    print("breaking for patched")
+                    break
                 # dprint("[debug] addrs[0]")
                 if debug: print("[debug] addrs[0]:{}".format(ahex(addrs[0])))
 
@@ -4447,14 +4476,6 @@ def ida_retrace_pre_extend(queue, visited, master_queue, **kwargs):
                     if addr in visited:
                         # dprint("[debug] addr")
                         print("[visited] continuing anyway addr:{}".format(ahex(addr)))
-                    if addr in master_queue:
-                        # dprint("[debug] addr")
-                        count = 0
-                        while addr in master_queue:
-                            master_queue.remove(addr)
-                            count +=1
-                        if count > 1:
-                            print("[master_queue] removing addr:{} x {}".format(ahex(addr), count))
 
                     # dprint("[obfu.patch] addr, combed")
                     if debug: print("[obfu.patch] (IsCode:{}) addr:{}, combed:{}".format(str(IsCode_(addr)), ahex(addr), ahex(combed[0:3])))
@@ -4467,7 +4488,7 @@ def ida_retrace_pre_extend(queue, visited, master_queue, **kwargs):
                         print("{:#x} unlikely insn {}".format(addr, IdaGetMnem(addr)))
 
                     if not no_obfu and addr in flags and flags[addr] & 0x88 == 0:
-                        tmp = obfu.patch(addr, comb=combed.copy())
+                        tmp = obfu.patch(addr) # , comb=combed.copy())
                         while tmp:
                             patches.extend(A(tmp))
                             tmp = obfu.patch(addr)
@@ -4487,11 +4508,15 @@ def ida_retrace_pre_extend(queue, visited, master_queue, **kwargs):
                                 # dprint("[ida_retrace_pre_extend] idx, all_blocks")
                                 print("[ida_retrace_pre_extend] idx:{}, all_blocks:{}".format(idx, ahex(all_blocks)))
 
+                    #  if patched:
+                        #  print("reflowing...")
+                        #  continue
+
 
 
             if patched:
                 # dprint("[ida_retrace_pre_extend] patched")
-                print("[ida_retrace_pre_extend] patched:{}".format(patched))
+                print("[ida_retrace_pre_extend] reflowing patched:{}".format(patched))
                 continue
 
             break
@@ -4517,6 +4542,8 @@ def ida_retrace_pre_extend(queue, visited, master_queue, **kwargs):
             if kwargs.get('comment', None):
                 comment = kwargs.get('comment')
             [PatchNops(x[0], x[1] - x[0], comment=comment, nop=0xc3) for x in all_blocks]
+        if kwargs.get('unpatch', None):
+            [unpatch(x[0], x[1]) for x in all_blocks]
 
     return results
 
@@ -4582,8 +4609,6 @@ def ida_retrace(funcea=None, drip=None, extend=True, zero=False, smart=False, pl
     if kwargs.get('funcs', None):
         kwargs['noDone'] = True
 
-    if False and isinstance(funcea, list):
-        p = ProgressBar(len(funcea))
         n = 0
         for ea in funcea:
             n += 1
@@ -4591,17 +4616,27 @@ def ida_retrace(funcea=None, drip=None, extend=True, zero=False, smart=False, pl
             ida_retrace(ea, extend=extend, zero=zero, smart=smart, *args, **kwargs)
         return
 
-    queue = A(funcea)
-    if not queue:
-        queue = [eax(None)]
+    if funcea is None:
+        queue = [EA()]
+    elif isIterable(funcea):
+        queue = funcea
+    else:
+        queue = A(funcea)
+
     funcea = eax(_.first(_.first(queue)))
 
     print("ida_retrace.queue.len == {}".format(len(queue)))
-    queue[:] = [eax(_.first(x)) for x in queue]
+    # queue[:] = [eax(_.first(x)) for x in queue]
     if not kwargs.get('noDone', 0):
-        queue[:] = [x for x in queue if x not in done3]
-    # dprint("[ida_retrace] funcea, _.first(queue)")
-    print("ida_retrace.queue.len (after done3) == {}".format(len(queue)))
+        to_remove=[]
+        for r in queue:
+            if r in done3:
+                to_remove.append(r)
+        for r in to_remove:
+            queue.remove(r)
+        #  queue[:] = [x for x in queue if x not in done3]
+        print("ida_retrace.queue.len (after done3) == {}".format(len(queue)))
+
     print("[ida_retrace] funcea:{}, _.first(queue):{}".format(ahex(funcea), ahex(_.first(queue))))
 
     if kwargs.get('func', 0):
@@ -4621,10 +4656,15 @@ def ida_retrace(funcea=None, drip=None, extend=True, zero=False, smart=False, pl
     # with InfAttr(idc.INF_AF, lambda v: v | 0):
     with InfAttr(idc.INF_AF, lambda v: v | (0xdfe67f1d if smart else 0)):
         # return ida_funcs.reanalyze_function(GetFunc(ea), *args)
+        p = ProgressBar(len(queue))
+        p.percent_format = lambda ea, pct: "{}".format(ea)
+        p.always_print = 1
+
         if zero:
             rv = ZeroFunction(ea, **(_.pick(kwargs, 'total')))
             if debug: print("[ZeroFunction] returned {}".format(str(rv)))
         while queue:
+            p.update(len(queue))
             if drip:
                 try:
                     addr = next(drip)
@@ -4632,25 +4672,30 @@ def ida_retrace(funcea=None, drip=None, extend=True, zero=False, smart=False, pl
                     drip = None
             if not drip:
                 addr = _.first(queue.pop(0))
+                while is_in_done2(addr, **kwargs):
+                    print('skipping {:#x} - in done3'.format(addr))
+                    addr = _.first(queue.pop(0))
             try:
                 if kwargs.get('func', 0) and not IsFunc_(addr):
                     idc.add_func(addr)
                 new_queue = [addr]
                 if IsTail(addr):
-                    idc.msg("ida_retrace: ({}) {:#x} (tail) | ".format(len(queue), new_queue[0]))
-                    queue.append(addr)
+                    print("ida_retrace: ({}) {:#x} (tail) | ".format(len(queue), new_queue[0]))
+                    queue.append(Block(addr, ease=1))
                     continue
                 else:
-                    idc.msg("ida_retrace: ({}) {:#x} | ".format(len(queue), new_queue[0]))
+                    print("ida_retrace: ({}) {:#x} | ".format(len(queue), new_queue[0]))
                 EaseCode(addr, forceStart=1)
                 if extend:
                     ida_retrace_pre_extend(new_queue, visited, master_queue=queue, **kwargs)
-                    queue.extend([x for x in new_queue if x not in q])
+                    p.update(len(queue))
+                    queue.extend([Block(_.first(x), ease=1) for x in new_queue])
+                    p.update(len(queue))
             except AdvanceFailure as e:
                 print("*****")
                 print("{}: {}: {}".format(ahex(addr), e.__class__.__name__, str(e)))
                 print("*****")
-                queue.append(addr)
+                queue.append(Block(addr))
 
         if plan:
             # for cs, ce in idautils.Chunks(ea): ida_auto.plan_and_wait(cs, ce)
@@ -13248,23 +13293,26 @@ def patchba():
 
 
 def BlockExpandUnpatch(src):
-    result = []
-    for r in src:
+    gr = GenericRanges([], cmp=overlaps)
+    for r in ProgressEnumerate(sorted(src, key=lambda v, *a: _.first(v, default=0))):
         ea = _.first(r)
         if not IsValidEA(ea):
             print("continue_unless: IsValidEA(ea)")
             continue
+        if ea in gr:
+            print("continue: ea in gr)")
+            continue
+        
         
         try:
-            result.append(Block(_.first(ea), ease=1))
+            gr.append(Block(_.first(ea), ease=1))
         except AdvanceFailure as e:
             cs = prev_ref(ea + 1)
             ce = next_ref(ea)
             print("unpatching {:#x} - {:#x}".format(cs, ce))
             if cs - ce < 256:
-                unpatch(cs, ce)
-                src.append(cs)
+                if unpatch(cs, ce):
+                    src.append(cs)
 
-    return result
-
+    return gr
 

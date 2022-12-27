@@ -959,7 +959,7 @@ def nassemble(ea, string = None, apply=None, comment=None, quiet=False, put=Fals
 
     if isinstance(string, list):
         string = "\n".join(string)
-    string = "\n".join(string.split(';'))
+    string = "\n".join([x.strip() for x in string.split(';')])
     if len(string.strip()) == 0:
         return []
     result = nasm64(ea, ida_resolve(string), quiet=quiet)
@@ -1016,12 +1016,20 @@ def qassemble(ea, string = None, apply=False):
         if ea == BADADDR:
             ea = 0
 
+    if isinstance(string, list):
+        string = "\n".join(string)
+    string = "\n".join([x.strip() for x in string.split(';')])
+    if len(string.strip()) == 0:
+        return []
     string = re.sub(r'0x([0-9a-fA-F]+)', r'\1h', string)
-    result = idautils.Assemble(ea, string)
+    addr = ea
+    result = []
+    lines = [x.strip() for x in string.split('\n')]
+    result = idautils.Assemble(ea, lines)
     if result[0]:
         if apply:
-            PatchBytes(ea, list(bytearray(result[1])))
-        return list(bytearray(result[1]))
+            PatchBytes(ea, list(b''.join(A(result[1]))))
+        return list(b''.join(A(result[1])))
     #  raise ObfuFailure("0x%x: couldn't qassemble: %s" % (ea, string))
     return None
 
