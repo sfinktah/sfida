@@ -34,7 +34,7 @@ def patch_stack_align(_search, replace, original, ea, addressList, patternCommen
     # yet-to-be-parsed instructions required for completion
     #  if context and 'slvars2' in context and 'instructions' in context['slvars2']:
         #  sti = context['slvars2']['instructions']
-#  
+#
         #  m = sti.multimatch([
             #  #  r'({push}push.*)**',
             #  #  r'lea rsp, .*',
@@ -57,7 +57,7 @@ def patch_stack_align(_search, replace, original, ea, addressList, patternCommen
             #  r'(pop.*)**',
             #  r'({extra}.*)',
             #  ], groupiter=lambda o: o, gettext=lambda o: o.insn, predicate=lambda o: not o.insn.startswith('jmp'))
-        #  
+        #
         #  if m:
             #  printi(pfh(m))
             #  if 'extra' in m and 'push' in m:
@@ -77,12 +77,12 @@ def patch_stack_align(_search, replace, original, ea, addressList, patternCommen
             #  else:
                 #  printi("[patch_stack_align] extra or push not in m")
             #  return []
-#  
+#
         #  else:
             #  printi("[patch_stack_align] multimatch didn't")
             #  printi(pfh(sti))
             #  setglobal('osti', sti)
-#  
+#
     #  else:
         #  printi("[patch_stack_align] no context.slvars2.instructions")
 
@@ -173,7 +173,7 @@ def mark_sp_factory(mark):
 def adjust_sp_factory(mark):
     """
     Typical Input:
-               4d 8d 5b ??                lea r11, [r11+8] 
+               4d 8d 5b ??                lea r11, [r11+8]
     """
     global slvars
 
@@ -1417,7 +1417,7 @@ def obfu_append_patches():
         0f 85 b7 65 0e 00                    jnz loc_143BCCA72  *    nop
         6a 18                                push 0x18          **   nop
         48 83 ec 08                          sub rsp, 8
-        """, 
+        """,
         "short stack-alignment obfu",
             hex_pattern([
                         "6a 10",                # 2  push 0x10
@@ -1550,8 +1550,8 @@ def obfu_append_patches():
 
     obfu.append("", "call 2nd then return to 1st, mangled",
             # From:
-            #  55                                            push    rbp             
-            #  48 8D 2D 08 00 00 00                          lea     rbp, loc_140A2EBF0 
+            #  55                                            push    rbp
+            #  48 8D 2D 08 00 00 00                          lea     rbp, loc_140A2EBF0
             #  48 87 2C 24                                   xchg    rbp, [rsp]
             #  E9 0B 00 00 00                                jmp     loc_140A2EC00
             #
@@ -1745,6 +1745,25 @@ def obfu_append_patches():
             search      = nassemble(search_asm)
             bm.add_list(search)
 
+            #  printi("searchasm:  %s" % search_asm)
+            #  printi("replaceasm: %s" % replace_asm)
+            #  printi("search:     %s" % listAsHex(search))
+            #  printi("replace:    %s" % listAsHex(replace))
+
+        #  [values, mask] = gen_mask(None, previous)
+        #  obfu.append_bitwise(values, mask, patch_32bit_add)
+        obfu.append_bitwise(bm.value, bm.mask, bm, patch_32bit_add, reflow=1, brief="32-bit add #1")
+        # if obfu_debug: pp([binlist(bm._set), binlist(bm._clear), bm._size, bm._reserved, binlist(bm.value), binlist(bm.mask)])
+
+    with BitwiseMask() as bm:
+        for r in r64:
+            # convert 32-bit ADD to 8-bit ADD
+            if r == 'rsp':
+                continue
+
+            # search      = hex_pattern([re.sub(r' de ad ff 08', ' f8 ff ff ff', listAsHex(kassemble(search_asm)))])
+            search_asm  = "add {}, dword 0fffffff8h".format(r)
+            search      = nassemble(search_asm)
             search      = hex_pattern(listAsHex(search).replace('f8 ff ff ff', '08 00 00 00'))
             bm.add_list(search)
 
@@ -1756,7 +1775,7 @@ def obfu_append_patches():
 
         #  [values, mask] = gen_mask(None, previous)
         #  obfu.append_bitwise(values, mask, patch_32bit_add)
-        obfu.append_bitwise(bm.value, bm.mask, bm, patch_32bit_add, reflow=1)
+        obfu.append_bitwise(bm.value, bm.mask, bm, patch_32bit_add, reflow=1, brief="32-bit add #2")
         # if obfu_debug: pp([binlist(bm._set), binlist(bm._clear), bm._size, bm._reserved, binlist(bm.value), binlist(bm.mask)])
 
     if "bitwise_mov32,64":
@@ -1986,7 +2005,7 @@ def obfu_append_patches():
     # 8b 04 24     mov eax, [rsp]  ;  > mov eax, r10d \
     # 41 5a        pop r10         ; /                 > mov [rbx], r10d
     # 87 03        xchg [rbx], eax ;                  /
-    
+
     # "41 52 8b 04 24 41 5a 87 03" -> "44 89 13"
 
     obfu.append(""" """, "push r10, mov eax, [rsp], pop r10, xchg [rbx], eax => mov [rbx], r10d",
@@ -2059,7 +2078,7 @@ def obfu_append_patches():
         replace     = kassemble(replace_asm)
 
 
-        obfu.append(search_asm, search_asm, search, process_replace(replace, replace_asm), label='push', safe=1, resume=1, priority=5)
+        obfu.append(search_asm, "push via rsp-=8; [rsp]={}".format(pushed), search, process_replace(replace, replace_asm), label='push', safe=1, resume=1, priority=5)
         # obfu.append(search_asm, search_asm, search, process_replace(replace, replace_asm), label='push', safe=1)
 
         #  search_asm  = "mov {0}, rsp; add {0}, -8; mov rsp, {0}; mov [rsp], {1}".format(tmp, pushed)
@@ -2083,11 +2102,36 @@ def obfu_append_patches():
 
     if obfu_debug: printi("slow_load: 3")
     if "bitwise version":
+            #  search_asm  = "push {1}; mov {0}, [rsp]; mov {2}, rsp; add {2}, 8; mov rsp, {2};".format(dst, src, tmp)
+            #  search_asm  = "push {1}; mov {0}, [rsp]; push rsp; pop {2}; add {2}, 8; push {2}; pop rsp".format(dst, src, tmp)
+            #  search_asm  = "push {1}; mov {0}, [rsp]; mov {2}, rsp; add {2}, 8; push {2}; pop rsp".format(dst, src, tmp)
+            #  search_asm  = "push {1}; mov {0}, [rsp]; push rsp; pop {2}; add {2}, 8; mov rsp, {2}".format(dst, src.tmp)
+            #
+            #  replace_asm = "mov {0}, {1}".format(dst, src)
+            #
+            #  Python>nassemble('mov rax, rcx')    [0x48, 0x89, 0xc8]  '01001000 10001001 11001000'
+            #  Python>nassemble('mov rcx, rsi')    [0x48, 0x89, 0xf1]  '01001000 10001001 11110001'
+            #  Python>nassemble('mov rcx, rdi')    [0x48, 0x89, 0xf9]  '01001000 10001001 11111001'
+            #  Python>nassemble('mov rcx, r15')    [0x4c, 0x89, 0xf9]  '01001100 10001001 11111001'
+            #
+            #  BitwiseMask(listAsHex( nassemble('mov rax, rax'))).tri  '01001000 10001001 11000000'
+            #                                                            ^^^^^^^^^^^^^^^^^^^^^^^^
+            #                                                                `-baseline mov reg, reg
+            #  BitwiseMask(listAsHex( nassemble('mov r15, r15'))).tri  '01001101 10001001 11111111'
+            #  BitwiseMask(listAsHex( nassemble('mov rax, r15'))).tri  '01001100 10001001 11111000'
+            #                                                                ^              ^^^
+            #                                                                `-rex.r (reg0)   `- reg1
+            #  BitwiseMask(listAsHex( nassemble('mov r15, rax'))).tri  '01001001 10001001 11000111'
+            #                                                                  ^               ^^^
+            #                                                                  `-rex.w (reg1)   `- reg0
+            #  Python>BitwiseMask('48 89 f9').tri
         searches = [
-            "50&f8 48 8b 04&c7 24 54 58&f8 48 83 c0&f8 08 50&f8 5c",
-            "50&f8 48 8b 04&c7 24 54 58&f8 48 83 c0&f8 08 48 89 c4&c7",
-            "50&f8 48 8b 04&c7 24 48 89 e0&f8 48 83 c0&f8 08 50&f8 5c",
-            "50&f8 48 8b 04&c7 24 48 89 e0&f8 48 83 c0&f8 08 48 89 c4&c7",
+            #0     8  16 24    32 40 48    56    64 72    80    96    104   112         ... 128
+            "50&f8 48 8b 04&c7 24 54 58&f8 48    83 c0&f8 08    50&f8 5c",                     #  "push {1}; mov {0}, [rsp]; mov {2}, rsp; add {2}, 8; mov rsp, {2};".format(dst, src, tmp)          
+            "50&f8 48 8b 04&c7 24 54 58&f8 48    83 c0&f8 08    48    89    c4&c7",            #  "push {1}; mov {0}, [rsp]; push rsp; pop {2}; add {2}, 8; push {2}; pop rsp".format(dst, src, tmp) 
+            "50&f8 48 8b 04&c7 24 48 89    e0&f8 48 83    c0&f8 08    50&f8 5c",               #  "push {1}; mov {0}, [rsp]; mov {2}, rsp; add {2}, 8; push {2}; pop rsp".format(dst, src, tmp)      
+            "50&f8 48 8b 04&c7 24 48 89    e0&f8 48 83    c0&f8 08    48    89 c4&c7",         #  "push {1}; mov {0}, [rsp]; push rsp; pop {2}; add {2}, 8; mov rsp, {2}".format(dst, src.tmp)       
+        #   '50~57 48 8b 04~3c 24 54 58~5f 48 83 c0~c7 08 50~57 5c'
         ]
         replace_eval = \
             "x.bitset(18,y.bitget(5))r "  + \
@@ -2097,8 +2141,24 @@ def obfu_append_patches():
             "x.bitset(22,y.bitget(27))r " + \
             "x.bitset(23,y.bitget(28))r"
 
+        #  (copied from previous setting of replace_bits, trying to figure why there is no such var set here)
+        #  replace_bits = "01000101 10001001 11......"
+        #  replace_eval = \
+            #  "x.bitset(18,y.bitget(13))r " + \
+            #  "x.bitset(19,y.bitget(14))r " + \
+            #  "x.bitset(20,y.bitget(15))r " + \
+            #  "x.bitset(21,y.bitget(34))r " + \
+            #  "x.bitset(22,y.bitget(35))r " + \
+            #  "x.bitset(23,y.bitget(36))r"
+
+        # maybe this would be better:
+        replace_bits = '01001000 10001001 11000000'
+
         replace = BitwiseMask(replace_bits)
         replace.add(replace_eval)
+        # dprint("[obfu_append_patches] replace_bits")
+        print("[obfu_append_patches] replace_bits: {}".format(replace_bits))
+        
         for i, search in enumerate(searches):
             obfu.append("", "mov r1, r2 (#{})".format(i),
                     BitwiseMask(search),
@@ -2416,23 +2476,23 @@ def obfu_append_patches():
 
     if obfu_debug: printi("slow_load: 1")
 
-    
+
 
     obfu.append("""
         Text description, and copy of output from dissasembly with offsets usually goes here.
 
-        55                               push    rbp                                  
-        48 BD 2C C6 23 46 01 00 00 00    mov     rbp, 14623C62Ch                      
-        48 87 2C 24                      xchg    rbp, [rsp]                           
-        53                               push    rbx                                  
-        50                               push    rax                                  
-        48 8B 5C 24 10                   mov     rbx, [rsp+10h]                       
-        48 8B 05 7E FE FF FF             mov     rax, qword ptr cs:loc_147311A93      
-        48 0F 43 D8                      cmovnb  rbx, rax                             
-        48 89 5C 24 10                   mov     [rsp+10h], rbx                       
-        58                               pop     rax                                  
-        5B                               pop     rbx                                  
-        C3                               retn                                         
+        55                               push    rbp
+        48 BD 2C C6 23 46 01 00 00 00    mov     rbp, 14623C62Ch
+        48 87 2C 24                      xchg    rbp, [rsp]
+        53                               push    rbx
+        50                               push    rax
+        48 8B 5C 24 10                   mov     rbx, [rsp+10h]
+        48 8B 05 7E FE FF FF             mov     rax, qword ptr cs:loc_147311A93
+        48 0F 43 D8                      cmovnb  rbx, rax
+        48 89 5C 24 10                   mov     [rsp+10h], rbx
+        58                               pop     rax
+        5B                               pop     rbx
+        C3                               retn
         """,
         "cmovz-partial-deobfu",
         hex_pattern([
@@ -2851,18 +2911,18 @@ def obfu_append_patches():
     .text:1439983d3   68       39 0d fb 70 38 fe             	cmp [g_pickup_related], ecx
     ---
 
-    .text:143e84f4b   68   -8  55                            	push rbp                        55                               push    rbp                                  
-    .text:143e84f55   70       48 bd 6e 10 4d 43 01 00 00 00 	mov rbp, loc_1434D106E          48 BD 2C C6 23 46 01 00 00 00    mov     rbp, 14623C62Ch                      
-    .text:140d25baa   70       48 87 2c 24                   	xchg [rsp], rbp                 48 87 2C 24                      xchg    rbp, [rsp]                           
-    .text:1440f2631   70   -8  52                            	push rdx                        53                               push    rbx                                  
-    .text:140a637bd   78   -8  53                            	push rbx                        50                               push    rax                                  
-    .text:143515b59   80       48 8b 54 24 10                	mov rdx, [rsp+0x10]             48 8B 5C 24 10                   mov     rbx, [rsp+10h]                       
-    .text:143515b5e   80       48 bb 5d f6 ca 40 01 00 00 00 	mov rbx, loc_140CAF65D          48 8B 05 7E FE FF FF             mov     rax, qword ptr cs:loc_147311A93      
-    .text:143515b68   80       48 0f 44 d3                   	cmovz rdx, rbx                  48 0F 43 D8                      cmovnb  rbx, rax                             
-    .text:143515b6c   80       48 89 54 24 10                	mov [rsp+0x10], rdx             48 89 5C 24 10                   mov     [rsp+10h], rbx                       
-    .text:144009cc4   80    8  5b                            	pop rbx                         58                               pop     rax                                  
-    .text:144009ccd   78    8  48 8d 64 24 08                	lea rsp, [rsp+8]                5B                               pop     rbx                                  
-    .text:143eac9cc   70    8  5a                            	pop rdx                         C3                               retn                                         
+    .text:143e84f4b   68   -8  55                            	push rbp                        55                               push    rbp
+    .text:143e84f55   70       48 bd 6e 10 4d 43 01 00 00 00 	mov rbp, loc_1434D106E          48 BD 2C C6 23 46 01 00 00 00    mov     rbp, 14623C62Ch
+    .text:140d25baa   70       48 87 2c 24                   	xchg [rsp], rbp                 48 87 2C 24                      xchg    rbp, [rsp]
+    .text:1440f2631   70   -8  52                            	push rdx                        53                               push    rbx
+    .text:140a637bd   78   -8  53                            	push rbx                        50                               push    rax
+    .text:143515b59   80       48 8b 54 24 10                	mov rdx, [rsp+0x10]             48 8B 5C 24 10                   mov     rbx, [rsp+10h]
+    .text:143515b5e   80       48 bb 5d f6 ca 40 01 00 00 00 	mov rbx, loc_140CAF65D          48 8B 05 7E FE FF FF             mov     rax, qword ptr cs:loc_147311A93
+    .text:143515b68   80       48 0f 44 d3                   	cmovz rdx, rbx                  48 0F 43 D8                      cmovnb  rbx, rax
+    .text:143515b6c   80       48 89 54 24 10                	mov [rsp+0x10], rdx             48 89 5C 24 10                   mov     [rsp+10h], rbx
+    .text:144009cc4   80    8  5b                            	pop rbx                         58                               pop     rax
+    .text:144009ccd   78    8  48 8d 64 24 08                	lea rsp, [rsp+8]                5B                               pop     rbx
+    .text:143eac9cc   70    8  5a                            	pop rdx                         C3                               retn
     .text:143eac9d5   68       ff 64 24 f8                   	jmp qword [rsp-8]
 
          147311BF6 27D8        39 CA                            cmp     edx, ecx
@@ -2988,7 +3048,7 @@ def obfu_append_patches():
             #  "", lambda a, b, c, *z, **kw: (len(a), [0x50 + (c[14] >> 3)]),
             #  resume=1
     #  )
-    
+
     #  .text:1432ab519  340      es::LoadFromJSON 48 89 e2                      	mov rdx, rsp
     #  .text:1432ab51c  340      es::LoadFromJSON 48 81 c2 f8 ff ff ff          	add rdx, 0xfffffff8
     #  .text:1432ab523  340      es::LoadFromJSON 48 89 d4                      	mov rsp, rdx
@@ -3594,83 +3654,83 @@ SP  SPD  OCTETS                          ASM
 ---
 weird rdr psuedo-balance
 
-TheJudge_0_0_0:                             
-       .- push rax                          
-       |  push 0x10                         
-       |  test rsp, 0xf                     
-       |  jnz label1                        
-       |  push 0x18                         
-label1:|                                    
-       |  sub rsp, 8                        
-       |  mov eax, [rel dword_14648A51F]    
-       |  xor eax, [rel dword_1469BA3FE]    
-       |  add rbp, rax                      
-       |  add rsp, [rsp+8]                  
-       `- pop rax                           
-          mov [rsp+8], rcx                  
-          sub rsp, 0x28                     
-          mov rcx, [rsp+0x30]               
-          call sub_140AF7DB0                
-          imul eax, eax, 0x40d              
-          mov ecx, [rel dword_144942340]    
-          sub ecx, eax                      
-          mov eax, ecx                      
-          mov [rel dword_144942340], eax    
-          mov al, 1                         
-          add rsp, 0x28                     
-          retn                              
+TheJudge_0_0_0:
+       .- push rax
+       |  push 0x10
+       |  test rsp, 0xf
+       |  jnz label1
+       |  push 0x18
+label1:|
+       |  sub rsp, 8
+       |  mov eax, [rel dword_14648A51F]
+       |  xor eax, [rel dword_1469BA3FE]
+       |  add rbp, rax
+       |  add rsp, [rsp+8]
+       `- pop rax
+          mov [rsp+8], rcx
+          sub rsp, 0x28
+          mov rcx, [rsp+0x30]
+          call sub_140AF7DB0
+          imul eax, eax, 0x40d
+          mov ecx, [rel dword_144942340]
+          sub ecx, eax
+          mov eax, ecx
+          mov [rel dword_144942340], eax
+          mov al, 1
+          add rsp, 0x28
+          retn
 
 
-TheJudge_0_0_0:                                                
-.----< push rax                                                
-|   .- push 0x10                                               
-|   |  sub rsp, 8                                              
-|   |  mov eax, [rel dword_14648A51F]                          
-|   |  xor eax, [rel dword_1469BA3FE]                          
-|   |  add rbp, rax      ; unset & unused register             
-|   `- add rsp, [rsp+8]                                        
+TheJudge_0_0_0:
+.----< push rax
+|   .- push 0x10
+|   |  sub rsp, 8
+|   |  mov eax, [rel dword_14648A51F]
+|   |  xor eax, [rel dword_1469BA3FE]
+|   |  add rbp, rax      ; unset & unused register
+|   `- add rsp, [rsp+8]
 `----> pop rax           ; why restore unset & unused register?
 -----------------[could.be.a.tail.call]------------------------
-    .- mov [rsp+8], rcx  ; into homespace #1                   
-    |  sub rsp, 0x28                                           
-    `- mov rcx, [rsp+0x30] ; rcx = homespace #1                
-       call sub_140AF7DB0; copy of which is below              
-         l_.    mov eax, [rcx+0x10]                            
-           '    shr eax, 0x1d                                  
-       imul eax, eax, 0x40d                                    
-       mov ecx, [rel dword_144942340]                          
-       sub ecx, eax                                            
-       mov eax, ecx                                            
-       mov [rel dword_144942340], eax                          
-       mov al, 1         ; will return true                    
-       add rsp, 0x28     ; perfectly balanced                  
-       retn                                                    
+    .- mov [rsp+8], rcx  ; into homespace #1
+    |  sub rsp, 0x28
+    `- mov rcx, [rsp+0x30] ; rcx = homespace #1
+       call sub_140AF7DB0; copy of which is below
+         l_.    mov eax, [rcx+0x10]
+           '    shr eax, 0x1d
+       imul eax, eax, 0x40d
+       mov ecx, [rel dword_144942340]
+       sub ecx, eax
+       mov eax, ecx
+       mov [rel dword_144942340], eax
+       mov al, 1         ; will return true
+       add rsp, 0x28     ; perfectly balanced
+       retn
 ---
-54                            	push rsp            
-58                            	pop rax             
-48 89 58 08                   	mov [rax+8], rbx    
-48 89 70 10                   	mov [rax+0x10], rsi 
+54                            	push rsp
+58                            	pop rax
+48 89 58 08                   	mov [rax+8], rbx
+48 89 70 10                   	mov [rax+0x10], rsi
 48 89 78 18                   	mov [rax+0x18], rdi # vim: set ts=4 sts=4 sw=4 et:
-55                            	push rbp            
-41 54                         	push r12            
-41 55                         	push r13            
-41 56                         	push r14            
-41 57                         	push r15            
-54                            	push rsp            
-5d                            	pop rbp             
-48 83 ec 70                   	sub rsp, 0x70       
-4c 8d 5c 24 70                	lea r11, [rsp+0x70] 
-49 8b 5b 30                   	mov rbx, [r11+0x30] 
-49 8b 73 38                   	mov rsi, [r11+0x38] 
-49 8b 7b 40                   	mov rdi, [r11+0x40] 
-41 53                         	push r11            
-5c                            	pop rsp             
-41 5f                         	pop r15             
-41 5e                         	pop r14             
-41 5d                         	pop r13             
-41 5c                         	pop r12             
-5d                            	pop rbp             
-c3                            	retn                
+55                            	push rbp
+41 54                         	push r12
+41 55                         	push r13
+41 56                         	push r14
+41 57                         	push r15
+54                            	push rsp
+5d                            	pop rbp
+48 83 ec 70                   	sub rsp, 0x70
+4c 8d 5c 24 70                	lea r11, [rsp+0x70]
+49 8b 5b 30                   	mov rbx, [r11+0x30]
+49 8b 73 38                   	mov rsi, [r11+0x38]
+49 8b 7b 40                   	mov rdi, [r11+0x40]
+41 53                         	push r11
+5c                            	pop rsp
+41 5f                         	pop r15
+41 5e                         	pop r14
+41 5d                         	pop r13
+41 5c                         	pop r12
+5d                            	pop rbp
+c3                            	retn
 
 ---
 .text:00000001463AF5F2 0C0 58                                            pop     rax             ; mov/lea->pop#2 order swap: rax [1463af5f2–1463af5fb]
@@ -3885,3 +3945,58 @@ converting from nasm to msvc `mov`
 " c[-2]  ^ 2
 " (c[-3] & 0b11111010) | (c[-3] & 0b100)   >> 2  | (c[-3] & 0b001)    << 2
 """
+
+# https://en.wikibooks.org/wiki/X86_Assembly/X86_Architecture
+br64 =  "r{{a,c,d,b}x,{s,b}p,{s,d}i,{8..15}}"
+br32 = "{e{{a,c,d,b}x,{s,b}p,{s,d}i},r{8..15}d}"
+br16 =  "{{{a,c,d,b}x,{s,b}p,{s,d}i},r{8..15}w}"
+br8  =   "{{{a,c,d,b}{h,l},{s,b}pl,{s,d}il},r{8..15}b}"
+r64  = braceexpandlist(br64) # 16
+r32  = braceexpandlist(br32) # 16
+r16  = braceexpandlist(br16) # 16
+r8   = braceexpandlist(br8)  # 20
+
+#    7        REX PREFIX         0
+#  +---+---+---+---+---+---+---+---+
+#  | 0   1   0   0 | W | R | X | B |
+#  +---+---+---+---+---+---+---+---+
+#  BitwiseMask(listAsHex( nassemble('mov rax, rax'))).tri  '01001000 10001001 11000000'
+#                                                            ^^^^^^^^^^^^^^^^^^^^^^^^
+#                                                                `-baseline mov reg, reg
+#  BitwiseMask(listAsHex( nassemble('mov r15, r15'))).tri  '01001101 10001001 11111111'
+#  BitwiseMask(listAsHex( nassemble('mov rax, r15'))).tri  '01001100 10001001 11111000'
+#                                                                ^                 ^^^
+#                                                                `-rex.r (reg0)      `- reg0
+#  BitwiseMask(listAsHex( nassemble('mov r15, rax'))).tri  '01001001 10001001 11000111'
+#                                                                  ^            ^^^
+#                                                                  `-rex.b (reg1) `- reg1
+#
+
+def mov_rm64_r64(reg0, reg1):
+    #                22211111 11111110 00000000
+    #                43210987 65432109 87654321
+    b = BitwiseMask('01001000 10001001 11000000') # mov rax, rax
+    r0 = r64.index(reg0)
+    r1 = r64.index(reg1)
+    assert ~r0 and ~r1
+    bm0 = BitwiseMask([[r0]])
+    bm1 = BitwiseMask([[r1]])
+    # version (a)
+    #  b[7], b[-3:]   = bm0[-4], bm0[-3:]
+    #  b[5], b[-6:-3] = bm1[-4], bm1[-3:]
+    #
+    # version(d)
+    #  b[7]     = bm0[-4]
+    #  b[5]     = bm1[-4]
+    #  b[-3:]   = bm0[-3:]
+    #  b[-6:-3] = bm1[-3:]
+
+    # version (b)
+    #  b[-6:]         = bm1[-3:] + bm0[-3:]
+    #  b[7]           = bm0[-4]
+    #  b[5]           = bm1[-4]
+    
+    # version (c)
+    b[7], b[-6:]   = bm0[-4], bm1[-3:] + bm0[-3:]
+     
+    return b

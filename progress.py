@@ -26,8 +26,12 @@ def _get_console_width():
         w = ida_kernwin.PluginForm.TWidgetToPyQtWidget(tw)
         scrollable = w.childAt(0, 0)
         char_width = int(scrollable.width() / 7.06)
-        _get_console_width.last_width = char_width
-        setglobal('_progress_console_width', _get_console_width.last_width)
+        if char_width != _get_console_width.last_width:
+            _get_console_width.last_width = char_width
+            try:
+                setglobal('_progress_console_width', _get_console_width.last_width)
+            except:
+                pass
         return char_width
     else:
         print('[progress] return default width of 100')
@@ -40,12 +44,14 @@ _block_half = "▏▎▍▋▊█" # left-half-block: ▌  almost-full-block: �
 class ProgressBar:
     """Show a progress bar"""
 
-    def __init__(self, *maxvals):
+    def __init__(self, *maxvals, min=None):
         self.count = len(maxvals)
         self.compound = True
         self.transpose_fns = []
         self.percent_format = None
         self.maxval = 100
+        self.min = min
+        self.msg = None
         for v in maxvals:
             if v is not None and hasattr(v, '__len__') and len(v) > 1:
                 _min, _max = v[0:2]
@@ -64,8 +70,16 @@ class ProgressBar:
         self.last_blocks = [0] * self.count
         self.last_remainders = [0] * self.count
         self.onPrePrint = None
+        if self.min is not None and _.first(maxvals) < self.min:
+            self.hidden = True
+        else:
+            self.hidden = False
 
-    def update(self, *values):
+    def update(self, *values, msg=None):
+        if msg is not None:
+            self.msg = msg
+        if self.hidden:
+            return
         _should_print = 0
         for i, value in enumerate(values):
             if value is not None:
@@ -126,27 +140,34 @@ class ProgressBar:
             s += bh
             blocks[i] = s
         empty = self.console_width - drawn
+        message = ''
+        if self.msg:
+            message = (" " * self.console_width).join(ascii_box(self.msg, render=False)) + " "
         if six.PY3:
             if self.show_percentage:
                 pct = "{}%".format(int(sum(self.value) / (len(self.value) if not self.compound else 1)))
             else:
                 pct = ' '.join([str(x) for x in self.raw_value])
-            # sameline("{}{}      {}".format(''.join(blocks), ' ' * empty, pct))
-            sameline("{}{}".format(''.join(blocks), ' ' * empty))
+            # printcr("{}{}      {}".format(''.join(blocks), ' ' * empty, pct))
+            printcr("{}{}{}".format(message, ''.join(blocks), ' ' * empty))
             #  print("[{}{}{}{}{}] {}%".format("\u2591" * self.blocks_bad, "\u2593"* self.blocks_good, "\u2588" * done, decimal, "\u2505" * remain, 100 * self.value // self.maxval))
         else:
-            sameline("{}%".format(int(sum(self.value) / (len(self.value) if not self.compound else 1))))
+            printcr("{}{}%".format(message, int(sum(self.value) / (len(self.value) if not self.compound else 1))))
 
 def progress_demo():
-    p = ProgressBar(250, 250)
+
+    # w = _get_console_width()
+    w = 100
+    p = ProgressBar(100, 100)
+    # p.percent_format = lambda x, y: "{}".format(x)
     # p = ProgressBar(1000)
     p.always_print = True
-    for r in range(1001):
-        p.update(250 - r/4, r/4)
+    for r in range(w + (w >> 1)):
+        p.update(r % w, (w - r) % w, msg=["The value of", "r is {}".format(r)])
         # p.update(r)
-        if r % 300 == 250:
+        if r % 22 == 0:
             print("Sample of interrupting output...")
-        idc.qsleep(10)
+        idc.qsleep(50)
 
     
     ctr_text = "░▒▓█▓▒░┅"
@@ -160,19 +181,20 @@ def progress_demo():
 def hpos():
     return len(ida_kernwin.msg_get_lines(1)[-1])
 
-@static_vars(hpos=None, current='')
-def sameline(s, e=''):
-    # s += "\t{}".format(e)
-    cur_hpos = hpos()
-    if cur_hpos == sameline.hpos:
-        idc.msg(chr(13) + s)
-        sameline.current = s
-    else:
-        idc.msg(s)
-        sameline.current += s
-    new_hpos = hpos()
-    sameline.hpos = new_hpos
-    return (cur_hpos, new_hpos)
+@static_vars(current='', last=None)
+def printcr(s):
+    printcr.current = s
+    idc.msg(chr(13) + s)
+    # clear cached line after 60 seconds
+    if s.strip():
+        _printcr_clear_debounced()
+
+def _printcr_clear():
+    printcr(' ')
+    printcr.current = ''
+
+# clear cached line after 60 seconds
+_printcr_clear_debounced = _.debounce(_printcr_clear, 60 * 1000)
 
 def print(*args, **kwargs):
     """
@@ -185,12 +207,12 @@ def print(*args, **kwargs):
     end:   string appended after the last value, default a newline.
     flush: whether to forcibly flush the stream.
     """
-    if sameline.current:
+    if printcr.current:
         idc.msg(chr(13) + ' ')
-        #  sameline.current = ''
-        #  sameline.hpos=0
         builtins.print(*args, **kwargs)
-        idc.msg(sameline.current)
+        idc.msg(printcr.current)
+    else:
+        builtins.print(*args, **kwargs)
 
 
 def screenwidth_display_test(m):
@@ -247,11 +269,141 @@ def binary_search(value, low, high, iterator):
             high = mid
     return low
 
-def ProgressEnumerate(iteratee):
+def ProgressEnumerate(iteratee, min=None, **kwargs):
     iteratee = list(iteratee)
-    p = ProgressBar(len(iteratee))
+    p = ProgressBar(len(iteratee), min=min)
+    for k, v in kwargs.items():
+        setattr(p, k, v)
     for i, val in enumerate(iteratee):
         p.update(i)
         yield val
 
 # screenwidth_get()
+#
+ACS_ULCORNER = "┌" # (0xDA)	/* upper left corner */
+ACS_LLCORNER = "└" # (0xC0)	/* lower left corner */
+ACS_URCORNER = "┐" # (0xBF)	/* upper right corner */
+ACS_LRCORNER = "┘" # (0xD9)	/* lower right corner */
+ACS_HLINE    = "─" # (0xC4)	/* horizontal line */
+ACS_VLINE    = "│" # (0xB3)	/* vertical line */
+ACS_LTEE     = "├" # (acs_map['t'])	/* tee pointing right */
+ACS_RTEE     = "┤" # (acs_map['u'])	/* tee pointing left */
+ACS_BTEE     = "┴" # (acs_map['v'])	/* tee pointing up */
+ACS_TTEE     = "┬" # (acs_map['w'])	/* tee pointing down */
+ACS_PLUS     = "┼" # (acs_map['n'])	/* large plus or crossover */
+ACS_S1       = "-" # (acs_map['o'])	/* scan line 1 */
+ACS_S9       = "_" # (acs_map['s'])	/* scan line 9 */
+ACS_DIAMOND  = "♦" # (acs_map['`'])	/* diamond */
+ACS_CKBOARD  = "▒" # (acs_map['a'])	/* checker board (stipple) */
+ACS_DEGREE   = "°" # (acs_map['f'])	/* degree symbol */
+ACS_PLMINUS  = "±" # (acs_map['g'])	/* plus/minus */
+ACS_BULLET   = "∙" # (acs_map['~'])	/* bullet */
+ACS_LARROW   = "◄" # (acs_map[','])	/* arrow pointing left */
+ACS_RARROW   = "◄" # (acs_map['+'])	/* arrow pointing right */
+ACS_DARROW   = "▼" # (acs_map['.'])	/* arrow pointing down */
+ACS_UARROW   = "▲" # (acs_map['-'])	/* arrow pointing up */
+ACS_BOARD    = "░" # (acs_map['h'])	/* board of squares */
+ACS_LANTERN  = "○" # (acs_map['i'])	/* lantern symbol */
+ACS_BLOCK    = "█" # (acs_map['0'])	/* solid square block */
+
+_color_names = [
+            "BLACK", "RED", "GREEN", "BROWN", "BLUE", "MAGENTA", "CYAN", "LIGHTGRAY",
+            "DARKGRAY", "LIGHTRED", "LIGHTGREEN", "YELLOW", "LIGHTBLUE", "LIGHTMAGENTA",
+            "LIGHTCYAN", "WHITE"
+] 
+ansi_colors = SimpleAttrDict(_.invert(_color_names))
+
+def splice(target, start, delete_count='', insert=''):
+    """
+    >>> splice('hello pizza world', 6, 5, 'pasta')
+    ('hello pasta world', 'pizza')
+
+    >>> s = 'hello pizza world'
+    >>> s, food = splice(s, (6, 5), 'pasta')
+    >>> s, food
+    ('hello pasta world', 'pizza')
+    """
+    if isinstance(start, (list, tuple)):
+        insert = delete_count
+        start, delete_count = start
+    delete_count += start
+    return target[:start] + insert + target[delete_count:], target[start:delete_count]
+
+
+def ascii_box(lines, width=0, selected=None, render=True, shadow=False): 
+    ns = Namespace()
+    ns.x = 0
+    ns.y = 0
+    nitems = len(lines)
+    buffer = [] # ['' * width] * (nitems + 2)
+    setglobal('buffer', buffer)
+    width = max(width, max([len(line) for line in lines]))
+
+    def ensure(columns, rows):
+        rows += 1
+        while len(buffer) < rows:
+            buffer.append('')
+        # buffer[:] = _.map(buffer, lambda v, *a: (v + ' ' * columns)[0:columns])
+        for i in range(len(buffer)):
+            if len(buffer[i]) < columns:
+                buffer[i] += ' ' * (columns - len(buffer[i]))
+
+    def gotoxy(x, y):
+        ns.x, ns.y = x, y
+
+    def _putch(s):
+        length = len(s)
+        ensure(ns.x + length, ns.y)
+        buffer[ns.y], *a = splice(buffer[ns.y], ns.x, length, s)
+        ns.x += length
+
+    def textattr(*args):
+        pass
+
+    def _write_buffer():
+        if render:
+            for row in buffer:
+                print(row.rstrip())
+        else:
+            return [row.rstrip() for row in buffer]
+
+    x, y = 0, 0
+    while True:
+        textattr(ansi_colors.CYAN << 4 | ansi_colors.BLACK)
+        gotoxy(x, y)
+
+        _putch(ACS_ULCORNER)
+        _putch(ACS_HLINE * (width + 2))
+        _putch(ACS_URCORNER)
+
+        for i in range(nitems):
+            gotoxy(x, y + i + 1)
+            _putch(ACS_VLINE)
+            _putch(' ')
+            if i == selected:
+                textattr(ansi_colors.YELLOW)
+            s = lines[i]
+            _putch(s)
+            textattr(ansi_colors.CYAN << 4 | ansi_colors.BLACK)
+            gotoxy(x + width + 3, y + i + 1)
+            _putch(ACS_VLINE)
+            if shadow:
+                gotoxy(x + width + 4, y + i + 2)
+                _putch(' ' + ACS_BOARD  * 2)
+
+        if shadow:
+            gotoxy(x + width + 4, y + nitems + 2)
+            _putch(' ' + ACS_BOARD  * 2)
+
+        gotoxy(x, y + nitems + 1)
+        _putch(ACS_LLCORNER)
+        for i in range(width + 2):
+            _putch(ACS_HLINE)
+        _putch(ACS_LRCORNER)
+
+        if shadow:
+            gotoxy(x + 3, y + nitems + 2)
+            _putch(ACS_BOARD * (width + 4))
+
+        return _write_buffer()
+

@@ -626,7 +626,14 @@ def retrace_unpatch(address, **kwargs):
     # refresh_slowtrace2();
     retrace_list(address, applySkipJumps=0, forceRemoveChunks=0, once=1, pre=[GetFuncName, unpatch_func2, unpatch_func, ida_retrace, ZeroFunction, unpatch_func2, unpatch_func, ZeroFunction, unpatch_func2, unpatch_func, ZeroFunction], **kwargs)
 
-def retrace(address=None, color="#280c01", no_hash=False, _ida_retrace=False, no_func_tails=False,  retails=False, redux=False, unpatchFirst=False, unpatch=False, once=False, recreate=False, chunk=False, noFixChunks=False, **kwargs):
+def retrace(*args, **kwargs):
+    rv = _retrace(*args, **kwargs)
+    if rv == 0:
+        ea = eax(_.first(args, default=None))
+        done2.add(ea)
+    return rv
+
+def _retrace(address=None, color="#280c01", no_hash=False, _ida_retrace=False, no_func_tails=False,  retails=False, redux=False, unpatchFirst=False, unpatch=False, once=False, recreate=False, chunk=False, noFixChunks=False, **kwargs):
     if isinstance(address, list):
         return [retrace(x, **kwargs) for x in address]
 
@@ -640,6 +647,8 @@ def retrace(address=None, color="#280c01", no_hash=False, _ida_retrace=False, no
 
     # TODO: check calling stack, and reset depth if we were called from the command "line"
     address = eax(address)
+    if IsValidEA(address):
+        tried2.add(address)
     start_address = address
     with TraceDepth() as _depth:
 
@@ -739,7 +748,7 @@ def retrace(address=None, color="#280c01", no_hash=False, _ida_retrace=False, no
         ea = address
         count = -1
         rv = 0
-        count_limit = 8
+        count_limit = 3
         last_hash = None
         _hash = None
         patchResults = []
@@ -812,11 +821,21 @@ def retrace(address=None, color="#280c01", no_hash=False, _ida_retrace=False, no
                         if rv:
                             try:
                                 #  print("count #{}/{}".format(count, count_limit))
-                                if kwargs.get('noSti', None) or kwargs.get('noObfu', None):
-                                    printi("trying without noSti/noObfu")
+                                if kwargs.get('noSti', None):
+                                    printi("trying without noSti")
                                     spdList = []
                                     if debug: setglobal('spdList', spdList)
-                                    rv = slowtrace2(ea, color=color, returnPatches=patchResults, returnOutput=traceOutput, spdList=spdList, **(_.omit(extra_args, 'noSti', 'noObfu')))
+                                    rv = slowtrace2(ea, color=color, returnPatches=patchResults, returnOutput=traceOutput, spdList=spdList, **(_.omit(extra_args, 'noSti')))
+                                    if rv:
+                                        try:
+                                            #  print("count #{}/{}".format(count, count_limit))
+                                            if kwargs.get('noObfu', None):
+                                                printi("trying without noSti/noObfu")
+                                                spdList = []
+                                                if debug: setglobal('spdList', spdList)
+                                                rv = slowtrace2(ea, color=color, returnPatches=patchResults, returnOutput=traceOutput, spdList=spdList, **(_.omit(extra_args, 'noSti', 'noObfu')))
+                                        except AdvanceReverse as e:
+                                            pass
                             except AdvanceReverse as e:
                                 pass
                         return rv
@@ -993,6 +1012,11 @@ def retrace(address=None, color="#280c01", no_hash=False, _ida_retrace=False, no
                 if debug: print("calling FixChunks #3")
                 FixChunks(ea, leave=ea)
                 pass
+            except AdvanceFailure as e:
+                printi("[retrace] slowtrace threw {}: {}".format(e.__class__.__name__, str(e)))
+                tb = traceback.format_exc()
+                printi("traceback: {}".format(tb))
+                return -1
                 #  printi("RelocationPatchedError...")
                 #  printi(e)
                 #  printi(e.value)
@@ -1080,6 +1104,7 @@ class RelocationAssemblerError(ObfuError):
 later = globals().get('later', set())
 later2 = globals().get('later2', set())
 done2 = globals().get('done2', set())
+tried2 = globals().get('tried2', set())
 if 'GenericRanges' in globals():
     done3 = globals().get('done3', GenericRanges())
 global_chunks = globals().get('global_chunks', defaultdict(set))
@@ -2166,15 +2191,15 @@ def slowtrace2(ea=None,
                         if len(_jrefs) > 0:
                             _jrefs = _.filter(_jrefs, lambda v, *a: GetSpds(eax(v)) and not _.contains(GetFuncStart(xrefs_to(v)), slvars.startLoc))
                             if len(_jrefs) > 0:
-                                ourjr = RecurseCallers(ea, iteratee=lambda v: GetFuncStart(v))
-                                pph(ourjr)
+                                ourjr = RecurseCallers(ea, silent=True, iteratee=lambda v: GetFuncStart(v))
+                                if debug: pph(ourjr)
                                 _remove = []
                                 for _r in _jrefs:
                                     # dprint("[is_real_func] _r")
-                                    print("[is_real_func] _r:{}".format(ahex(_r)))
+                                    print("[is_real_func] _ref: {}".format(ahex(_r)))
                                     
-                                    jr = RecurseCallers(eax(_r), iteratee=lambda v: GetFuncStart(v))
-                                    pph(jr)
+                                    jr = RecurseCallers(eax(_r), silent=True, iteratee=lambda v: GetFuncStart(v))
+                                    if debug: pph(jr)
                                     if (len(ourjr.iteratee) > 2 
                                             and len(jr.iteratee) < 3 
                                             and len(jr.named) < len(ourjr.named)):
@@ -3855,9 +3880,9 @@ def slowtrace2(ea=None,
                                                     Commenter(ea).add("ArxanCheck with complex returns at {:x}".format(mainLoc))
                                                     Commenter(ea).add("[ARXAN-TEST]")
                                                     #  ...
-                                                    cave_start = eax('next_relocation')
+                                                    cave_start = eax('next_cave')
                                                     if not IsValidEA(cave_start):
-                                                        raise RuntimeError('need next_relocation set to build cave, ensure AddRelocSegment() has been run')
+                                                        raise RuntimeError('need next_cave set to build cave, ensure AddRelocSegment() has been run and `next_relocation` is renamed to `next_cave`')
                                                     cave_end = cave_start + 128
                                                     # ZeroFunction(balanceLoc, 1)
                                                     printi("[Cave] {:x} - {:x}".format(cave_start, cave_end))
@@ -4008,11 +4033,11 @@ def slowtrace2(ea=None,
                                                     # idc.add_func(balanceLoc, cave_start)
                                                     # idc.add_func(cave_start, cave_pos)
                                                     # LabelAddressPlus(balanceLoc, "FillerBunnyOri_{}".format(long_to_words(mainLoc - ida_ida.cvar.inf.min_ea)))
-                                                    LabelAddressPlus((cave_end + 16) & ~0x0f, 'next_relocation', force=1)
                                                     LabelAddressPlus(cave_start, "FillerBunnyCave_{}".format(long_to_words(mainLoc - ida_ida.cvar.inf.min_ea)))
                                                     #  ForceFunction(balanceLoc)
                                                     # ForceFunction(cave_start)
                                                     Commenter(cave_start).add("Filler Bunny Code Cave for 0x{:x}".format(ea))
+                                                    LabelAddressPlus((cave_end + asm2_len + 3) & ~3, 'next_cave', force=1)
                                                     # SetFuncEnd(cave_start,
 
                                                     #  idc.add_func(balanceLoc)
@@ -4254,6 +4279,7 @@ def slowtrace2(ea=None,
                         later2.add(_target)
                         later.add(_target)
                         printi("later2: adding {}".format(diida(ea)))
+                        SkipJumps(ea, apply=1, skipNops=1)
 
             if applySkipJumps and isAnyJmpOrCall(ea):
                 SkipJumps(ea, apply=1, skipNops=1)
@@ -4358,6 +4384,9 @@ def slowtrace2(ea=None,
                     #
                     isRealFunc = is_real_func(ea, GetTarget(ea))
                     if isRealFunc:
+                        if ea not in later2:
+                            later2.add(ea)
+                            later.add(ea)
                         break
 
                 # end of `if removeFuncs`

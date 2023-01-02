@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 import inspect
+_ida = False
 try:
     import idc
     import idautils
     import idaapi
-    #  from sftools import get_ea_by_any
+    _ida = True
 except ImportError:
     pass
 from types import *
@@ -14,24 +15,31 @@ import random
 import time
 import types
 from threading import Timer
-from collections import Sequence
-import six
-from six.moves import builtins
 
-_underscore__file__ = os.path.abspath(__file__)
-_underscore__name__ = __name__
-# dprint("[] _underscore__file__, _underscore__name__")
-print("[] _underscore__file__: {}, _underscore__name__: {}".format(_underscore__file__, _underscore__name__))
+# https://stackoverflow.com/questions/53978542/how-to-use-collections-abc-from-both-python-3-8-and-python-2-7
+try:
+    from collections.abc import Sequence
+except ImportError:
+    from collections import Sequence
+
+import six
+from six.moves import builtins, zip_longest
+from six.moves.collections_abc import Sequence
+
+#  _underscore__file__ = os.path.abspath(__file__)
+#  _underscore__name__ = __name__
+#  # dprint("[] _underscore__file__, _underscore__name__")
+#  print("[] _underscore__file__: {}, _underscore__name__: {}".format(_underscore__file__, _underscore__name__))
 
 def null():
     return None
 
-def refresh_underscore():
-    try:
-        from exectools import _from
-        _from(_underscore__name__ + ' import _')
-    except ModuleNotFoundError:
-        pass
+#  def refresh_underscore():
+    #  try:
+        #  from exectools import _from
+        #  _from(_underscore__name__ + ' import _')
+    #  except ModuleNotFoundError:
+        #  pass
 
 def _oget(obj, key, default=None, call=False):
     """Get attribute or dictionary value of object
@@ -336,17 +344,18 @@ def Array(o):
     else:
         return list([o])
 
-def _us_xrefs_to(ea, types=None):
+if _ida:
+    def _us_xrefs_to(ea, types=None):
 
-    if types is None:
-        types = [ idc.fl_CF,
-                         idc.fl_CN,
-                         idc.fl_JF,
-                         idc.fl_JN,
-                       # idc.fl_F 
-                       ]
+        if types is None:
+            types = [ idc.fl_CF,
+                             idc.fl_CN,
+                             idc.fl_JF,
+                             idc.fl_JN,
+                           # idc.fl_F 
+                           ]
 
-    return [x.frm for x in idautils.XrefsTo(ea)]
+        return [x.frm for x in idautils.XrefsTo(ea)]
 
 class _IdCounter(object):
 
@@ -874,7 +883,7 @@ class underscore(object):
             return None
         if len(keys) > 1:
             # dprint("[pluck] keys")
-            print("[pluck] keys:{}".format(keys))
+            # print("[pluck] keys:{}".format(keys))
             
             return self._wrap(list(zip(*[_pluck(self.obj, x) for x in keys])))
 
@@ -920,24 +929,26 @@ class underscore(object):
     #    code_refs_to().
     #    map(lambda x, *y: GetFunctionName(x)).filter(lambda x, *y: x.startswith('sub_')).
     #    invoke(lambda x, *y: LabelAddressPlus(LocByName( x ), 'allocsub_%s' % x[4:]))
-    def ida_code_refs_to(self):
-        return self._wrap(self._flatten(_(_asList(self.obj)).map(lambda x, *y: _asList(idautils.CodeRefsTo(x, 0))), shallow=True))
 
-    def ida_func_start(self):
-        return self._wrap(self._flatten(_(_asList(self.obj)).map(lambda x, *y: GetFuncStart(x)), shallow=True))
+    if _ida:
+        def ida_code_refs_to(self):
+            return self._wrap(self._flatten(_(_asList(self.obj)).map(lambda x, *y: _asList(idautils.CodeRefsTo(x, 0))), shallow=True))
 
-    def ida_decompile(self):
-        return self._wrap([str(idaapi.decompile(get_ea_by_any(e), hf=None, flags=idaapi.DECOMP_WARNINGS)) for e in self.obj])
+        def ida_func_start(self):
+            return self._wrap(self._flatten(_(_asList(self.obj)).map(lambda x, *y: GetFuncStart(x)), shallow=True))
 
-    def ida_xrefs_to(self):
-        return self._wrap([_us_xrefs_to(get_ea_by_any(e)) for e in self.obj])
+        def ida_decompile(self):
+            return self._wrap([str(idaapi.decompile(get_ea_by_any(e), hf=None, flags=idaapi.DECOMP_WARNINGS)) for e in self.obj])
 
-    def ida_all_xrefs_from(self):
-        def iter(x):
-            if x[2] == 'fl_CN':
-                return x[0]
-            return None
-        return self._wrap(_.uniq(_.filter(self._flatten(self.obj + [all_xrefs_from(get_ea_by_any(e), iteratee=iter) for e in self.obj]), lambda x, *a: x)))
+        def ida_xrefs_to(self):
+            return self._wrap([_us_xrefs_to(get_ea_by_any(e)) for e in self.obj])
+
+        def ida_all_xrefs_from(self):
+            def iter(x):
+                if x[2] == 'fl_CN':
+                    return x[0]
+                return None
+            return self._wrap(_.uniq(_.filter(self._flatten(self.obj + [all_xrefs_from(get_ea_by_any(e), iteratee=iter) for e in self.obj]), lambda x, *a: x)))
 
     def where(self, attrs=None, first=False):
         """
@@ -1004,7 +1015,7 @@ class underscore(object):
         if(self._clean.isDict()):
             return self._wrap(list())
 
-        cloned = self.obj[:]
+        cloned = _values(self.obj)
 
         random.shuffle(cloned)
         return self._wrap(cloned)
@@ -1132,7 +1143,7 @@ class underscore(object):
         > grouper(3, 'abcdefg', 'x') --> ('a','b','c'), ('d','e','f'), ('g','x','x')
         """
         # from itertools import zip_longest # for Python 3.x
-        from six.moves import zip_longest # for both (uses the six compat library)
+        # from six.moves import zip_longest # for both (uses the six compat library)
         return zip_longest(*[iter(self.obj)]*n, fillvalue=fillvalue)
 
     def indexBy(self, val=None):

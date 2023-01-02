@@ -167,26 +167,26 @@ def PrevMakeHead(ea=None):
         failed = False
         end = start + length
         if end != ea and end != next_code_ea:
-            print("  bad end: {:x} {}".format(end, suggestion))
+            if debug: print("  bad end: {:x} {}".format(end, suggestion))
             continue
         for mnem in unlikely:
             if re.match(r'\b' + re.escape(mnem) + '\b', suggestion):
-                print("  rejected unlikely: {}".format(suggestion))
+                if debug: print("  rejected unlikely: {}".format(suggestion))
                 failed = True
                 break
         if failed:
             continue
 
         if count == 0:
-            print("  Easing code {:x} - {:x}".format(start, ea))
+            if debug: print("  Easing code {:x} - {:x}".format(start, ea))
             new_start = start
             while new_start < ea:
                 new_start = EaseCode(start, ea, forceStart=True)
                 if new_start == start:
-                    print("  Got stuck at {:#x}".format(start))
+                    if debug: print("  Got stuck at {:#x}".format(start))
                     return
                 start = new_start
-            print("huh... happy?")
+            if debug: print("huh... happy?")
             return
 
         count += 1
@@ -764,10 +764,30 @@ def color_patches():
     p = ProgressBar(count)
     idaapi.visit_patched_bytes(0, idaapi.BADADDR, color_patched_byte)
 
+
+def get_cmt_patch_ranges(ea=None):
+    """
+    get_cmt_patch_ranges
+
+    @param ea: linear address
+    """
+    if isinstance(ea, list):
+        return [get_cmt_patch_ranges(x) for x in ea]
+
+    ea = eax(ea)
+
+    s = [x.split('–') for x in re.findall(r'14[0-9a-f]{7}(?:–14[0-9a-f]{7})?', idc.get_cmt(ea, 0))]
+    h = _.map(s, lambda v, *a: _.map(v, lambda v, *a: parseHex(v)))
+    gr = GenericRanges([], cmp=overlaps)
+    for cs, *a in h:
+        ce = _.first(a, default=cs)
+        gr.add((cs, ce + 1))
+
+    return gr
         
 patchedBytes=[]
 
-def FindPatchedBy(pattern='Pateched by: ', return_addrs=False, return_all=False):
+def FindPatchedBy(pattern='Patched by: ', return_addrs=False, return_all=False):
     patchedBytes=[]
 
     def get_patch_byte(ea, fpos, org_val, patch_val):
@@ -871,13 +891,7 @@ def unpatch_all():
             # idaapi.patch_byte(x, y)
     # return patchedBytes
 
-class Namespace(object):
-
-    """ For simulating full closure support
-    """
-    pass
-
-def get_patches():
+def get_patches(minea=0, maxea=idc.BADADDR):
     ns = Namespace()
     ns.patchedBytes = defaultdict(bytearray)
     ns.lastEa = None
@@ -892,7 +906,7 @@ def get_patches():
         ns.patchedBytes[ns.firstEa].append(patch_val)
 
 
-    idaapi.visit_patched_bytes(0, idaapi.BADADDR, get_patch_byte)
+    idaapi.visit_patched_bytes(minea, maxea, get_patch_byte)
     return ns.patchedBytes
     # return pickle.dumps( ns.patchedBytes ).hex()
 
@@ -1923,6 +1937,10 @@ def pprev(ea=None, data=0, stop=None, depth=0, show=0, quiet=0, short=0, count=8
 
             if not self.data:
                 xrefs = [x for x in xrefs if not x.type.startswith('dr_')]
+            else:
+                for x in xrefs:
+                    if eafn(x.frm).startswith('ArxanCheck_'):
+                        x.frm = eax(eafn(x.frm).replace('ArxanCheck_', 'TheJudge_'))
 
             r = {False: [], True: []}
             _.extend(r,  _.groupBy(xrefs, lambda x, *a: x.frm in self.visited))
@@ -2065,7 +2083,16 @@ def pprev(ea=None, data=0, stop=None, depth=0, show=0, quiet=0, short=0, count=8
                     return short_return
                 if i > count:
                     return short_return
-            if not quiet: print("[pprev]{:3} path_ea: {}, ea: {:11} {} col: #{:06x} sub: {}".format(path.depth, hex(path_ea), str(hex(ea)), path.terminated, 0xffffff & idc.get_color(path_ea, CIC_ITEM), ean(GetFuncStart(ea)) if IsFunc_(ea) else ''))
+            if not quiet: 
+                print("[pprev]{:3} {} {:11} {:<5} {:6} sub: {}:{}".format(
+                    path.depth,
+                    hex(path_ea),
+                    str(hex(ea)),
+                    str(path.terminated)[0:5],
+                    ahex(0xffffff & idc.get_color(path_ea, CIC_ITEM))[2:] if idc.get_color(path_ea, CIC_ITEM) != 0xffffffff else '',
+                    eafn(path_ea),
+                    ean(path_ea))
+                )
             if CallRefsTo(path_ea):
                 caller = _.first(A(CallRefsTo(path_ea)))
                 _diida = diida_cmts(caller)

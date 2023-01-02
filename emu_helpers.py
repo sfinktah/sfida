@@ -332,7 +332,10 @@ def make_emu_patchfile(fn=None, outFilename=None, noImport=False, width=76):
                 "    from lzma import decompress",
                 "    min_ea = ida_ida.cvar.inf.min_ea & ~0xffff",
                 "    max_ea = (ida_ida.cvar.inf.max_ea + 1) & ~0xffff",
-                "    unbase = lambda ea: ea - ida_ida.cvar.inf.min_ea + min_ea",
+                "    def unbase(a):",
+                "        if isinstance(a, int): a = [a]",
+                "        if len(a) > 1: return [ea - {:#x} + min_ea for ea in a]".format(ida_ida.cvar.inf.min_ea),
+                "        else: return a[0] - {:#x} + min_ea".format(ida_ida.cvar.inf.min_ea),
                 "    put64 = lambda ea, b64: put_bytes(unbase(ea), b64decode(b64))",
                 "    lzp64 = lambda ea, b64: put_bytes(unbase(ea), decompress(b64decode(b64)))",
                 ""
@@ -416,7 +419,26 @@ def make_all_patchfile(outFilename=None, noImport=False, width=76):
     if not noImport:
         result = [
                 "def base64_patch_tmp():",
-                "    import idc, ida_ida, idautils, idaapi, pickle",
+                "    import idc, ida_ida, idautils, ida_segment, idaapi, pickle",
+
+                #  "    def AddRelocSegment(start_ea = None, size = 0x1000000, base = 1, use32 = 2, align = 3, comb = 2, flags = 0x20):",
+                #  "        if idc.selector_by_name('.text2') != BADADDR:",
+                #  "            return False",
+                #  "        if start_ea is None:",
+                #  "            existing_segment_starts = idautils.Segments()",
+                #  "            existing_segment_ends = [idc.get_segm_end(x) for x in existing_segment_starts]",
+                #  "            start_ea = max(existing_segment_ends)",
+                #  "        s = ida_segment.segment_t()",
+                #  "        s.start_ea = start_ea",
+                #  "        s.end_ea   = start_ea + size",
+                #  "        s.sel      = ida_segment.setup_selector(base)",
+                #  "        s.bitness  = use32",
+                #  "        s.align    = align",
+                #  "        s.comb     = comb",
+                #  "        s.perm     = 7",
+                #  "        r = ida_segment.add_segm_ex(s, '.text2', 'CODE', flags)",
+                #  "        idc.set_segm_type(start_ea, idc.SEG_CODE)",
+                #  "",
                 "    from base64 import b64decode as b",
                 "    from ida_bytes import put_bytes, patch_bytes",
                 "    from lzma import decompress as d",
@@ -428,7 +450,9 @@ def make_all_patchfile(outFilename=None, noImport=False, width=76):
                 "        else: return a[0] - {:#x} + min_ea".format(ida_ida.cvar.inf.min_ea),
                 "    def lzp64(b64):",
                 "        for ea, p in pickle.loads(d(b(b64))).items():",
-                "            patch_bytes(unbase(ea), bytes(p))"
+                "            patch_bytes(unbase(ea), bytes(p))",
+                #  "",
+                #  "    AddRelocSegment()",
                 "",
                 ]
     else:
@@ -1148,6 +1172,3 @@ match_emu(ea=0x13fffffff)
 if not getglobal('emu_stacks', None):
     for fn in glob(os.path.join(os.path.dirname(idc.get_idb_path()), 'gtasc-*balance.txt')):
         emu_stacks = read_uc_emu_stack(fn)
-
-
-

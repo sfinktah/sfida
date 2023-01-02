@@ -110,6 +110,8 @@ filenames = [
             "di.py",
             "nasm.py",
             "sfida/sf_common.py",
+            "checksum_colors.py",
+            "checksummer.py",
             "braceexpand.py",
             "JsonStoredList.py",
             "keypatch.py",

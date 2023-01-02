@@ -142,17 +142,18 @@ class BitwiseMask(object):
 
         # https://stackoverflow.com/questions/2936863/implementing-slicing-in-getitem
         if isinstance(key, slice):
+                    #  [self.bitget(i) for i in range(*key.indices(len(self._set)*8))]
             if isinstance(value, list):
-                for i in range(*key.indices(len(self._set)*8)):
-                    self.bitset(i, value[i]) 
+                for src, dst in enumerate(range(*key.indices(len(self._set)*8))):
+                    self.bitset(dst, value[src]) 
             elif isinstance(value, int):
                 lr = len(range(*key.indices(len(self._set)*8)))
                 # pad value, incase it isn't large enough
                 value = [False] * lr + [True if x == '1' else False for x in bin(value)[2:]]
                 value = value[-lr:]
                 
-                for i in range(*key.indices(len(self._set)*8)):
-                    self.bitset(i, value[i]) 
+                for src, dst in enumerate(range(*key.indices(len(self._set)*8))):
+                    self.bitset(dst, value[src]) 
             return
 
         self.bitset(key, value)
@@ -467,7 +468,7 @@ class BitwiseMask(object):
         if not isinstance(hex_list, list):
             hex_list = [hex_list]
         for l in hex_list:
-            result.extend([_hex_byte(item) for item in l.split(" ")])
+            result.extend([_hex_byte(item) for item in l.split(" ") if item])
         return result
 
 def BitwiseMasks(count, *args, **kwargs):

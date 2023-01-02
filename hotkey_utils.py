@@ -1333,7 +1333,7 @@ def hotkey_find_pattern(pattern, limit=2, start=0, end=BADADDR):
 
 def binary_search_pattern_len(pattern, quick=False):
     if debug: print(" %% checking entire pattern is unique %s (%i bytes)" % (pattern[0:72], len(pattern) / 3))
-    count = len(FindInSegments(pattern, None, 2))
+    count = len(list(FindInSegments(pattern, None, 2)))
     if debug:
         if count > 1:
             print(" %% pattern was found %i times" % count)
@@ -1349,7 +1349,7 @@ def binary_search_pattern_len(pattern, quick=False):
     limit = 64 * 3
     if best_size > 99:
         if debug: print(" %% checking small pattern is unique %s (%i bytes)" % (pattern[0:24], limit // 3))
-        count = len(FindInSegments(pattern[0:limit], None, 2))
+        count = len(list(FindInSegments(pattern[0:limit], None, 2)))
 
         if count == 1:
             if debug: print(" %% it was")
@@ -1375,7 +1375,7 @@ def binary_search_pattern_len(pattern, quick=False):
             return reduce_start(pattern[0:3 * seq[best_match] - 1])
         m = (min + max) // 2
         #  print("(%i, %i, %i)" % (min, m, max))
-        r = len(FindInSegments(pattern[0:3 * seq[m] - 1], None, 2))
+        r = len(list(FindInSegments(pattern[0:3 * seq[m] - 1], None, 2)))
         #  print("(%i, %i, %i): %i" % (min, m, max, r))
         if r > t:
             min = m + 1
@@ -1394,7 +1394,7 @@ def reduce_start(pattern):
     print("reduce_start", pattern)
     match = pattern
     last_match = match
-    while len(FindInSegments(match, None, 2)) == 1:
+    while len(list(FindInSegments(match, None, 2))) == 1:
         #  print("match: {}".format(match))
         last_match = match
         match = match[3:]

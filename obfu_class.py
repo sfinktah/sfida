@@ -20,6 +20,7 @@ class BasicPattern(object):
     def __init__(self):
         self.used = 0
         self.tried = 0
+        self.insn_matches = set()
     pass
 
 class PatternResult(object):
@@ -421,7 +422,7 @@ class Obfu(object):
             ), **kwargs
         )
 
-    def append_bitwise(self, search, mask, bitmask, replFunc, brief='unlabeled', safe=False, group=None, **kwargs):
+    def append_bitwise(self, search, mask, bitmask, replFunc, brief, safe=False, group=None, **kwargs):
         #  printi("append: \"{}\", <<{}>>, <<{}>>, {}".format(brief, search, repl, replFunc))
         if str(search) in self.patternSet:
             found = _.find(self.patterns, lambda v, k, l: v.search == search)
@@ -589,6 +590,10 @@ class Obfu(object):
             if obfu_debug: printi("targetRanges: {}".format(targetRanges))
             if obfu_debug: printi("oriTargetRanges: {}".format(oriTargetRanges))
 
+            if is_int3:
+                for r in targetRanges:
+                    PatchNops(r.start, r.length, 'prenup', nop=0xc3, ease=0)
+
             # if obfu_debug: printi("targetRanges", targetRanges)
 
             if isinstance(_repl, list):
@@ -671,7 +676,6 @@ class Obfu(object):
                                 no_trailing_ret = True
                             else:
                                 pad_tail = 1
-                        targetRanges0 = targetRanges[0]
                         found = None
                         i = -1
                         for asm, next_asm in stutter_chunk(_repl, 2, 1):
@@ -720,7 +724,12 @@ class Obfu(object):
                                 idx = targetRanges.index(found)
                                 last_for_range = last_for_range or idx != idx2
                                     
-                                r = targetRanges[idx]
+                                if idx:
+                                    # not using previous ranges 
+                                    [PatchNops(r.start, r.length, 'skipped') for r in targetRanges[0:idx]]
+                                    targetRanges = targetRanges[idx:]
+                                    
+                                r = targetRanges[0]
                                 # spread reversed asm to beginning and start of range where possible
                                 if reverse: # and not last_for_range:
                                     target = r.trend - length
@@ -747,11 +756,11 @@ class Obfu(object):
                                 else:
                                     r.start += length
                                 #  r.length -= length;
-                                if idx > 0:
-                                    # we have skipped to the next range, marked the rest
-                                    # of the previous range as used
-                                    usedRanges.extend(targetRanges[0:idx])
-                                    targetRanges = targetRanges[idx:]
+                                #  if idx > 0:
+                                    #  # we have skipped to the next range, marked the rest
+                                    #  # of the previous range as used
+                                    #  usedRanges.extend(targetRanges[0:idx])
+                                    #  targetRanges = targetRanges[idx:]
                                 #  no need to do this
                                 #  # yes, this is safe and works. r is like an magic c++ iterator
                                 #  if r.length < 1:
@@ -792,13 +801,18 @@ class Obfu(object):
                             setglobal('oriTargetRanges', oriTargetRanges)
                             setglobal('patchedRanges', patchedRanges)
 
+                        # finish rest of targetRanges
+                        if not is_int3:
+                            [PatchNops(r.start, r.length, 'unused-after') for r in targetRanges if r.length]
+                            targetRanges.clear()
+                            
                         #  if reverse:
-                        _usedRanges = str(usedRanges)
-                        for r in usedRanges:
-                            PatchNops(r.start, r.length, patternComment + " usedRanges *["+str(r)+"]* " +  _usedRanges, ease=1)
-                        _targetRanges = str(targetRanges)
-                        for r in targetRanges:
-                            PatchNops(r.start, r.length, patternComment + " targetRanges *["+str(r)+"]* " + _targetRanges, ease=1)
+                        #  _usedRanges = str(usedRanges)
+                        #  for r in usedRanges:
+                            #  PatchNops(r.start, r.length, patternComment + " usedRanges *["+str(r)+"]* " +  _usedRanges, ease=1)
+                        #  _targetRanges = str(targetRanges)
+                        #  for r in targetRanges:
+                            #  PatchNops(r.start, r.length, patternComment + " targetRanges *["+str(r)+"]* " + _targetRanges, ease=1)
 
                         # d = difference(oriTargetRanges, patchedRanges, ordered=1) # usedRanges
                         # dprint("[process_replacement] difference")
@@ -1305,7 +1319,17 @@ class Obfu(object):
                 new_combed.extend([x for x in comb if c.start <= x[0] < c.trend])
         comb[:] = new_combed
 
-    def patch(self, ea, length=None, context=None, comb=None, depth=0):
+    def patch(self, ea, length=None, context=None, comb=None, depth=0, repeat=False):
+        if repeat:
+            result = []
+            tmp = self.patch(ea, length, context, comb, depth, repeat=False)
+            while tmp:
+                result.extend(A(tmp))
+                tmp = self.patch(ea, length, context, comb, depth, repeat=False)
+            return result
+
+
+
         self._depth = depth
         self.prep_groups()
         # check_for_update()
@@ -1354,23 +1378,29 @@ class Obfu(object):
         results = []
         matched = []
         patchedAddresses = []
+        preview = insn_preview(ea, returnOutput=1)
         with PerfTimer('obfu.patch.patterns_bitwise'):
+            _addressList = list(addressList)
+            _addressListWithNops = list(addressListWithNops)
+            _addressListFull = list(addressListFull)
             for pattern in self.patterns_bitwise:
                 # self.patterns_bitwise.append([search, mask, replFunc, notes, safe])
                 # result = self.replace_pattern_bitwise(pattern[0], pattern[1], pattern[2], pattern[3], list(addressList), ea, list(addressListWithNops), pattern[4], pattern[5])
-                result = self.replace_pattern_bitwise(pattern, ea, list(addressList), list(addressListWithNops), list(addressListFull))
+                result = self.replace_pattern_bitwise(pattern, ea, _addressList, _addressListWithNops, _addressListFull)
                 pattern.tried += 1
                 if result:
                     pattern.used += 1
+                    pattern.insn_matches.add(preview)
+                    if obfu_debug: print('result2 {}: {}'.format(preview, pattern.brief))
                     if 'result' in result and 'patchedAddresses' in result['result']:
                         patchedAddresses.extend(result['result']['patchedAddresses'])
                     matched.append(pattern.brief)
                     # self.combed.clear()
-                    self.update_combed(patchedAddresses)
+                    # self.update_combed(patchedAddresses)
                     count += 1
                     if obfu_debug: printi("found bitwise pattern")
 
-                    self.update_combed(patchedAddresses)
+                    # self.update_combed(patchedAddresses)
                     # return results
                     return PatternResult(pattern, result)
 
@@ -1395,31 +1425,35 @@ class Obfu(object):
                 groups_matched += 1
                 with PerfTimer('obfu.patch.groups_matches'):
                     if obfu_debug: printi("[Obfu::_patch] group:    {} group._size: {}".format(group, group._size))
-                    for pat in _.sortBy(self.groups[group], 'priority'):
-                        if obfu_debug: printi("[Obfu::_patch] checking: {}".format(pat.brief))
+                    for pattern in _.sortBy(self.groups[group], 'priority'):
+                        if obfu_debug: printi("[Obfu::_patch] checking: {}".format(pattern.brief))
                         searches += 1
 
-                        q = [pat]
+                        q = [pattern]
                         while q and not count:
-                            pat = q.pop(0)
+                            pattern = q.pop(0)
                             if obfu_debug: printi("addressList[{}]: {}".format(addrLen, hex(GenericRanger(addressList, sort=0))))
 
-                            with PerfTimer('obfu.patch.pattern.{}'.format(pat.brief)):
-                                result = self.replace_pattern_ex(tuple(pat.search), tuple(pat.repl), pat.replFunc, pat.searchIndex, pat.brief,
-                                                                 list(addressList), ea, list(addressListWithNops), list(addressListFull), pat.safe, pat=pat, context=context)
-                            pat.tried += 1
+                            # result = None
+                            with PerfTimer('obfu.patch.pattern.{}'.format(pattern.brief)):
+                                result = self.replace_pattern_ex(tuple(pattern.search), tuple(pattern.repl), pattern.replFunc, pattern.searchIndex, pattern.brief,
+                                                                 list(addressList), ea, list(addressListWithNops), list(addressListFull), pattern.safe, pat=pattern, context=context)
+                                if result:
+                                    if obfu_debug: print('result1 {}: {}'.format(preview, pattern.brief))
+                                    pattern.used += 1
+                                    pattern.insn_matches.add(preview)
+                            pattern.tried += 1
                             if result:
-                                with PerfTimer('obfu.patch.pattern_used.{}'.format(pat.brief)):
-                                    pat.used += 1
+                                with PerfTimer('obfu.patch.pattern_used.{}'.format(pattern.brief)):
                                     if 'result' in result and 'patchedAddresses' in result['result']:
                                         patchedAddresses.extend(result['result']['patchedAddresses'])
                                     count += 1
                                     if obfu_debug:
                                         printi("result! count: {}".format(count))
                                     #  self.combed.clear()
-                                    results.append(PatternResult(pat, result))
-                                    matched.append(pat)
-                                    then = getattr(pat.options, 'then', None)
+                                    results.append(PatternResult(pattern, result))
+                                    matched.append(pattern)
+                                    then = getattr(pattern.options, 'then', None)
                                     if not then:
                                         break
                                     _q = []
@@ -1435,10 +1469,10 @@ class Obfu(object):
                             
             if count:
                 #  self.combed.clear()
-                if comb:
-                    self.update_combed(patchedAddresses, comb)
-                else:
-                    self.update_combed(patchedAddresses)
+                #  if comb:
+                    #  self.update_combed(patchedAddresses, comb)
+                #  else:
+                    #  self.update_combed(patchedAddresses)
                 if obfu_debug: 
                     # dprint("[patch] results")
                     print("[patch] results:{}".format(results))
@@ -1482,3 +1516,27 @@ class Obfu(object):
                 eip = NextNotTail(eip)
                 break
                 if idc.is_code(idc.get_full_flags(eip)) or eip >= end: break
+
+
+    def avg(self, match='', count=40):
+        results = []
+        for pattern in self.patterns + self.patterns_bitwise:
+            if not match or re.match(match, pattern.brief):
+                results.append((pattern.tried, pattern.used, pattern.used / max(1, pattern.tried), "{:10} {:10} {:14,.2f} {}".format(pattern.tried, pattern.used, 100 * pattern.used / max(1, pattern.tried), pattern.brief)))
+
+        group_results = []
+
+        if results:
+            group_results.append("--------------------------------------[BY TRIED]-----------------------------------------------")
+            for result in _.head(_.reverse(_.sortBy(results, lambda v, *a: v[0])), count >> 1):
+                group_results.append(result[-1])
+            group_results.append("--------------------------------------[BY USED]------------------------------------------------")
+            for result in _.head(_.reverse(_.sortBy(results, lambda v, *a: v[1])), count >> 1):
+                group_results.append(result[-1])
+            group_results.append("--------------------------------------[BY PCNT]------------------------------------------------")
+            for result in _.head(_.sortBy(results, lambda v, *a: v[2]), count >> 1):
+                if result[0]:
+                    group_results.append(result[-1])
+
+            # print("\n".join(_.uniq(group_results)))
+            print("\n".join((group_results)))

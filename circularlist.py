@@ -49,6 +49,7 @@ class CircularList(object):
             self.size = size
             self._data = list(data)[-size:]
         self.end = len(self._data) % self.size
+        self.on_remove = None
 
     def clear(self):
         self.__init__(self.size)
@@ -103,6 +104,8 @@ class CircularList(object):
     def append(self, value):
         """Append an element"""
         if len(self._data) == self.size:
+            if callable(self.on_remove):
+                self.on_remove(self._data[self.end])
             self._data[self.end] = value
         else:
             self._data.insert(self.end, value)

@@ -88,7 +88,7 @@ def nasm64(ea, string, quiet=False):
         if nasm_debug: print("cached: '{}'".format(ori_string))
         return nasm_cache[ori_string]
     else:
-        print("[nasm64] not cached: '{}'".format(ori_string))
+        if nasm_debug: print("[nasm64] not cached: '{}'".format(ori_string))
 
     options = dict()
     for line in string.split('\n'):

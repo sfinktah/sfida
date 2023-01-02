@@ -444,10 +444,8 @@ class GenericRanges:
         if isinstance(item, int):
             right = self.genericRanges.bisect_left((item, item)) + 1
             left = right - 2
-            right = min(right, len(self))
+            right = min(right, len(self.genericRanges))
             left = max(0, left)
-            if left < 0:
-                left = 0
             for i in range(left, right):
                 try:
                     r = self.genericRanges[i]
@@ -456,7 +454,9 @@ class GenericRanges:
                     print("[__indexOf__] i: {}, left: {}, right: {}, len(self): {}, len(self.genericRanges): {}".format(i, left, right, len(self), len(self.genericRanges)))
                     raise
 
-                if get_start(r) <= item < get_last(r):
+                #  if get_start(r) <= item < get_last(r):
+                #  if self.cmp(r, (item, item)):
+                if overlaps(r, (item, item + 1)):
                     return i
         else:
             right = self.genericRanges.bisect_left((item)) + 1
@@ -486,7 +486,14 @@ class GenericRanges:
         return ~self.__indexOf__(item)
     
     def append(self, object):
+        #  if not IsValidEA(object):
+            #  print("GenericRanges::append: InvalidEA({})".format(ahex(object)))
+            #  return
         object = (get_start(object), get_last(object) + 1)
+        if object[1] <= object[0]:
+            raise ValueError("{} <= {}".format(ahex(object[1]), ahex(object[0])))
+        if object[1] - object[0] > 65535:
+            raise ValueError("{} - {} > 64k".format(ahex(object[1]), ahex(object[0])))
 
         if isinstance(self.genericRanges, list):
             idx = indexOfSet(self.genericRanges, object, self.cmp)
@@ -499,22 +506,39 @@ class GenericRanges:
                         self.genericRanges.pop(idx+1)
                     return
         else:
-            if object in self.genericRanges:
-                overlapping = filterSet(self.genericRanges, object, self.cmp)
-                if overlapping:
-                    new = object
-                    for r in overlapping:
-                        new = union(r, object)
-                        self.genericRanges.remove(r)
-                    self.genericRanges.add(new)
-                    return
-                else:
-                    raise RuntimeError('This point should never be reached')
+            left = self.genericRanges.bisect_left((get_start(object), get_start(object) + 1)) - 1
+            right = self.genericRanges.bisect_left((get_last(object) + 1, get_last(object) + 2)) + 1
+            right = min(right, len(self.genericRanges))
+            left = max(0, left)
+            overlapping = filterSet(self.genericRanges[left:right], object, self.cmp)
+            if overlapping:
+                new = object
+                for r in overlapping:
+                    new = union(r, object)
+                    self.genericRanges.remove(r)
+                self.genericRanges.add(new)
+                return
 
         # self.genericRanges.append(object)
         self.genericRanges.add(object)
         # TODO: replace with lowerbounds insert
         self.sort()
+
+    def intersection(self, object):
+        left = self.genericRanges.bisect_left((get_start(object), get_start(object) + 1)) - 1
+        right = self.genericRanges.bisect_left((get_last(object) + 1, get_last(object) + 2)) + 1
+        right = min(right, len(self.genericRanges))
+        left = max(0, left)
+        overlapping = filterSet(self.genericRanges[left:right], object, overlaps)
+        if overlapping:
+            new = set()
+            for r in overlapping:
+                new.update([x for x in range(get_start(r), get_last(r) + 1)])
+            # dprint("[debug] new, object")
+            print("[debug] new: {}, object: {}".format(ahex(new), ahex(object)))
+            
+            return new.intersection([x for x in range(get_start(object), get_last(object) + 1)])
+
 
     def clear(self):
         self.genericRanges.clear()
@@ -527,7 +551,7 @@ class GenericRanges:
     
     def extend(self, iterable):
         self.genericRanges += SortedList([(get_start(x), get_last(x) + 1) for x in iterable])
-        self.optimize()
+        self.optimize(quiet=True)
 
         # very slow
         #  for item in iterable:
@@ -570,17 +594,30 @@ class GenericRanges:
         found = self.find(value)
         if found:
             self.genericRanges.remove(found)
+            if found in self:
+                print("remove failed for {}".format(ahex(found)))
+                idx = self.__indexOf__(value)
+                if ~idx:
+                    del self[idx]
+                    if found in self:
+                        print("remove failed for {} (by index)".format(ahex(found)))
+                    else:
+                        print("remove succeeded for {} (by index)".format(ahex(found)))
     
     def asTuples(self):
         for r in self.genericRanges:
             yield r
 
-    def optimize(self):
+    def optimize(self, quiet=False):
         self.sort()
 
         starting_len = len(self.genericRanges)
 
         def by(memo, r, i):
+            if r[1] <= r[0]:
+                return memo
+            if r[1] - r[0] > 65535:
+                return memo
             if memo:
                 last = memo[-1]
                 if self.cmp(last, r):
@@ -595,7 +632,7 @@ class GenericRanges:
 
         self.genericRanges = type(self.genericRanges)(_.reduce(self.genericRanges, by, []))
         final_len = len(self.genericRanges)
-        if (final_len != starting_len):
+        if not quiet and (final_len != starting_len):
             print('self.optimize: reduced from {} to {} items'.format(starting_len, final_len))
 
 
