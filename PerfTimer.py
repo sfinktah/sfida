@@ -41,6 +41,7 @@ def perf_timed(*args, **kwargs):
 class PerfTimer(object):
     #  _start_times = getglobal('_perftimer._start_times', type, dict, _set=True)
     #  _stop_times = getglobal('_perftimer._stop_times', type, dict, _set=True)
+    subtract = False
     _counts = getglobal('_perftimer._count', defaultdict(list), defaultdict, _set=True)
     _depth = []
 
@@ -100,12 +101,14 @@ class PerfTimer(object):
         return self
 
     def pause(self):
-        self.stop_times.append(self.timer())
+        if self.subtract:
+            self.stop_times.append(self.timer())
         return self
 
 
     def resume(self):
-        self.start_times.append(self.timer())
+        if self.subtract:
+            self.start_times.append(self.timer())
         return self
 
 
@@ -138,11 +141,13 @@ class PerfTimer(object):
     @classmethod
     def avg(cls, match='', count=40):
         results = []
+        total_time = 0
         for name, counts in cls._counts.items():
             if not match or re.match(match, name):
                 length = len(counts)
                 if length:
                     total = sum(counts) / (10 ** 6)
+                    total_time += total
                     avg = total / length
                     results.append((avg, total, length, "{:60}  {:14,.2f}  {:14,.3f}  {:11}".format(name, total, avg, length)))
 
@@ -155,9 +160,11 @@ class PerfTimer(object):
             group_results.append("--------------------------------------[BY TOTAL]----------------------------------------------")
             for result in _.head(_.reverse(_.sortBy(results, lambda v, *a: v[1])), count >> 1):
                 group_results.append(result[-1])
-            group_results.append("--------------------------------------[BY COUNT]----------------------------------------------")
-            for result in _.head(_.reverse(_.sortBy(results, lambda v, *a: v[2])), count >> 1):
-                group_results.append(result[-1])
+            #  group_results.append("--------------------------------------[BY COUNT]----------------------------------------------")
+            #  for result in _.head(_.reverse(_.sortBy(results, lambda v, *a: v[2])), count >> 1):
+                #  group_results.append(result[-1])
+            group_results.append("--------------------------------------[TOTAL TIME]--------------------------------------------")
+            group_results.append("{:.2f} seconds".format(total_time / (10 ** 3)))
 
             # print("\n".join(_.uniq(group_results)))
             print("\n".join((group_results)))

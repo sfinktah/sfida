@@ -441,7 +441,7 @@ def label_stkvar(offset, name, ea=None, vu=None):
     if old_name:
         if old_name == name:
             return old_name
-        print("renaming {} to {}".format(old_name, name))
+        print("[label_stkvar] renaming {} to {}".format(old_name, name))
         if idc.set_member_name(sid, offset, name):
             return old_name
     else:
@@ -657,7 +657,7 @@ def get_pseudocode_vu(ea, vu):
 def _rename_lvar(old, new, ea, uniq=0, vu=None):
     if old is None or new is None:
         print("return_if: old is None or new is None")
-        return 
+        return
     
     def make_unique_name(name, taken):
         if name not in taken:
@@ -689,26 +689,13 @@ def _rename_lvar(old, new, ea, uniq=0, vu=None):
             offset = lvar.get_stkoff() - vu.cfunc.get_stkoff_delta()
             old_name = label_stkvar(offset, new, ea=ea, vu=vu)
             if old_name:
-                print("renamed stack variable {} to {}".format(old_name, new))
+                print("[_rename_lvar] renamed stack variable {} to {}".format(old_name, new))
         else:
             print("lvar {} is not a stack variable, skipping stack rename".format(lvar.name))
         return vu.rename_lvar(lvar, new, 1)
     else:
         print("[_rename_lvar] couldn't find var '{}'".format(old))
-
-def label_stkvar(offset, name, ea=None, vu=None):
-    ea = get_ea_by_any(ea or vu)
-    
-    sid = idc.get_frame_id(ea)
-    old_name = idc.get_member_name(sid, offset)
-    if old_name:
-        if old_name == name:
-            return old_name
-        print("renaming {} to {}".format(old_name, name))
-        if idc.set_member_name(sid, offset, name):
-            return old_name
-    else:
-        print("couldn't get name from sid {:x}".format(sid))
+        return 0
 
 def get_type_tinfo(t):
     type_tuple = idaapi.get_named_type(None, t, 1)
@@ -1477,6 +1464,7 @@ def wrap_pattern(pattern, split=None):
         .replace(r'[::reference::]',                    r'(?:&)')             \
         .replace(r'[::reinterpret_pointer_cast::]',     r'(?:\*\([^)]+\*\))') \
         .replace(r'[::pointer_cast::]',                 r'(?:\([^)]+\*\))')   \
+        .replace(r'[::pointer_reference_cast::]',       r'(?:\([^)]+\*\)&)')  \
         .replace(r'[::static_cast::]',                  r'(?:\([^)]+\))')     \
         .replace(r'[::reference_cast::]',               r'(?:\([^)]+\)&)')    \
         .replace(r'[::reinterpet_cast::]',              r'(?:\*\([^)]+\)&)')  \
@@ -1633,6 +1621,7 @@ def decompile_function_for_common_renames(funcea=None, recurse=0, parents=None):
 def _end_():
     pass
 
+
 def rename_lvar_factory(*args, **kwargs):
     """
     @brief rename_lvar_factory
@@ -1654,10 +1643,10 @@ def rename_lvar_factory(*args, **kwargs):
 
     named_args = dict()
     for arg in args:
-        if len(named_args) in (0,) and contents(arg, (int,)):
+        if not named_args and contents(arg, (int,)):
             named_args['indexes'] = A(arg)
-        elif len(named_args) in (0,1):
-            if contents(arg, (str, type(None))):
+        if len(named_args) in (0, 1):
+            if contents(arg, (str,)):
                 named_args['names'] = A(arg)
                 if 'indexes' not in named_args:
                     named_args['indexes'] = range(len(named_args['names']))
@@ -1691,12 +1680,14 @@ def rename_lvar_factory(*args, **kwargs):
         # dprint("[replace_subpatterns] m")
         print("[replace_subpatterns] name:{} m:{}, type(m):{}".format(name, m, type(m)))
         return re.sub(r'\\(\d+)', lambda x: m[int(x[0][1:])], name)
-        
 
     def fn_rename_lvar(*args, **kwargs):
         ea = kwargs['ea']
         vu = kwargs['vu']
         if len(args) > len(names):
+            # dprint("[fn_rename_lvar] args")
+            print("[fn_rename_lvar] args[1:]: {}".format(args[1:]))
+            
             if args[1] in args[0] and len(args) - len(names) == 1:
                 args = args[1:]
             else:
@@ -1710,16 +1701,21 @@ def rename_lvar_factory(*args, **kwargs):
                     args = args[1:]
 
         for index, name, _type in zip(indexes, names, types):
-
-            # dprint("[fn_rename_lvar] index, name, _type")
-            print("[fn_rename_lvar] index:{}, name:{}, _type:{}".format(index, name, _type))
-            
-            if _type:
-                set_lvar_type(args[index], _type, ea, vu=vu)
-            if _type is None and isinstance(name, str):
-                old_name = args[index]
-                fnLoc = get_ea_by_any(old_name)
-                LabelAddressPlus(fnLoc, name)
+            # dprint("[debug] index, name, _type")
+            if debug: print("[fn_rename_lvar] index: {}, name: {}, _type: {}".format(ahex(index), ahex(name), ahex(_type)))
+                
+            if eax(args[index]):
+                if isinstance(name, str):
+                    old_name = args[index]
+                    fnLoc = get_ea_by_any(old_name)
+                    # dprint("[fn_rename_lvar] old_name, fnLoc, name")
+                    if debug: print("[fn_rename_lvar] old_name: {}, fnLoc: {}, name: {}".format(old_name, fnLoc, name))
+                    LabelAddressPlus(fnLoc, name)
+                if _type is not None: 
+                    idc.SetType(fnLoc, _type)
+            else:
+                if _type:
+                    set_lvar_type(args[index], _type, ea, vu=vu)
 
             if isinstance(name, int):
                 old_name = args[index]
@@ -1732,10 +1728,27 @@ def rename_lvar_factory(*args, **kwargs):
                 
                 LabelAddressPlus(fnLoc, new_name, force=1)
             else:
-                _rename_lvar(args[index], replace_subpatterns(name, args), ea, uniq=uniq, vu=vu)
+                # _rename_lvar(args[index], replace_subpatterns(name, args), ea, uniq=uniq, vu=vu)
+                options, name = string_between_splice('[', ']', name, inclusive=1, repl='')
+                if options:
+                    options = _.map(options.strip('[]').split(','), lambda v, *a:
+                            v + '=1' if '=' not in v else v)
+                    # dprint("[fn_rename_lvar] options")
+                    options = SimpleAttrDict(_.object([x.split('=', 1) for x in options]))
+                    print("[fn_rename_lvar] options: {}".format(options))
+                else:
+                    options = SimpleAttrDict()
+                    
+
+
+
+                rv = _rename_lvar(args[index], name, ea, uniq=uniq, vu=vu)
+                print("[fn_rename_lvar#4] args[index]: {}, ea: {}, name: {}, uniq: {}, rv: {}".format(args[index], ahex(ea), name, uniq, rv))
+                if not rv and options and options.map:
+                    map_lvar(args[index], name, ea, vu=vu)
+
 
     return fn_rename_lvar
-
 
 def decompile_native(ea = None):
     ea = eax(ea)
@@ -1777,7 +1790,7 @@ def decompile_native(ea = None):
         rules = [
                 #   v7 = args->pArgs;
                 (wrap_compile(r'([::v::]) = args->pArgs'), 2, 
-                    rename_lvar_factory(0, 'pArgs')),
+                    rename_lvar_factory('pArgs')),
 
                 #  v1 = v7->p1.Any != 0;
                 (wrap_compile(r'([::v::]) = \w+->(p\d+)\.\w+ != 0'), 3,
@@ -1830,90 +1843,18 @@ def decompile_rand(ea = None):
     fnName = idc.get_name(ea);
     # SetFuncFlags(ea, lambda f: (f & ~0x22) | 0x10 )
     with Pseudocode(ea) as vu:
-        def rename_lvar_factory(*args, **kwargs):
-            """
-            @brief rename_lvar_factory
-
-            @param indexes [optional,iterable] index(es) to use from array of names
-            @param names [iterable] name(s) matched by (usually a regex)
-            @param uniq [default:0] only perform replace once
-            @param type [default:None]
-
-            @return list of returns from set_lvar_type
-            """
-            # dprint("[debug] args, kwargs")
-
-            nargs = dict()
-            for arg in args:
-                if len(nargs) in (0,):
-                    if contents(arg, (int,)):
-                        nargs['indexes'] = A(arg)
-                if len(nargs) in (0,1):
-                    if contents(arg, (str,)):
-                        nargs['names'] = A(arg)
-                        if 'indexes' not in nargs:
-                            nargs['indexes'] = range(len(nargs['names']))
-
-            nargs['uniq'] = 0
-            nargs['type'] = None
-            nargs.update(kwargs)
-            from operator import itemgetter
-            d = nargs
-
-            indexes, names, types, uniq = itemgetter('indexes', 'names', 'type', 'uniq')(d)
-            if types is None:
-                types = [None] * len(names)
-            elif isinstance(types, str):
-                types = (types,)
-            elif not isinstance(types, tuple):
-                types = tuple(types)
-
-            def fn_rename_lvar(*args):
-                if len(args) > len(names):
-                    skip_first = 1
-                    print("[fn_rename_lvar2] args:   {}".format(args))
-
-                    for r in range(1, len(args)):
-                        if not args[r] in args[0]:
-                            skip_first = 0
-                    if skip_first:
-                        args = args[1:]
-
-                for index, name, _type in zip(indexes, names, types):
-                    if debug: print('i,n,t: {}, {}, {}'.format(index, name, _type))
-                    if _type is None and isinstance(name, str) and eax(args[index]):
-                        old_name = args[index]
-                        fnLoc = get_ea_by_any(old_name)
-                        LabelAddressPlus(fnLoc, name)
-                    if _type:
-                        set_lvar_type(args[index], _type, ea, vu=vu)
-                    if isinstance(name, int):
-                        old_name = args[index]
-                        fnLoc = get_ea_by_any(old_name)
-                        tag_string = TagGetTagSubstring(old_name)
-                        old_name = TagRemoveSubstring(old_name)
-                        new_name = string_between('', '_', old_name) + "_" + string_between('_', '', TagRemoveSubstring(idc.get_name(ea))) + tag_string
-                        # dprint("[debug] old_name, new_name")
-                        print("[debug] old_name:{}, new_name:{}".format(old_name, new_name))
-                        
-                        LabelAddressPlus(fnLoc, new_name, force=1)
-                    else:
-                        _rename_lvar(args[index], name, ea, uniq=uniq, vu=vu)
-
-            return fn_rename_lvar
-
         pattern_subs = [
                 # v56 = data_2->rand_base64_decoded_len.MatchingBits & data_2->rand_base64_decoded_len.Key | data_2->rand_base64_decoded_len.NonMatchingBits & ~data_2->rand_base64_decoded_len.Key;
                 # v57 = das                                          & data_2->rand_base64_decoded_len.Key | data_2->rand_base64_decoded_len.NonMatchingBits & ~data_2->rand_base64_decoded_len.Key;
                 # v54 = data_2->rand_base64_decoded_len.MatchingBits & data_2->rand_base64_decoded_len.Key | dans_4                                          & ~data_2->rand_base64_decoded_len.Key;
-                (wrap_compile(r'^\s+(v\d+) = .*(?:das\w*|MatchingBits) & .*Key \| .*(?:dans\w*|NonMatchingBits) & .*Key;'),                 2 , rename_lvar_factory(0, 'data')),
+                (wrap_compile(r'^\s+(v\d+) = .*(?:das\w*|MatchingBits) & .*Key \| .*(?:dans\w*|NonMatchingBits) & .*Key;'),                 2 , rename_lvar_factory('data')),
                 #     v37 = base64_decoded_len & prngSeed;
                 #     v38 = base64_decoded_len & ~prngSeed;
 
-                (wrap_compile(r'^\s+(v\d+) = \w+ & prngSeed;'),                 2 , rename_lvar_factory(0, 'das')),
-                (wrap_compile(r'^\s+(v\d+) = \w+ & ~prngSeed;'),                 2 , rename_lvar_factory(0, 'dans')),
+                (wrap_compile(r'^\s+(v\d+) = \w+ & prngSeed;'),                 2 , rename_lvar_factory('das')),
+                (wrap_compile(r'^\s+(v\d+) = \w+ & ~prngSeed;'),                 2 , rename_lvar_factory('dans')),
                 #     v34 = ~prngSeed;
-                (wrap_compile(r'^\s+(v\d+) = ~prngSeed;'),                 2 , rename_lvar_factory(0, 'ns')),
+                (wrap_compile(r'^\s+(v\d+) = ~prngSeed;'),                 2 , rename_lvar_factory('ns')),
         ]
 
         while True:
@@ -1989,89 +1930,6 @@ def decompile_arxan(ea = None):
                 print("Invalid retn destination: {:x}".format(deref))
             MemLabelAddressPlus(offLoc, "o_" + name.lower())
 
-        def rename_lvar_factory(*args, **kwargs):
-            """
-            @brief rename_lvar_factory
-
-            @param indexes [optional,iterable] index(es) to use from array of names
-            @param names [iterable] name(s) matched by (usually a regex)
-            @param uniq [default:0] only perform replace once
-            @param type [default:None]
-
-            @return list of returns from set_lvar_type
-            """
-            # dprint("[debug] args, kwargs")
-
-            nargs = dict()
-            for arg in args:
-                if len(nargs) in (0,):
-                    if contents(arg, (int,)):
-                        k
-                        nargs['indexes'] = A(arg)
-                if len(nargs) in (0,1):
-                    if contents(arg, (str,)):
-                        nargs['names'] = A(arg)
-                        if 'indexes' not in nargs:
-                            nargs['indexes'] = range(len(nargs['names']))
-
-            nargs['uniq'] = 0
-            nargs['type'] = None
-            nargs.update(kwargs)
-            from operator import itemgetter
-            d = nargs
-            # stmt = str(', '.join(d.keys())) + " = itemgetter(" + str(', '.join([repr(x) for x in d.keys()])) + ")(d)"
-            # print("exec: {}".format(stmt))
-            # rv = exec(stmt)
-            # print("rv {}".format(rv))
-
-            indexes, names, types, uniq = itemgetter('indexes', 'names', 'type', 'uniq')(d)
-            if types is None:
-                types = [None] * len(names)
-            elif isinstance(types, str):
-                types = (types,)
-            elif not isinstance(types, tuple):
-                types = tuple(types)
-
-            def fn_rename_lvar(*args):
-                if len(args) > len(names):
-                    skip_first = 1
-                    if debug: print("[fn_rename_lvar3] args:   {}".format(args))
-
-                    for r in range(1, len(args)):
-                        if not args[r] in args[0]:
-                            skip_first = 0
-                    if skip_first:
-                        args = args[1:]
-
-                for index, name, _type in zip(indexes, names, types):
-                    if debug: print('i,n,t: {}, {}, {}'.format(index, name, _type))
-                    if eax(args[index]):
-                        if isinstance(name, str):
-                            old_name = args[index]
-                            fnLoc = get_ea_by_any(old_name)
-                            # dprint("[fn_rename_lvar] old_name, fnLoc, name")
-                            if debug: print("[fn_rename_lvar] old_name: {}, fnLoc: {}, name: {}".format(old_name, fnLoc, name))
-                            LabelAddressPlus(fnLoc, name)
-                        if _type is not None: 
-                            idc.SetType(fnLoc, _type)
-                    else:
-                        if _type:
-                            set_lvar_type(args[index], _type, ea, vu=vu)
-                    if isinstance(name, int):
-                        old_name = args[index]
-                        fnLoc = get_ea_by_any(old_name)
-                        tag_string = TagGetTagSubstring(old_name)
-                        old_name = TagRemoveSubstring(old_name)
-                        new_name = string_between('', '_', old_name) + "_" + string_between('_', '', TagRemoveSubstring(idc.get_name(ea))) + tag_string
-                        # dprint("[debug] old_name, new_name")
-                        print("[debug] old_name:{}, new_name:{}".format(old_name, new_name))
-                        
-                        LabelAddressPlus(fnLoc, new_name, force=1)
-                    else:
-                        _rename_lvar(args[index], name, ea, uniq=uniq, vu=vu)
-
-            return fn_rename_lvar
-
         def test_multimatch(*args):
             # dprint("[test_multimatch] args")
             print("[test_multimatch] args:{}".format(args))
@@ -2084,7 +1942,10 @@ def decompile_arxan(ea = None):
             _rename_lvar(remain, 'remain', ea, vu)
 
 
-        suffix = re.sub(r'^[a-zA-Z]+', '', idc.get_name(ea))
+        suffix = idc.get_name(ea)
+        for prefix in ['Protected', 'Healed']:
+            suffix = suffix.replace(prefix + '_', '')
+        suffix = re.sub(r'^[a-zA-Z]+', '', suffix)
         pattern_subs = [
                 #  (wrap_compile(r'^\s+((?:ArxanGetNextRange|ArxanChecksumWorker)[^(), ]+)\([::static_cast::]*&(\w+), [::static_cast::]*&(\w+)\);') , 4 ,
                     #  rename_lvar_factory((ea, 'guide', 'range'), type=(None, 'uint8_t*', 'arxan_range'), uniq=1)),
@@ -2094,39 +1955,42 @@ def decompile_arxan(ea = None):
                 #(wrap_compile(r'^\s+(v\d+) [\^]= \*[::static_cast::]*(\w+);'),                                       3 , fn_vortex_1),
                 (wrap_compile(r'\b(o_|off_14[0-9A-F]{7})\b'),                                                        2 , fn_offset_1),
                 (wrap_compile(r'\b(o_+\d*)\b'),                                                                      2 , fn_offset_1),
-                (wrap_compile(r'^\s+if \( !([::v::]) && Zero \)'),                                                   1 , rename_lvar_factory(0, 'misdirection')),
+                #               if ( !v21 && Zero )
+                (wrap_compile(r'^\s+if \( !([::v::]) && Zero \)'),                                                   2 , rename_lvar_factory('misdirection')),
                 (wrap_compile(r'^\s+(\w+)\(ptr, ([::v::]), [::static_cast::]?([::v::])\);'),                         4 , rename_lvar_factory(('ArxanMemcpy', 'src', 'length'), type=(None, 'uint8_t*', 'uint32_t'), uniq=1)),
                 (wrap_compile(r'^\s+(\w+)\(ptr, \w+, [::static_cast::]?\w+\);'),                                     3 , rename_lvar_factory(('ArxanMemcpy'), type=(None), uniq=1)),
-                (wrap_compile(r'^\s+(v\d+) = 0i64;'),                                                                2 , rename_lvar_factory(0, '_align', uniq=1)),
-                (wrap_compile(r'^\s+([::v::]) = [::pointer_cast::]ArxanCheckFunction_\w+ - [::pointer_cast::]\w+;'), 2 , rename_lvar_factory(0, 'Zero', uniq=1)),
+                (wrap_compile(r'^\s+(v\d+) = 0i64;'),                                                                2 , rename_lvar_factory('_align', uniq=1)),
+                #               v10 = (char *)Protected_ArxanCheck_wall_town_air - (char *)o_arxancheck_wall_town_air;
+                (wrap_compile(r'^\s+([::v::]) = [::pointer_cast::]\w*ArxanCheck_\w+ - [::pointer_cast::]\w+;'), 2 , rename_lvar_factory('Zero', uniq=1)),
                 (wrap_compile(r'^\s+([::v::]) = \w+_\x+ ^ \*\(_DWORD \*\)([::v::]);'),                               3 , rename_lvar_factory(('buf', 'ciphered'), type=('uint32_t', 'uint32_t *'))),
                 (wrap_compile(r'^\s+(dword_\x+) = \*\(_DWORD \*\)(\w+_1402FAE33);'),                                 3 , lambda all, dst, src: MakeDword(eax(src))),
-                (wrap_compile(r'^\s+(dword_\x+) = (dword_\x+);'),                                                    3 , rename_lvar_factory(('arxan_done_dst_{}'.format(suffix), 'arxan_done_src_{}'.format(suffix)), type=(None, None))),
-                (wrap_compile(r'^\s+(v\d+) = 0i64;'),                                                                2 , rename_lvar_factory(0, 'Zero', uniq=1)),
+                (wrap_compile(r'^\s+([::dummyname::]) = ([::dummyname::]);'),                                        3 , rename_lvar_factory(('arxan_done_dst_{}'.format(suffix), 'arxan_done_src_{}'.format(suffix)), type=(None, None))),
+                (wrap_compile(r'^\s+(v\d+) = 0i64;'),                                                                2 , rename_lvar_factory('Zero', uniq=1)),
                 #               rolling_code = *(_DWORD *)v10;
-                (wrap_compile(r'^\s+([::v::]).start = 0;'),                                                          2 , rename_lvar_factory(0, 'range', uniq=1)),
+                (wrap_compile(r'^\s+([::v::]).start = 0;'),                                                          2 , rename_lvar_factory('range', uniq=1)),
                 #               v10 = (__int64 *)&ImageBase[start];
-                (wrap_compile(r'^\s+([::anyvar::]) = [::reference_cast::]ImageBase\[(?:range.)?start\];'),           2 , rename_lvar_factory(0, 'ptr', type='uintptr_t')),
-                (wrap_compile(r'^\s+([::anyvar::]) = &ImageBase\[range.start\];'),                                   2 , rename_lvar_factory(0, 'ptr', type='uintptr_t')),
-                (wrap_compile(r'^\s+(Zero|v\d+) (=) 1i64;'),                                                         2 , rename_lvar_factory(0, '_align', uniq=1)),
-                (wrap_compile(r'^\s+(v\d+) = [::static_cast::]*\w+imagebase', re.I),                                 2 , rename_lvar_factory(0, 'ImageBase', type='uint8_t *', uniq=1)),
+                (wrap_compile(r'^\s+([::anyvar::]) = [::reference_cast::]ImageBase\[(?:range.)?start\];'),           2 , rename_lvar_factory('ptr', type='uintptr_t')),
+                (wrap_compile(r'^\s+([::anyvar::]) = &ImageBase\[range.start\];'),                                   2 , rename_lvar_factory('ptr', type='uintptr_t')),
+                (wrap_compile(r'^\s+(Zero|v\d+) (=) 1i64;'),                                                         2 , rename_lvar_factory('_align', uniq=1)),
+                (wrap_compile(r'^\s+(v\d+) = [::static_cast::]*\w+imagebase', re.I),                                 2 , rename_lvar_factory('ImageBase', type='uint8_t *', uniq=1)),
                 # guide = (uint8_t *)&unk_1439B9746;
                 # guide = (uint8_t *)byte_143BAD2FD;
                 (wrap_compile(r'^\s+(?:guide\w*) = (?:[::reference_cast::]|[::static_cast::])?(\w+);', re.I),                              2 , rename_lvar_factory(('guide_{}'.format(suffix)), type=(None))),
-                (wrap_compile(r'^\s+(v\d+) = a1;'),                                                                  2 , rename_lvar_factory(0, '_arg_0', uniq=1)),
-                (wrap_compile(r'^\s+if \((v\d+) == (24)\)'),                                                         2 , rename_lvar_factory(0, '_stack_padding', uniq=1)),
-                (wrap_compile(r'^\s+if \((v\d+) == (24)\)'),                                                         2 , rename_lvar_factory(0, '_stack_padding', uniq=1)),
+                (wrap_compile(r'^\s+(v\d+) = a1;'),                                                                  2 , rename_lvar_factory('_arg_0', uniq=1)),
+                (wrap_compile(r'^\s+if \((v\d+) == (24)\)'),                                                         2 , rename_lvar_factory('_stack_padding', uniq=1)),
+                (wrap_compile(r'^\s+if \((v\d+) == (24)\)'),                                                         2 , rename_lvar_factory('_stack_padding', uniq=1)),
                 #               rolling_code = __ROL4__(rolling_code, roll_amt);
                 (wrap_compile(r'^\s+([::anyvar::]) = __ROL4__\(\2, ([::anyvar::])\)'),                               3 , rename_lvar_factory(('rolling_code', 'roll_amt')) ),
                 #               v14 += rolling_code;
-                (wrap_compile(r'^\s+([::anyvar::]) += rolling_cod\w+(?: ^ roll_am\w+)?'),                            2 , rename_lvar_factory(0, 'accum')),
+                (wrap_compile(r'^\s+([::anyvar::]) += rolling_cod\w+(?: ^ roll_am\w+)?'),                            2 , rename_lvar_factory('accum')),
                 #               rolling_code = *(_DWORD *)v10;
-                (wrap_compile(r'^\s+rolling_code = \*(?:\(_DWORD \*\))?([::v::]);'),                                 2 , rename_lvar_factory(0, 'cipher_ptr', type='uintptr_t') ),
+                (wrap_compile(r'^\s+rolling_code = \*(?:\(_DWORD \*\))?([::v::]);'),                                 2 , rename_lvar_factory('cipher_ptr', type='uintptr_t') ),
                 #               v19 = dword_14358307F - *(_DWORD *)v15;
                 (wrap_compile(r'^\s+([::v::]) = ([::dummyname::]) - \*\(_DWORD \*\)([::v::]);'),                     4 , rename_lvar_factory(('buf', 'subtract_key_{}'.format(suffix), 'cipher_ptr'), 
                                                                                                                                                 type=(None, 'uint32_t', 'uintptr_t')) ),
                 #               v20 = *v14++ - roll_amt * rolling_code;
                 #               buf = *cipher_ptr++ - roll_amt * rolling_code;
+                #               buf = *(_DWORD *)cipher_ptr - roll_amt * rolling_code;
                 (wrap_compile(r'^\s+([::anyvar::]) = \*([::anyvar::])++ - roll_amt \* rolling_code;'),               3 , rename_lvar_factory(('buf', 'cipher_ptr'), type=(None, 'uintptr_t')) ),
                 (wrap_compile(r'^\s+([::anyvar::]) = \*(?:\(_DWORD \*\))?([::anyvar::]) - roll_amt \* rolling_code'),3 , rename_lvar_factory(('buf', 'cipher_ptr'), type=('uint32_t', 'uintptr_t')) ),
                 #               buf = dword_143438883 ^ *v15++;
@@ -2137,7 +2001,16 @@ def decompile_arxan(ea = None):
                 #               cipher_ptr = (uintptr_t)qword_143842050;
                 (wrap_compile(r'^\s+cipher_ptr = \(uintptr_t\)&?([::anyvar::]);'),                                   2 , rename_lvar_factory(('ciphered_{}'.format(suffix)), type=(None))),
                 (wrap_compile(r'^\s+(\w+)\([::static_cast::]*&(\w+), [::static_cast::]*&(\w+)\);'),                  4 , rename_lvar_factory(('ArxanGetNextRange_{}'.format(suffix), 'guide', 'range'), type=(None, 'uint8_t*', 'arxan_range'), uniq=1)),
-                (wrap_compile(r'^\s+(ArxanMemcpy[^(), ]+)\(&?(\w+), &?(\w+), &?(\w+)\);'),                           5 , rename_lvar_factory((ea, 'dst', 'p_B0', 'len'), uniq=1)),
+                #               ArxanMemcpy((uint8_t *)&v2 - v21, src, v6);
+                #                           &v2
+                # (wrap_compile(r'^\s+(ArxanMemcpy[^(), ]*)\(&?(\w+), &?(\w+), &?(\w+)\);'),                           5 , rename_lvar_factory((ea, 'dst', 'p_B0', 'len'), uniq=1)),
+                (wrap_compile(r'^\s+(\w*ArxanMemcpy[^(), ]*)\((?:[::reference::]|[::pointer_cast::])?(\w+), (?:[::reference::]|[::pointer_cast::])?(\w+), (\w+)\);'),
+                                                                                                                     5 , rename_lvar_factory(('ArxanMemcpy{}'.format(suffix), 'ptr', 'p_B0', 'len[map]'), uniq=1)),
+                #     v16 = (uint8_t *)&v20;
+                #     p_B0 = (uint8_t *)&v20;
+                (wrap_compile(r'^\s+p_B0 = [::pointer_reference_cast::]([::v::]);'),                                 2 , rename_lvar_factory('BUF', type='int', uniq=1)),
+                #     v16 = &BUF;
+                (wrap_compile(r'^\s+([::v::]) = (?:[::reference::]|[::pointer_cast::])BUF\w*;'),                     2 , rename_lvar_factory('p_B4', type='uint8_t*', uniq=1)),
                 (wrap_compile(r'([::v::]) = [::reinterpet_cast::]ImageBase\[[::deref_static_cast::]([::v::])\]'),    3 , rename_lvar_factory(('acid_bath', 'acid_offset'), type=('uint64_t', 'uint32_t*'), uniq=1)),
                 (wrap_pattern(r"""Zero = 0i64;
     ImageBase = .*
@@ -2240,7 +2113,7 @@ def decompile_arxan(ea = None):
                     if matches and psub[2] and callable(psub[2]):
                         if psub[1]:
                             for g in reby_simple(psub[1], matches):
-                                psub[2](*g)
+                                psub[2](*g, ea=ea, vu=vu)
                         else:
                             print("debug multimatch: {}, type({})".format(matches, type(matches)))
                             results = _.flatten([x for x in [x.groups() for x in matches] if x])

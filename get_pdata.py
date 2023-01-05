@@ -245,13 +245,16 @@ def MakeFuncs(ea, until=None, unpatch=False):
                 UnpatchUntilChunk(x)
         if isObfuJmp(x):
             obfu._patch(x)
+        end = EaseCode(x, forceStart=1)
         if IsFuncHead(x) or (isNop(idc.prev_not_tail(x)) and IsFuncHead(idc.prev_not_tail(x))):
             pass
         else:
+            if IsFunc_(x) and not IsFuncHead(x):
+                SetFuncOrChunkEnd(x, x)
             if not ida_funcs.add_func(x):
+                print("ForcingFunction({:#x})".format(x))
                 ForceFunction(x)
 
-        end = EaseCode(x, forceStart=1)
         if IsFunc_(x) and not IsChunk(x):
             if GetFuncEnd(x) != end:
                 SetFuncEnd(x, end)
@@ -260,7 +263,7 @@ def MakeFuncs(ea, until=None, unpatch=False):
 
     return SkipJumps(ea, until=until, includeStart=True, includeEnd=True, iteratee=helper, skipObfu=1, skipNops=1)
 
-def check_pdata(label=None, func=None, color=None, tails=None, tailsTerm=None, names=None, old_hash=None, spd=None, args=None, unpatch=False):
+def check_pdata(label=None, func=None, color=None, tails=None, tailsTerm=None, names=None, old_hash=None, spd=None, args=None, _ida_retrace=False, unpatch=False):
     global natives;
     _source = ''
     _build = ''
@@ -434,6 +437,12 @@ def check_pdata(label=None, func=None, color=None, tails=None, tailsTerm=None, n
                     MakeFuncs(impl_address, unpatch=unpatch)
                 #  ForceFunction(handler_address)
                 MakeFuncs(handler_address, until=impl_address, unpatch=unpatch)
+            if _ida_retrace:
+                if impl_address:
+                    #  ForceFunction(impl_address)
+                    ida_retrace(impl_address, unpatch=unpatch, **_ida_retrace)
+                #  ForceFunction(handler_address)
+                ida_retrace(handler_address, unpatch=unpatch, **_ida_retrace)
             if color:
                 retrace_list(start_addresses, recolor=1, func=func)
 

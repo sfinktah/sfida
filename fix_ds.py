@@ -64,15 +64,24 @@ def fix_dataseg_offsets(base=None, ori_base=None, size=None, seg_name='.data', s
                 qword = idc.get_qword(ea)
                 if qword >= ori_base and qword < ori_end:
                     new_offset = qword + base - ori_base
-                    results.append(new_offset)
+                    # results.append(new_offset)
                     idc.patch_qword(ea, new_offset)
                     idc.create_data(ea, FF_QWORD, 8, ida_idaapi.BADADDR)
                     idc.op_plain_offset(ea, 0, 0)
                     count += 1
-                elif qword >= base and qword < end:
-                    print("making offset at {:x}".format(ea))
+                elif base <= qword < end or qword == 0x1419F7F10:
+                    disasm = GetDisasm(ea)
+                    print("making offset at {:x}\t{}".format(ea, disasm))
+                    results.append(qword)
                     idc.create_data(ea, FF_QWORD, 8, ida_idaapi.BADADDR)
                     idc.op_plain_offset(ea, 0, 0)
+                    if '+' in disasm:
+                        print(disasm)
+                        target = qword
+                        #  if IsTail(target):
+                            #  target = idc.get_item_head(target)
+                        #  if IsData(target) or IsUnknown(target):
+                        ease_end = EaseCode(qword, forceStart=1, noExcept=1)
 
                 ea += step
     print("{} adjustments made".format(count))

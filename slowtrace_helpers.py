@@ -2653,11 +2653,12 @@ def IsNiceFunc(funcea=None, verbose=False, noChunks=False):
     if len([x for x in range(GetFuncStart(ea), GetFuncEnd(ea)) if not IsCode_(x) and not IsTail(x)]):
         if verbose: print(f"{ea:#x} Non-Code present")
         return False
-    if _.any(GetFuncHeads(ea), lambda x, *a: (idc.get_spd(ea) % 10) == 0 and idc.get_wide_byte(ea) == 0xe9):
+    if _.any(GetFuncHeads(ea), lambda x, *a: 
+            ((idc.get_spd(x) % 10) == 0 and idc.get_wide_byte(x) == 0xe9) 
+            or (idc.get_wide_dword(x) & 0x002d8d48 == 0x002d8d48 or idc.get_wide_dword(x) & 0x242c8748 == 0x242c8748)
+            ):
         if verbose: print("(idc.get_spd({:#x}) % 10) == 0 and idc.get_wide_byte({:#x}) == 0xe9".format(ea, ea))
-        return False
-    if _.any(GetFuncHeads(ea), lambda x, *a: idc.get_wide_dword(ea) & 0x002d8d48 == 0x002d8d48 or idc.get_wide_dword(ea) & 0x242c8748 == 0x242c8748):
-        if verbose: print("idc.get_wide_dword({:#x}) & 0x002d8d48 == 0x002d8d48 or idc.get_wide_dword({:#x}) & 0x242c8748 == 0x242c8748".format(ea, ea))
+        if verbose: print("or idc.get_wide_dword({:#x}) & 0x002d8d48 == 0x002d8d48 or idc.get_wide_dword({:#x}) & 0x242c8748 == 0x242c8748".format(ea, ea))
         return False
 
     return good
@@ -2747,6 +2748,20 @@ def di_insn_preview(ea=None):
         print("insn_match(ea, {}, ({}, {}), comment='{}')".format(insn.mnemonic, insn.operands[0].type, insn.operands[0].name, diida(ea)))
 
 
+def insn_get(ea=None):
+    """
+    insn_get
+
+    @param ea: linear address
+    """
+    if isinstance(ea, list):
+        return [insn_get(x) for x in ea]
+
+    insn = ida_ua.insn_t()
+    insnlen = ida_ua.decode_insn(insn, eax(ea))
+    ida_ua.decode_insn(insn, ea)
+    return insn
+
 def insn_match(ea=None, itype=None, op0=None, op1=None, comment=None, verbose=False):
     """
     insn_match
@@ -2831,7 +2846,12 @@ def prev_insn_match(ea=None, itype=None, op0=None, op1=None, skipNops=False, **k
 
 def insn_mmatch(ea=None, patterns=None):
     """
-    insn_match
+    insn_mmatch(
+            here(),
+            [
+                ((idaapi.NN_lea, idc.o_reg), (2, idc.o_mem)),
+                ((idaapi.NN_mov, idc.o_reg), (1, idc.o_imm)),
+                ((idaapi.NN_jmp, idc.o_near))])
 
     @param ea: linear address
     """
@@ -2846,13 +2866,6 @@ def insn_mmatch(ea=None, patterns=None):
 
     return True
 
-
-    insn_mmatch(
-            EA(),
-            [
-                ((idaapi.NN_lea, idc.o_reg), (2, idc.o_mem)),
-                ((idaapi.NN_mov, idc.o_reg), (1, idc.o_imm)),
-                ((idaapi.NN_jmp, idc.o_near))])
 
 
 def GetFuncInfo(funcea=None):
@@ -3126,7 +3139,7 @@ def SkipJumps(ea=None,
         skipConditionals = False
 
     # apply = 0
-    if (IsOff0(ea) and IsOffset(ea) and IsCode_(getptr(ea))):
+    if (IsOff0(ea) and IsOffset(ea) and IsValidEA(getptr(ea))):
         skipConditionals = False
         skipCalls = False
         finalTarget = SkipJumps(
@@ -3240,21 +3253,21 @@ def SkipJumps(ea=None,
         iterateeAdd(count, target) # target == ea
         count += 1
         if count > 100:
-            raise AdvanceFailure("[SkipJumps] Possible recursive jump, origin: {:#x}".format(ea))
+            raise AdvanceFailure("[SkipJumps] #{} Possible recursive jump, origin: {:#x}".format(count, ea))
         if IsTail(target):
-            print("[SkipJumps] {:#x} {:#x} IsTail".format(ea, target))
+            printi("[SkipJumps] #{} {:#x} {:#x} IsTail".format(count, ea, target))
             try:
                 EaseCode(target, forceStart=1)
             except AdvanceFailure:
-                printi("[SkipJumps] AdvanceFailure: Jump Origin: {:#x}".format(ea))
+                printi("[SkipJumps] #{} AdvanceFailure (IsTail): Jump Origin: {:#x}".format(count, ea))
                 raise
             # break
         if IsUnknown(target):
-            print("[SkipJumps] {:#x} {:#x} IsUnknown".format(ea, target))
+            printi("[SkipJumps] #{} {:#x} {:#x} IsUnknown".format(count, ea, target))
             try:
                 EaseCode(target, forceStart=1)
             except AdvanceFailure:
-                printi("[SkipJumps] AdvanceFailure: Jump Origin: {:#x}".format(ea))
+                printi("[SkipJumps] #{} AdvanceFailure (IsUnknown): Jump Origin: {:#x}".format(count, ea))
                 raise
         if target == ea:
             match_NN = match_NN_initial
@@ -3264,13 +3277,13 @@ def SkipJumps(ea=None,
             if IsUnknown(target) or IsData(target):
                 for addr in targets:
                     unpatched = UnpatchUntilChunk(addr)
-                    if debug: printi("{:x} UnpatchUntilChunk: {}".format(addr, unpatched))
+                    if debug: printi("{:x} #{} UnpatchUntilChunk: {}".format(addr, count, unpatched))
                 return return_jumps(_else=True)
         if not IsCode_(target):
             try:
                 forceCode(target)
             except AdvanceFailure as e:
-                print("AdvanceFailure performing SkipJump from {:#x} to {:#x}".format(ea, target))
+                printi("[SkipJumps] #{} AdvanceFailure (!IsCode): performing SkipJump from {:#x} to {:#x}".format(count, ea, target))
                 raise
 
         if until:
@@ -4509,7 +4522,7 @@ def ida_retrace_pre_extend(queue, visited, master_queue, **kwargs):
             #  if debug: print("for addrs in r: {}".format([ahex(x[0]) for x in r]))
             addr_history = CircularList(512)
             addr_history.on_remove = history_remove_lambda 
-            for addr in ProgressEnumerate(new_addrs, min=512):
+            for addr in new_addrs: # in ProgressEnumerate(new_addrs, min=512):
                 if not is_in_done2(addr, **kwargs):
                 
                     # dprint("[debug] addr")
@@ -4684,12 +4697,12 @@ def ida_retrace(funcea=None, drip=None, extend=True, zero=False, smart=False, pl
     if kwargs.get('funcs', None):
         kwargs['noDone'] = True
 
-        n = 0
-        for ea in funcea:
-            n += 1
-            p.update(n)
-            ida_retrace(ea, extend=extend, zero=zero, smart=smart, *args, **kwargs)
-        return
+    #  n = 0
+    #  for ea in funcea:
+        #  n += 1
+        #  p.update(n)
+        #  ida_retrace(ea, extend=extend, zero=zero, smart=smart, *args, **kwargs)
+    #  return
 
     if funcea is None:
         queue = [EA()]
@@ -5257,8 +5270,8 @@ def FindDestructs(pattern="f6 c3 01 74 08 48 8b cf e8"):
 
 def _unlikely_mnems(): return [
         'in', 'out', 'loop', 'lodsq', 'xlat', 'clc', 'adc', 'stc',
-        'iret', 'bswap', 'wait', 'pause', 'retf', 'retnf',
-        'scasb', 'cmc', 'insb', 'hlt', 'setnle', 'cwpd', 'loopne',
+        'iret', 'bswap', 'wait', 'retf', 'retnf',
+        'scasb', 'cmc', 'insb', 'hlt', 'cwpd', 'loopne',
         'std', 'retf', 'loop', 'loope', 'loopz', 'fisub', 'enter',
         'iret', 'insd', 'cld', 'rcr', 'ins', 'ffreep', 'fcom', 'jceax',
         'ficom', 'jcrx', 'hnt jb', 'repne', 'lock', 'lock dec', 'bsf', 'hnt',
@@ -5268,7 +5281,7 @@ def _unlikely_mnems(): return [
         'lodsb', 'lodsd', 'out', 'outs', 'sahf',
         'scasb', 'scasd', 'stc', 'std', 'sti',  'wait',
         'xlat', 'fisttp', 'fbstp', 'fxch4', 'fld', 'fisubr', 'fsubr', 'bnd', 'db', # 'xlat byte [rbx+al]'
-        'punpckhdq', 'psrad', 'fidiv', 'fild', 'fcom',
+        'punpckhdq', 'fidiv', 'fild', 'fcom',
         # 'sbb', 'cdq', 'stosd',
         ]
 def _isUnlikely_mnem(mnem, *args, **kwargs): return mnem in _unlikely_mnems()
@@ -5284,9 +5297,9 @@ def preprocessIsX(fun, *args, **kwargs):
         return perform(fun, arg, **kwargs)
     if isinstance(arg, integer_types):
         mnem = IdaGetMnem(arg)
-        if not mnem:
-            disasm = GetDisasm(arg)
-            mnem = string_between('', ' ', disasm, greedy=0)
+        #  if not mnem:
+            #  disasm = GetDisasm(arg)
+            #  mnem = string_between('', ' ', disasm, greedy=0)
         if not mnem:
             return False
         return perform(fun, mnem, ea=arg, **kwargs)
@@ -7059,6 +7072,7 @@ def ShowAppendFchunkReal(ea, start, end, old):
         printi("[warn] funcea {:x} is not a function".format(funcea))
         return False
 
+    # This actually makes it run faster (god knows how)
     [GetDisasm(x) for x in idautils.Heads(start, end)]
 
     fstart, fend = GetFuncStart(ea), GetFuncEnd(ea)
@@ -7086,9 +7100,23 @@ def ShowAppendFchunkReal(ea, start, end, old):
         #  pph(notown)
         #  raise RuntimeError("[ShowAppendFchunkReal] notown by us {:#x}, what you want?".format(fstart))
 
-    if not idc.append_func_tail(fstart, start, end):
-        if debug: printi("no easy idc.append_func_tail({:#x}, {:#x}, {:#x})".format(fstart, start, end))
-        # raise RuntimeError("[ShowAppendFchunkReal] couldn't idc.append_func_tail({:#x}, {:#x}, {:#x})".format(fstart, start, end))
+    try:
+        #  GetDisasm(start)
+        if GetChunkEnd(start) != end and not idc.append_func_tail(fstart, start, end):
+            if debug: printi("no easy idc.append_func_tail({:#x}, {:#x}, {:#x})".format(fstart, start, end))
+            # raise RuntimeError("[ShowAppendFchunkReal] couldn't idc.append_func_tail({:#x}, {:#x}, {:#x})".format(fstart, start, end))
+    except RuntimeError as e:
+        msg = ["[warn] couldn't append_func_tail #3 {:#x}\u2013{:#x} to {:#x}".format(start, end, fstart),
+               "       idc.append_func_tail(0x{:x}, 0x{:x}, 0x{:x}) from {}".format(fstart, start, end, hex(old)),
+               "       notown: {}".format(ahex(notown)),
+               ""
+               ]
+        if GetChunkEnd(start) == end:
+            msg.append("       (Chunk now exists anyway -- probably idb function corruption)")
+        msg.extend(indent(0, e.__class__.__name__ + ": " + str(e), width=78).split('\n'))
+        setglobal('msg', msg)
+        ascii_box(msg)
+        raise AdvanceFailure(msg[1])
 
 
     # return
@@ -9514,11 +9542,13 @@ def _EaseCode(ea=None, end=None, forceStart=False, check=False, verbose=False,
         next_head = idc.next_head(ea)
         mnem = ''
 
+        _isFlowEnd = True
         if IsCode_(ea):
+            _isFlowEnd = isFlowEnd(ea, ignoreInt=ignoreInt)
             # if verbose and debug: printi("0x{:x} IsCode".format(ea))
             code = True
             mnem = IdaGetMnem(ea)
-            if isFlowEnd(mnem, ignoreInt=ignoreInt):
+            if _isFlowEnd:
                 if verbose and debug: printi("0x{:x} isFlowEnd({})".format(ea, mnem))
                 at_end = True
             if create: # or mnem.startswith(('ret', 'jmp', 'int', 'ud2', 'leave')):
@@ -9562,7 +9592,7 @@ def _EaseCode(ea=None, end=None, forceStart=False, check=False, verbose=False,
                 if verbose and debug: printi("0x{:x} Unflow-ish mnemonic {}".format(ea, mnem))
 
         # TODO: amalgamate these two, they're basically the same
-        if code and isFlowEnd(ea, ignoreInt=ignoreInt):
+        if code and _isFlowEnd:
             if verbose and debug: printi("0x{:x} code and isFlowEnd; at_end".format(ea))
             ida_auto.auto_recreate_insn(ea)
             at_flow_end = True

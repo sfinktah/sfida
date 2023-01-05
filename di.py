@@ -87,11 +87,20 @@ def distorm_64_bit_flag():
     return distorm3.Decode64Bits 
     return distorm3.Decode64Bits if idc.get_inf_attr(idc.INF_LFLAGS) & idc.LFLG_64BIT else distorm3.Decode32Bits
 
+@static_vars(last=dict())
 def IdaGetMnem(ea):
-    if idc.get_wide_word(ea) == 0x9066:
-        return "nop"
-    mnem = idc.print_insn_mnem(ea)
-    return mnem
+    if IdaGetMnem.last and IdaGetMnem.last['ea'] == ea:
+        return IdaGetMnem.last['mnem']
+    IdaGetMnem.last['ea'] = ea
+    if idc.get_wide_word(ea) == 0x9066: 
+        IdaGetMnem.last['mnem'] = "nop"
+        return IdaGetMnem.last['mnem']
+    if not "use_distorm":
+        IdaGetMnem.last['mnem'] = GetMnemDi(ea)
+        return IdaGetMnem.last['mnem']
+    else:
+        IdaGetMnem.last['mnem'] = idc.print_insn_mnem(ea)
+        return IdaGetMnem.last['mnem']
 
 def GetMnemDi(ea=None):
     """

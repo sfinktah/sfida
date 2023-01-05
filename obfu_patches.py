@@ -124,6 +124,21 @@ def mark_sp_factory(mark):
     278       [48 8d 6c 24 20]                      lea rbp, [rsp+0x20]
     .....................................................
                48 8d a5 30 02 00 00                 lea rsp, [rbp+0x230]    ; will be passed as set_sp_factory input
+
+    Another Example:
+    .text:1433bb21d   68          4c 8d 5c 24 40                       lea r11, [rsp+0x40]
+    .text:1433bb222   68          49 8b 5b 30                          mov rbx, [r11+0x30]
+    .text:143ad8201   68          49 8b 73 38                          mov rsi, [r11+0x38]
+    .text:143ad8205   68          49 8b 7b 40                          mov rdi, [r11+0x40]
+    .text:143ad8209   68   -8     41 53                                push r11
+    .text:14345885d   70    8     5c                                   pop rsp
+    .text:14345885e   68    8     41 5f                                pop r15
+    .text:143454f99   60    8     41 5e                                pop r14
+    .text:143723b27   58    8     41 5d                                pop r13
+    .text:143530971   50    8     41 5c                                pop r12
+    .text:14384a8a6   48    8     5d                                   pop rbp
+    .text:141896efd   40          c3                                   retn
+
     """
     # replace=replaceFunction(search, replace, original, ea, addressList, patternComment)
     def patch(                search, replace, original, ea, addressList, patternComment, addressListWithNops, **kwargs):
@@ -865,6 +880,7 @@ def obfu_append_patches():
     """
     obfu.append("", "mark lea rbp, [rsp+x]", hex_pattern("48 8d ac 24 ?? ?? ?? ??"),                                 [], mark_sp_factory('lea_rbp_rsp_x'))
     obfu.append("", "mark lea rbp, [rsp+x]", hex_pattern("48 8d 6c 24 ??"),                                          [], mark_sp_factory('lea_rbp_rsp_x'))
+
     obfu.append("", "set  lea rsp, [rbp+x]", hex_pattern("48 8d a5 ?? ?? ?? ??"),                                    [], set_sp_factory('lea_rbp_rsp_x'))
     obfu.append("", "set  lea rsp, [rbp+x]", hex_pattern("48 8d 65 ??"),                                             [], set_sp_factory('lea_rbp_rsp_x'))
     obfu.append("", "set  mov rsp, rbp",     hex_pattern("48 8b e5"),                                                [], set_sp_factory('lea_rbp_rsp_x'))
@@ -876,7 +892,11 @@ def obfu_append_patches():
     obfu.append("", "mov rsp, r11",          hex_pattern("49 8b e3")       or nassemble("mov rsp, r11"),             [], set_sp_factory('mov_r11_rsp'))
 
     # needs to be rewritten for obfu_patches, gets a bit confused.  works much better as a trigger from slowtrace2
-    obfu.append("", "push r11; pop rsp",     hex_pattern("90 41 53 5c")       or nassemble("push r11; pop rsp"),        [], set_sp_factory('mov_r11_rsp', 8), trigger='mov_r11_rsp')
+    """
+    41 53                                push r11
+    5c                                   pop rsp
+    """
+    obfu.append("", "push r11; pop rsp",     hex_pattern("90 41 53 5c")       or nassemble("push r11; pop rsp"),     [], set_sp_factory('mov_r11_rsp', 8), trigger='mov_r11_rsp')
 
     obfu.append("", "lea r11, [r11+??h]",    hex_pattern("4d 8d 5b ??"),                                             [], adjust_sp_factory('mov_r11_rsp'))
 
@@ -1417,6 +1437,15 @@ def obfu_append_patches():
         0f 85 b7 65 0e 00                    jnz loc_143BCCA72  *    nop
         6a 18                                push 0x18          **   nop
         48 83 ec 08                          sub rsp, 8
+
+
+        52                                   push rdx
+        6a 10                                push 0x10
+        48 f7 c4 0f 00 00 00                 test rsp, 0xf
+        0f 85 1a d1 37 00                    jnz loc_14367E21C
+        6a 18                                push 0x18
+                                       loc_14367E21C:
+        48 81 ec 08 00 00 00                 sub rsp, 8
         """,
         "short stack-alignment obfu",
             hex_pattern([
@@ -1734,49 +1763,57 @@ def obfu_append_patches():
     #     mov eax, edi
     ###
 
-    with BitwiseMask() as bm:
-        for r in r64:
-            # convert 32-bit ADD to 8-bit ADD
-            if r == 'rsp':
-                continue
+    # note: seems to be a bit broken?  won't recognise 48 05 F8 FF FF FF --
+    # nassemble('add rax, dword 0fffffff8h') -- probably because the rax
+    # version has a short form and is 1 byte shorter
+    for mnem in ['add', 'sub']:
+        with BitwiseMask() as bm:
+            for r in r64[1:]:
+                # convert 32-bit ADD to 8-bit ADD
+                #  if r == 'rsp': continue
 
-            # search      = hex_pattern([re.sub(r' de ad ff 08', ' f8 ff ff ff', listAsHex(kassemble(search_asm)))])
-            search_asm  = "add {}, dword 0fffffff8h".format(r)
-            search      = nassemble(search_asm)
-            bm.add_list(search)
+                # search      = hex_pattern([re.sub(r' de ad ff 08', ' f8 ff ff ff', listAsHex(kassemble(search_asm)))])
+                search_asm  = "{} {}, dword 0fffffff8h".format(mnem, r)
+                search      = nassemble(search_asm)
+                bm.add_list(search)
 
-            #  printi("searchasm:  %s" % search_asm)
-            #  printi("replaceasm: %s" % replace_asm)
-            #  printi("search:     %s" % listAsHex(search))
-            #  printi("replace:    %s" % listAsHex(replace))
+                #  printi("searchasm:  %s" % search_asm)
+                #  printi("replaceasm: %s" % replace_asm)
+                #  printi("search:     %s" % listAsHex(search))
+                #  printi("replace:    %s" % listAsHex(replace))
 
-        #  [values, mask] = gen_mask(None, previous)
-        #  obfu.append_bitwise(values, mask, patch_32bit_add)
-        obfu.append_bitwise(bm.value, bm.mask, bm, patch_32bit_add, reflow=1, brief="32-bit add #1")
-        # if obfu_debug: pp([binlist(bm._set), binlist(bm._clear), bm._size, bm._reserved, binlist(bm.value), binlist(bm.mask)])
+            #  [values, mask] = gen_mask(None, previous)
+            #  obfu.append_bitwise(values, mask, patch_32bit_add)
+            obfu.append_bitwise(bm.value, bm.mask, bm, patch_32bit_add, reflow=1, brief="32-bit {} #1".format(mnem))
+            # if obfu_debug: pp([binlist(bm._set), binlist(bm._clear), bm._size, bm._reserved, binlist(bm.value), binlist(bm.mask)])
 
-    with BitwiseMask() as bm:
-        for r in r64:
-            # convert 32-bit ADD to 8-bit ADD
-            if r == 'rsp':
-                continue
+        with BitwiseMask() as bm:
+            for r in r64[1:]:
+                # convert 32-bit ADD to 8-bit ADD
+                #  if r == 'rsp': continue
 
-            # search      = hex_pattern([re.sub(r' de ad ff 08', ' f8 ff ff ff', listAsHex(kassemble(search_asm)))])
-            search_asm  = "add {}, dword 0fffffff8h".format(r)
-            search      = nassemble(search_asm)
-            search      = hex_pattern(listAsHex(search).replace('f8 ff ff ff', '08 00 00 00'))
-            bm.add_list(search)
+                # search      = hex_pattern([re.sub(r' de ad ff 08', ' f8 ff ff ff', listAsHex(kassemble(search_asm)))])
+                search_asm  = "{} {}, dword 0fffffff8h".format(mnem, r)
+                search      = nassemble(search_asm)
+                search      = hex_pattern(listAsHex(search).replace('f8 ff ff ff', '08 00 00 00'))
+                bm.add_list(search)
 
 
-            #  printi("searchasm:  %s" % search_asm)
-            #  printi("replaceasm: %s" % replace_asm)
-            #  printi("search:     %s" % listAsHex(search))
-            #  printi("replace:    %s" % listAsHex(replace))
+                #  printi("searchasm:  %s" % search_asm)
+                #  printi("replaceasm: %s" % replace_asm)
+                #  printi("search:     %s" % listAsHex(search))
+                #  printi("replace:    %s" % listAsHex(replace))
 
-        #  [values, mask] = gen_mask(None, previous)
-        #  obfu.append_bitwise(values, mask, patch_32bit_add)
-        obfu.append_bitwise(bm.value, bm.mask, bm, patch_32bit_add, reflow=1, brief="32-bit add #2")
-        # if obfu_debug: pp([binlist(bm._set), binlist(bm._clear), bm._size, bm._reserved, binlist(bm.value), binlist(bm.mask)])
+            #  [values, mask] = gen_mask(None, previous)
+            #  obfu.append_bitwise(values, mask, patch_32bit_add)
+            obfu.append_bitwise(bm.value, bm.mask, bm, patch_32bit_add, reflow=1, brief="32-bit {} #2".format(mnem))
+            # if obfu_debug: pp([binlist(bm._set), binlist(bm._clear), bm._size, bm._reserved, binlist(bm.value), binlist(bm.mask)])
+            #
+
+    for mnem in ['sub', 'add']:
+        for val in ['0fffffff8', '8']:
+            bm = BitwiseMask(listAsHex(nassemble("{} rax, dword {}h".format(mnem, val))))
+            obfu.append_bitwise(bm.value, bm.mask, bm, patch_32bit_add, reflow=1, brief="""32-bit {} short-form rax {}h""".format(mnem, val))
 
     if "bitwise_mov32,64":
         search = "50&f8 8b 04&c7 24 58&f8"  # 50~57 8b 04~3c 24 58~5f

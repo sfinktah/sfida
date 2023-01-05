@@ -278,6 +278,8 @@ def ProgressEnumerate(iteratee, min=None, **kwargs):
         p.update(i)
         yield val
 
+    _printcr_clear()
+
 # screenwidth_get()
 #
 ACS_ULCORNER = "┌" # (0xDA)	/* upper left corner */

@@ -368,10 +368,12 @@ def retrace_list(address, pre=None, post=None, recolor=0, func=0, color="#280c01
     # retrace_list_thunk_colors = gradient("#280c01", "#662222", 6)
     if not recolor:
         p = ProgressBar(len(address), len(address))
-        p.always_print = False
+        p.always_print = True
     good = 0
     bad = 0
     for i, ea in enumerate([x for x in list(address) if IsValidEA(x)]):
+        if not recolor:
+            p.update(good, bad)
         if len(retrace_list.history) <= i:
             retrace_list.history.append(ea)
         else:
@@ -432,8 +434,7 @@ def retrace_list(address, pre=None, post=None, recolor=0, func=0, color="#280c01
             # py2
             del skipped[:]
 
-        if not recolor:
-            p.update(good, bad)
+        #  if not recolor:
             #  p.update_good(good)
             #  p.update_bad(bad)
             #  p.update(i)
@@ -818,27 +819,20 @@ def _retrace(address=None, color="#280c01", no_hash=False, _ida_retrace=False, n
                                         break
                                 if not HasUserName(ea):
                                     LabelAddressPlus(ea, "_{}".format(ean(ea)))
-                        if rv:
-                            try:
-                                #  print("count #{}/{}".format(count, count_limit))
+                        else:
+                            if not once:
                                 if kwargs.get('noSti', None):
                                     printi("trying without noSti")
                                     spdList = []
                                     if debug: setglobal('spdList', spdList)
                                     rv = slowtrace2(ea, color=color, returnPatches=patchResults, returnOutput=traceOutput, spdList=spdList, **(_.omit(extra_args, 'noSti')))
-                                    if rv:
-                                        try:
-                                            #  print("count #{}/{}".format(count, count_limit))
-                                            if kwargs.get('noObfu', None):
-                                                printi("trying without noSti/noObfu")
-                                                spdList = []
-                                                if debug: setglobal('spdList', spdList)
-                                                rv = slowtrace2(ea, color=color, returnPatches=patchResults, returnOutput=traceOutput, spdList=spdList, **(_.omit(extra_args, 'noSti', 'noObfu')))
-                                        except AdvanceReverse as e:
-                                            pass
-                            except AdvanceReverse as e:
-                                pass
-                        return rv
+
+                                if rv != 0 and kwargs.get('noObfu', None):
+                                    printi("trying without noSti/noObfu")
+                                    spdList = []
+                                    if debug: setglobal('spdList', spdList)
+                                    rv = slowtrace2(ea, color=color, returnPatches=patchResults, returnOutput=traceOutput, spdList=spdList, **(_.omit(extra_args, 'noSti', 'noObfu')))
+                        #  return rv
                 if once:
                     if rv != 0 and unpatch:
                         UnpatchFunc(ea)
@@ -1465,7 +1459,8 @@ def slowtrace2(ea=None,
         nominal_end = EaseCode(new, forceStart=1, ignoreInt=ignoreInt)
 
         if cs == slvars.startLoc:
-            sprint("Attempted to add start of this function as a chunk {:#x}-{:#x} + {:#x}-{:#x}".format(cs, ce, nominal_start, nominal_end))
+            if debug: sprint("Attempted to add start of this function as a chunk {:#x}-{:#x} + {:#x}-{:#x}".format(cs, ce, nominal_start, nominal_end))
+            # raise RuntimeError("Attempt to add start as chunk")
             return
 
         if GetChunkNumber(new, slvars.startLoc) == 0:
@@ -1750,7 +1745,12 @@ def slowtrace2(ea=None,
             #  slvars.jumps.add(current_ea)
         #  else:
             #  slvars.real.add(current_ea)
-        slvars.real.add(current_ea)
+
+        if not (insn_match(current_ea, idaapi.NN_nop, comment='nop') or
+                insn_match(current_ea, idaapi.NN_jmp, (idc.o_near, 0), comment='jmp loc_14345885D') or
+                insn_match(current_ea, idaapi.NN_xchg, (idc.o_reg, 0), (idc.o_reg, 0), comment='nop')
+                ):
+            slvars.real.add(current_ea)
 
         if helper and new_ea not in slvars2.helped:
             _start, _end = helper(new_ea)
@@ -2538,11 +2538,13 @@ def slowtrace2(ea=None,
                 # nasty alternative to sti.multimatch.sti
                 if insn_match(ea, idaapi.NN_push, (idc.o_reg, 11), comment='push r11'):
                     slvars2.rspHelper['push r11'].append(len(slvars.real))
+                    #  sprint("slvars.real: {}".format(ahex(slvars.real)))
                 elif insn_match(ea, idaapi.NN_pop, (idc.o_reg, 4), comment='pop rsp'):
+                    #  sprint("slvars.real: {}".format(ahex(slvars.real)))
                     if _.last(slvars2.rspHelper['push r11']) == len(slvars.real) - 1:
                         # pass
                         trigger_result = obfu.trigger(ea, 'mov_r11_rsp', search=hex_pattern("41 53 5c"), context={'slvars': slvars, 'slvars2': slvars2})
-                        #  print("trigger result: {:#x}".format(ea))
+                        #  printi("trigger result: {} for {:#x}".format(trigger_result, ea))
                         #  pph(trigger_result)
 
                 elif insn_match(ea, idaapi.NN_mov, (idc.o_reg, 0), (idc.o_reg, 4), comment='mov rax, rsp'):
@@ -3239,8 +3241,6 @@ def slowtrace2(ea=None,
             slvars.name = Name(ea)
             if isAnyJmpOrCall(ea):
                 target = GetTarget(ea) # target = GetOperandValue(ea, 0)
-                if not ida_funcs.func_does_return(target):
-                    if debug: printi("*** {:x} non-returning function: {}".format(ea, describe_target(target)))
             else:
                 target = False
             # GetParamLong
@@ -3487,17 +3487,24 @@ def slowtrace2(ea=None,
             #  m = re.search(r'(\w*word ptr)? cs:([a-z]+_[A-F0-9]+\+[A-F0-9]+)h?', ida_disasm)
             fix_location_plus_2(ea)
 
-            if (insn_match(ea, idaapi.NN_retn, comment='retn')
-                    or insn_match(ea, idaapi.NN_jmpni, (idc.o_displ, None), comment='jmp qword [reg+0x28]')
-                    or insn_match(ea, idaapi.NN_jmpni, (idc.o_mem, 5), comment='jmp qword [rel UnhandledExceptionFilter]')
-                    or insn_match(ea, idaapi.NN_jmpni, (idc.o_phrase, None), comment='jmp qword [rax+r8*8]')
-                    or insn_match(ea, idaapi.NN_jmpni, (idc.o_reg, 0), comment='jmp rax')):
+            insn = insn_get(ea)
+            if (insn_match(insn, idaapi.NN_retn, comment='retn')
+                    or insn_match(insn, idaapi.NN_jmpni, (idc.o_displ, None), comment='jmp qword [reg+0x28]')
+                    or insn_match(insn, idaapi.NN_jmpni, (idc.o_mem, 5), comment='jmp qword [rel UnhandledExceptionFilter]')
+                    or insn_match(insn, idaapi.NN_jmpni, (idc.o_phrase, None), comment='jmp qword [rax+r8*8]')
+                    or insn_match(insn, idaapi.NN_jmpni, (idc.o_reg, 0), comment='jmp rax')
+                    or insn_match(insn, idaapi.NN_call, (idc.o_near, 0), comment='call sub_140CEBFBC') and not ida_funcs.func_does_return(target)
+                    ):
                 if debug: printi("**************")
                 if slvars.rsp is None:
                     slvars.rsp = -9999
                 if not skipAddRsp:
-                    if not silent or slvars.rsp: sprint("%s: adding retn rsp of 0x%x" % (ida_disasm, slvars.rsp))
-                    slvars.retSps.add(slvars.rsp)
+                    if insn_match(insn, idaapi.NN_call, (idc.o_near, 0), comment='call sub_140CEBFBC') and not ida_funcs.func_does_return(target):
+                        if not silent or slvars.rsp: sprint("%s: non-returning function call; adding retn rsp of zero" % (disasm))
+                        slvars.retSps.add(0)
+                    else:
+                        if not silent or slvars.rsp: sprint("%s: adding retn rsp of 0x%x" % (ida_disasm, slvars.rsp))
+                        slvars.retSps.add(slvars.rsp)
                 if len(callStack) < 1:
                     line = output("\t; call stack is empty; END OF BRANCH")
                     break
@@ -4259,27 +4266,29 @@ def slowtrace2(ea=None,
                     #  else: codeRefsTo.add(target)
 
 
-            if (
-                    not slvars.startFnName.startswith('Arxan') and
-                    (insn_match(ea, idaapi.NN_lea, (idc.o_reg, (1, 2, 8, 9)), (idc.o_mem, 5), comment='lea rdx, [rel unk_140015EC8]')
-                        )):
+            if (    not slvars.startFnName.startswith('Arxan')
+                    and insn_match(ea, idaapi.NN_lea, (idc.o_reg, (1, 2, 8, 9)), (idc.o_mem, 5), comment='lea rdx, [rel unk_140015EC8]')):
                 if debug: sprint("matched lea r64, [rel sub]")
                 _target = GetTarget(ea)
                 if debug: sprint("[slowtrace2] _target:{}".format(ahex(_target)))
                 _sktarget = SkipJumps(ea, skipObfu=1)
                 if debug: sprint("[slowtrace2] _target:{}, _sktarget:{}".format(ahex(_target), ahex(_sktarget)))
                     
+                # _sktarget will stay equal to ea if there is no jump or reference to be made
                 if _sktarget != _target and _sktarget != ea:
                     if applySkipJumps:
                         SkipJumps(ea, apply=1)
 
-                if IsValidEA(_target) and idc.get_segm_name(_target) == '.text':
-                    possible_later_targets = SkipJumps(_target, returnJumps=True, returnTargets=True)
-                    if not _.any(possible_later_targets, lambda v, *a: v in later2):
-                        later2.add(_target)
-                        later.add(_target)
-                        printi("later2: adding {}".format(diida(ea)))
-                        SkipJumps(ea, apply=1, skipNops=1)
+                if IsValidEA(_target) and idc.get_segm_name(_target) == '.text' and IsCode_(_target):
+                    try:
+                        possible_later_targets = SkipJumps(_target, returnJumps=True, returnTargets=True)
+                        if not _.any(possible_later_targets, lambda v, *a: v in later2):
+                            later2.add(_target)
+                            later.add(_target)
+                            printi("later2: adding {}".format(diida(ea)))
+                            SkipJumps(ea, apply=1, skipNops=1)
+                    except AdvanceFailure as e:
+                        if debug: sprint("AdvanceFailure during SkipJumps test: {}".format(str(e)))
 
             if applySkipJumps and isAnyJmpOrCall(ea):
                 SkipJumps(ea, apply=1, skipNops=1)
@@ -4383,10 +4392,11 @@ def slowtrace2(ea=None,
                     #  0x140cb33f1: obfu::comb: length:150
                     #
                     isRealFunc = is_real_func(ea, GetTarget(ea))
+                    _tgt = GetTarget(ea)
                     if isRealFunc:
-                        if ea not in later2:
-                            later2.add(ea)
-                            later.add(ea)
+                        if _tgt not in later2:
+                            later2.add(_tgt)
+                            later.add(_tgt)
                         break
 
                 # end of `if removeFuncs`
@@ -4496,7 +4506,7 @@ def slowtrace2(ea=None,
                 #  continue
 
                 elif isUnconditionalJmp(mnem):
-                    target = GetTarget(ea)
+                    # target = GetTarget(ea)
                     if not IsCode_(target):
                         printi("[warn] target !IsCode_(0x{:x}) from {:x}".format(target, ea))
                     if SegName(target) == "":
@@ -4510,7 +4520,7 @@ def slowtrace2(ea=None,
                     continue
 
                 elif isConditionalJmp(mnem):
-                    if not is_real_func(ea, GetTarget(ea)):
+                    if not is_real_func(ea, target):
                         #  if disasm.find('locret_') > -1:
                         #  line = output("\t; would trigger RETN")
                         # output("e: %s" % line)
