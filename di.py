@@ -84,7 +84,7 @@ def asBytesRaw(o):
 
 
 def distorm_64_bit_flag():
-    return distorm3.Decode64Bits 
+    # return distorm3.Decode64Bits 
     return distorm3.Decode64Bits if idc.get_inf_attr(idc.INF_LFLAGS) & idc.LFLG_64BIT else distorm3.Decode32Bits
 
 @static_vars(last=dict())
@@ -143,9 +143,6 @@ def GetInsn(*args):
 def MyGetInstructionLength(*args):
     lengths = []
     if len(args) == 1:
-        if not _isInt(args[0]):
-            print("return_unless: _isInt(args[0])")
-            return 
         
         # ida method
         ea = args[0]
@@ -275,6 +272,10 @@ def diAsBytes(s):
     elif isinstance(s, str):
         s = bytes(hex_pattern(s, wildcard=0x0))
     return s
+
+def diIs64Bit():
+    info = idaapi.get_inf_structure()
+    return info.is_64bit()
 
 def diInsn(code, offset = 0):
     code = diAsBytes(code)

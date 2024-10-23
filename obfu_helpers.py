@@ -355,9 +355,9 @@ def PatchBytes(ea, patch=None, comment=None, code=False, put=False, ease=True):
         else:
             [idaapi.patch_byte(ea+i, patch[i]) for i in range(length) if patch[i] != -1]
 
-    if 'emu_helper' in globals() and hasattr(globals()['emu_helper'], 'writeEmuMem'):
-        # print("[PatchBytes] also writing to writeEmuMem")
-        [helper.writeEmuMem(ea+i, bytearray([patch[i]])) for i in range(length) if patch[i] != -1]
+    #  if 'emu_helper' in globals() and hasattr(globals()['emu_helper'], 'writeEmuMem'):
+        #  # print("[PatchBytes] also writing to writeEmuMem")
+        #  [helper.writeEmuMem(ea+i, bytearray([patch[i]])) for i in range(length) if patch[i] != -1]
 
     #  if was_code:
         #  if debug: print("was_code")
@@ -751,7 +751,7 @@ def FixTargetLabels(ea):
             if m:
                 listedTarget = int(m.group(2), 16)
                 badLabel = m.group(1)
-                if listedTarget >= ida_ida.cvar.inf.min_ea:
+                if listedTarget >= ida_ida.cvar.inf.min_ea and listedTarget < ida_ida.cvar.inf.max_ea:
                     rv = fix_loc_offset(badLabel)
                     Wait()
                     #  MyMakeUnkn(ea, 0)
@@ -987,16 +987,17 @@ def nassemble(ea, string = None, apply=None, comment=None, quiet=False, put=Fals
             _was_code = IsCode_(ea)
             if _was_code:
                 _code_len = MyGetInstructionLength(ea)
-            PatchBytes(ea, r, comment=comment, put=put)
+            PatchBytes(ea, r, comment=comment, put=put, ease=False)
             if _was_code and _code_len > length:
                 print("PatchNops({:x}, {})".format(next, _code_len - length))
-                PatchNops(next, _code_len - length)
+                PatchNops(next, _code_len - length, ease=True)
                 # idc.auto_wait()
             # idc.plan_and_wait(ea, nextInsn)
             # forceCode(ea, nextInsn) # , nextInsn) # , ea + nextInsn)
             # idc.auto_wait()
-            if ease:
-                EaseCode(ea, noExcept=1, forceStart=1)
+            #  if ease:
+                # EaseCode(ea, end=ea + _code_len, noExcept=1, forceStart=1)
+                #  forceCode(ea, end=ea + _code_len - 1)
             #  forceCode(ea, nextInsn) # , nextInsn) # , ea + nextInsn)
             #  forceCode(nextInsn)
                 #  for e in range(ea, nextInsn):

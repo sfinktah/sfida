@@ -1617,14 +1617,15 @@ def hotkey_join_to_parent():
 
 def MakeJmpUnconditional(ea):
     # dprint("[MakeJmpUnconditional] ea")
-    print("[MakeJmpUnconditional] ea:{:x}".format(ea))
-    if isCall(ea):
-        nassemble(ea, "jmp 0x{:x}".format(GetTarget(ea)), apply=1)
-    elif not isAnyJmp(ea):
+    print("[MakeJmpUnconditional] ea:{:x} {}".format(ea, "jmp 0x{:x}".format(GetTarget(ea))))
+    if isAnyJmpOrCall(ea):
+        insn_len = MyGetInstructionLength(ea)
+        if insn_len == 2:
+            idc.patch_byte(ea, 0xeb)
+        else:
+            nassemble(ea, "jmp 0x{:x}".format(GetTarget(ea)), apply=1)
+    else:
         raise IndexError("No jump at this location {:x}".format(ea))
-    elif not isConditionalJmp(ea):
-        raise IndexError("Jump already conditional at this location {:x}".format(ea))
-    nassemble(ea, "jmp 0x{:x}".format(GetTarget(ea)), apply=1)
 
 def RemoveConditionalJmp(ea):
     # dprint("[RemoveConditionalJmp] ea")
@@ -1645,10 +1646,13 @@ def hotkey_switch_jumptype(shift=0):
 
     ea = idc.get_screen_ea()
     # <kbd>J</kbd> Swap between jz and jnz (or whatever)
+    FixTargetLabels(ea)
     if not shift:
         length = idc.get_item_size(ea)
         if length == 6 and idc.get_wide_byte(ea) == 0x0f:
             idc.patch_byte(ea + 1, idc.get_wide_byte(ea + 1) ^ 1)
+        elif length == 2 and isConditionalJmp(ea):
+            idc.patch_byte(ea, idc.get_wide_byte(ea) ^ 1)
     # Shift-J Swaping between jmp and jz (or whatever)
     else:
         if isCall(ea):
@@ -1657,8 +1661,9 @@ def hotkey_switch_jumptype(shift=0):
             if isConditionalJmp(ea):
                 hotkey_switch_jumptype.last_ea = ea
                 hotkey_switch_jumptype.last_asm = dii(ea, 6)
-                nassemble(ea, "jmp 0x{:x}; nop".format(GetTarget(ea)), apply=1)
-                idc.create_insn(ea + 5)
+                MakeJmpUnconditional(ea)
+                #  nassemble(ea, "jmp 0x{:x}".format(GetTarget(ea)), apply=1)
+                # idc.create_insn(ea + 5)
             else:
                 if hotkey_switch_jumptype.last_ea == ea:
                     nassemble(ea, hotkey_switch_jumptype.last_asm, apply=1)

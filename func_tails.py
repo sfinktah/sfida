@@ -154,10 +154,14 @@ class AdvanceInsnList(object):
         """
         insns = A(insns)
         results = A(results)
-        if refs_from is None: refs_from = {}
-        if refs_to is None: refs_to = {}
-        if flow_refs_from is None: flow_refs_from = {}
-        if flow_refs_to is None: flow_refs_to = {}
+        refs_from = S(refs_from)
+        refs_to = S(refs_to)
+        flow_refs_from = S(flow_refs_from)
+        flow_refs_to = S(flow_refs_to)
+        #  if refs_from is None: refs_from = {}
+        #  if refs_to is None: refs_to = {}
+        #  if flow_refs_from is None: flow_refs_from = {}
+        #  if flow_refs_to is None: flow_refs_to = {}
         if isinstance(ea, GenericRange) or isinstance(ea, tuple) and len(ea) == 2:
             _s, _e = ea[0], ea[-1]
             #  print("AdvanceInsnList: {:x} - {:x}".format(_s, _e))
@@ -480,7 +484,7 @@ class FuncTailsInsn(object):
 
     def __init__(self, insn=None, ea=None, text=None, size=None, code=None, mnemonic=None, operands=None, comments=None, sp=None, spd=None, warnings=None,
                  errors=None, chunkhead=None, labels=None,
-                 refs_from={}, refs_to={}, flow_refs_from={}, flow_refs_to={}):
+                 refs_from=None, refs_to=None, flow_refs_from=None, flow_refs_to=None):
         """@todo: to be defined
 
         :insn_text: @todo
@@ -492,21 +496,18 @@ class FuncTailsInsn(object):
         :insn_errors: @todo
 
         """
-        if labels is None:
-            labels = []
+        labels = A(labels)
         if insn is None or isinstance(insn, int):
             if ea is None:
                 ea = insn
             insn=diida(ea)
             text=insn
             size=MyGetInstructionLength(ea)
-            refs_to=set(xrefs_to(ea, filter=lambda x, *a: x.type != fl_F))
+            #  refs_to=set(xrefs_to(ea, filter=lambda x, *a: x.type != fl_F))
+
             
-            if IsRef(ea):
-                label = idc.get_name(ea)
-                if label.startswith("0x"):
-                    label = "loc_" + string_between('0x', '', label, inclusive=1)
-                labels = [label]
+        if not labels and HasAnyName(ea):
+            labels.append(idc.get_name(ea))
 
         self._insn_text = text
         self._insn_ea = ea
@@ -523,12 +524,16 @@ class FuncTailsInsn(object):
         self._insn_insn = insn
         self._insn_size = size
 
-        self._insn_refs_from = refs_from
-        self._insn_refs_to = refs_to
-        self._insn_flow_refs_from = flow_refs_from
-        self._insn_flow_refs_to = flow_refs_to
+        self._insn_refs_from = S(refs_from)
+        self._insn_refs_to = S(refs_to)
+        self._insn_flow_refs_from = S(flow_refs_from)
+        self._insn_flow_refs_to = S(flow_refs_to)
 
         self._insn_target = None
+
+        self._insn_skip = False
+        self._insn_hide_label = False
+        self._insn_hide_insn = False
 
 
         # self._insn_target = GetTarget(ea, failnone=True)
@@ -783,6 +788,56 @@ class FuncTailsInsn(object):
         return self._insn_target
 
     @property
+    def label(self):
+        if self.labels:
+            return self.labels[-1]
+        return ''
+
+    @property
+    def skip(self):
+        """
+        returns self._insn_skip
+        """
+        return self.hide_label and self.hide_insn
+    
+    @skip.setter
+    def skip(self, value):
+        """ New style classes requires setters for @property methods
+        """
+        self.hide_label = self.hide_insn = value
+    
+    
+    @property
+    def hide_label(self):
+        """
+        returns self._insn_hide_label
+        """
+        return self._insn_hide_label
+    
+    @hide_label.setter
+    def hide_label(self, value):
+        """ New style classes requires setters for @property methods
+        """
+        self._insn_hide_label = value
+        return self._insn_hide_label
+    
+    @property
+    def hide_insn(self):
+        """
+        returns self._insn_hide_insn
+        """
+        return self._insn_hide_insn
+    
+    @hide_insn.setter
+    def hide_insn(self, value):
+        """ New style classes requires setters for @property methods
+        """
+        self._insn_hide_insn = value
+        return self._insn_hide_insn
+    
+    
+
+    @property
     def force_labeled_value(self):
         _label = None
         if self._insn_labels:
@@ -792,6 +847,18 @@ class FuncTailsInsn(object):
         if not _label:
             _label = "lab_{:X}".format(self._insn_ea)
         return "{}: {}".format(_label, self._insn_insn)
+
+    @property
+    def force_labeled_indented(self):
+        _label = None
+        if self._insn_labels:
+            _label = self._insn_labels[0]
+        if not _label:
+            _label = ean(self._insn_ea)
+        if not _label:
+            _label = "lab_{:X}".format(self._insn_ea)
+        return "{}:\n    {}".format(_label, self._insn_insn)
+
     @property
     def labeled_value(self):
         if len(self._insn_refs_to) or len(self._insn_labels):
@@ -811,7 +878,24 @@ class FuncTailsInsn(object):
                 _label = self._insn_labels[0]
             if not _label:
                 _label = ean(self._insn_ea)
-            return "{}: {}".format(_label, self._insn_insn)
+            return "{}:\n    {}".format(_label, self._insn_insn)
+        return "    {}".format(self._insn_insn)
+
+    @property
+    def indented(self):
+        result = []
+        if self.skip:
+            return ''
+
+        if not self.hide_label and self.label:
+            result.append("{}:".format(self.label))
+        if not self.hide_insn:
+            result.append("    {}".format(self._insn_insn))
+
+        return '\n'.join(result)
+
+    @property
+    def unlabeled_indented(self):
         return "    {}".format(self._insn_insn)
 
     # https://stackoverflow.com/questions/40828173/how-can-i-make-my-class-pretty-printable-in-python/66250289#66250289
@@ -833,7 +917,7 @@ class FuncTailsInsn(object):
         return result
 
 
-def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
+def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False, returnPretty=False,
                code=True, patches=None, dead=False, showEa=False, 
                showUnused=False, ignoreInt=False, showNops=False, output=None,
                quiet=False, removeLabels=True, disasm=False, externalTargets=None,
@@ -863,9 +947,31 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
     errors = []
     errorObjects = []
     decompiled = []
+    pretty = []
     decompiled_heads = defaultdict(list)
+    relabel = dict()
 
     #  decompiled_insns = []
+
+    def relabel_line(line):
+        for search, replace in relabel.items():
+            # dprint("[outi] search, replace")
+            #  print("[outi] search: {}, replace: {}".format(search, replace))
+            
+            line = line.replace(search, replace)
+        return line
+
+    def outi(line):
+        r = []
+        if line:
+            for l in line.split('\n'):
+                if l.strip().startswith('nop'):
+                    continue
+                r.append(relabel_line(l))
+            if returnPretty:
+                pretty.extend(r)
+            else:
+                [printi(x) for x in r]
 
     def out(line, head=None, ft_insn=None):
         if head:
@@ -1225,8 +1331,9 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
 
                 refs[head] = idc.get_name(head)
                 r = xrefs_to_ex(head)
-                for ref in [x for x in r if not IsSameFunc(funcea, x.frm) and x.frm_seg == '.text' \
-                                            and string_between('', ' ', x.frm_insn).startswith('j') \
+                for ref in [x for x in r if not IsSameFunc(funcea, x.frm)                                 \
+                                            and x.frm_seg == '.text'                                      \
+                                            and string_between('', ' ', x.frm_insn).startswith('j')       \
                                             and not string_between('', ' ', x.frm_insn).startswith('jmp') \
                                             and GetInsnLen(x.frm) > 4
                             ]:
@@ -1349,9 +1456,34 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
 
         insn_text = diida(ea)
         # (insn_text, insn_addr, insn_di, insn_sp, insn_comment, insn_warnings, insn_errors, insn_chunkhead):
-        disasm.append(FuncTailsInsn(insn_text, ea, insn_text, size=MyGetInstructionLength(ea),
-                                    refs_to=set(xrefs_to(ea, filter=lambda x, *a: x.type != fl_F)),
-                                    comments=comments[ea] if ea in comments else None))
+        disasm.append(
+                FuncTailsInsn(insn_text, ea, insn_text, size=MyGetInstructionLength(ea),
+                                    # refs_to=set(xrefs_to(ea, filter=lambda x, *a: x.type != fl_F)),
+                                    comments=comments[ea] if ea in comments else None)
+                )
+
+    idis = _.mapObject(disasm, lambda v, *a: (v.ea, v))
+    label_count = 0
+    for ea, fti in idis.items():
+        target = GetTarget(ea)
+        if IsValidEA(target) and target in ordered:
+            # dprint("[debug] ea, target")
+            #  print("[debug] ea: {}, target: {}".format(ahex(ea), ahex(target)))
+            
+            idis[target].refs_to.add(ea)
+            idis[ea].refs_from.add(target)
+            label_count += 1
+            new_label = "label_{}".format(label_count)
+            relabel[idc.get_name(target)] = new_label
+            idis[target].add_label(new_label)
+
+            # if insn_match(ea, idaapi.NN_jmp, (idc.o_near, 0), comment='jmp loc_141898018')
+
+
+    assert idis[disasm[0].ea] == disasm[0]
+
+
+
         #  if ea in comments:
         #  disasm.append({'insn': diida(ea), 'ea': ea,
         #  'comment': comments[ea]})
@@ -1439,11 +1571,45 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
     #  decompiled = remove_labels(decompiled) if removeLabels else decompiled
     decompiled = _.uniq(decompiled, lambda o, *a: o.ea)
     if not quiet:
-        for line in decompiled:
+        skip = 0
+        for count, two_lines in enumerate(stutter_chunk(decompiled, 2, 1)):
+            line, next_line = two_lines
             if showEa:
                 printi("0x{:x} {}".format(line.ea, line.labeled_value))
             else:
-                printi("{}".format(line.labeled_indented))
+                no_label = 0
+                if skip:
+                    skip = 0
+                    no_label = 1
+
+                if next_line                                      \
+                        and next_line.refs_to                     \
+                        and insn_match(line.ea, idaapi.NN_jmp, (idc.o_near, 0), comment='jmp rel32'):
+                            if len(next_line.refs_to) == 1        \
+                                    and _.first(next_line.refs_to) == line.ea:
+                                        skip = 1
+                                        #  continue
+                            else:
+                                line.skip = 1
+                                #  print("continue")
+                                continue
+
+                if count == 0:
+                    #  outi("{}".format(line.force_labeled_indented))
+                    pass
+                elif not no_label and skip and line.refs_to: 
+                    line.skip = 0
+                    line.hide_insn = 1
+                    #  outi("{}:".format(line.label))
+                    pass
+                elif not skip:
+                    line.hide_label = 1
+                    #  outi("{}".format(line.unlabeled_indented))
+                else:
+                    line.skip = 1
+
+                outi(line.indented)
+
 
     for bt in badtails:
         errors.append(out(bt))
@@ -1511,7 +1677,11 @@ def func_tails(funcea=None, returnErrorObjects=False, returnOutput=False,
                     sti.append(line)
             return sti
         else:
-            return "\n".join(decompiled)
+            return decompiled
+    if returnPretty:
+        return pretty
+
+
     return errorObjects if returnErrorObjects else errors
 
 

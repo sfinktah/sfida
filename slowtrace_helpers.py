@@ -1693,6 +1693,7 @@ def GetTarget(ea, flow=0, calls=1, conditionals=1, operand=1, failnone=False):
         return idc.get_operand_value(ea, 1)
     elif idc.get_operand_type(ea, 0) in (idc.o_mem, idc.o_imm) and IsValidEA(idc.get_operand_value(ea, 0)): # and IsCode_(idc.get_operand_value(ea, 1)):
         return idc.get_operand_value(ea, 0)
+    # TODO: should be IsOffset
     if isOffset(ea):
         target = getptr(ea)
         if idc.get_inf_attr(idc.INF_MIN_EA) <= target < idc.get_inf_attr(idc.INF_MAX_EA):
@@ -2010,6 +2011,20 @@ def GetChunkStart(ea=None):
 def GetChunkStarts(ea):
     for cstart, cend in idautils.Chunks(ea):
         yield cstart
+
+def GetChunkSize(ea=None):
+    """
+    GetChunkSize
+
+    @param ea: linear address
+    """
+    if isinstance(ea, list):
+        return [GetChunkSize(x) for x in ea]
+
+    ea = eax(ea)
+    return GetChunkEnd(ea) - GetChunkStart(ea)
+
+
 
 def GetChunkCount(ea):
     """
@@ -4727,9 +4742,9 @@ def ida_retrace(funcea=None, drip=None, extend=True, zero=False, smart=False, pl
 
     # queue[:] = [eax(_.first(x)) for x in queue]
         #  queue[:] = [x for x in queue if x not in done3]
-        print("ida_retrace.queue.len (after done3) == {}".format(len(queue)))
+        #  print("ida_retrace.queue.len (after done3) == {}".format(len(queue)))
 
-    print("[ida_retrace] funcea:{}, _.first(queue):{}".format(ahex(funcea), ahex(_.first(queue))))
+    #  print("[ida_retrace] funcea:{}, _.first(queue):{}".format(ahex(funcea), ahex(_.first(queue))))
 
     if kwargs.get('func', 0):
         func = ida_funcs.get_func(funcea)
@@ -5281,7 +5296,8 @@ def _unlikely_mnems(): return [
         'lodsb', 'lodsd', 'out', 'outs', 'sahf',
         'scasb', 'scasd', 'stc', 'std', 'sti',  'wait',
         'xlat', 'fisttp', 'fbstp', 'fxch4', 'fld', 'fisubr', 'fsubr', 'bnd', 'db', # 'xlat byte [rbx+al]'
-        'punpckhdq', 'fidiv', 'fild', 'fcom',
+        'punpckhdq', 'fidiv', 'fild', 'fcom', 'daa', 'aam',
+        'sidt', 'sldt'
         # 'sbb', 'cdq', 'stosd',
         ]
 def _isUnlikely_mnem(mnem, *args, **kwargs): return mnem in _unlikely_mnems()
@@ -5492,11 +5508,14 @@ def last_iterable(iterable, *defaultvalue):
     return last
 
 
-def all_xrefs_(funcea=None, xref_getter=None, key='unset', iteratee=None, filter=None, pretty=False):
+def all_xrefs_(funcea, xref_getter, key, iteratee=None, filter=None, pretty=False):
+    """
+    @param funcea: function address
+    @param xref_getter: idautils.XrefsTo (or XrefsFrom)
+    @param key: 'to' or 'frm' or smth else
+    """
     if isinstance(funcea, list):
         return _.chain([all_xrefs_(x, xref_getter=xref_getter, key=key, iteratee=iteratee, filter=filter, pretty=pretty) for x in funcea]).flatten('shallow').sort().uniq('sorted').value()
-    if xref_getter is None:
-        xref_getter = idautils.XrefsTo
     # The first chunk will be the start of the function, from there -- they're sorted in
     # order of location, not order of execution.
     #
@@ -5524,9 +5543,9 @@ def all_xrefs_(funcea=None, xref_getter=None, key='unset', iteratee=None, filter
                 string_between('(', ')', XrefTypeNames(x.type)),
                 diida(x.to))
             for x in xref_getter(head)
-            if x.type not in (ida_xref.fl_F,)])
-    xrefs = _.chain([iteratee(x) for x in xrefs if filter(x) # and not ida_funcs.is_same_func(x[0], funcea)
-        ]).sort().uniq('sorted').value()
+            if x.type not in (ida_xref.fl_F,) and IsValidEA(getattr(x, key))])
+    #  xrefs = _.chain([iteratee(x) for x in xrefs if filter(x) # and not ida_funcs.is_same_func(x[0], funcea)
+        #  ]).sort().uniq('sorted').value()
 
     if pretty:
         for x in _.uniq(sorted(xrefs, key=lambda x: (x[2], x[0])), 1):
@@ -5876,6 +5895,11 @@ def GetFuncHeads(funcea=None):
     if isIterable(funcea):
         return _.flatten([list(GetFuncHeadsIter(x)) for x in funcea], 1)
     return list(GetFuncHeadsIter(funcea))
+
+def GetFuncSizeHeads(funcea=None):
+    if isIterable(funcea):
+        return _.flatten([len(list(GetFuncHeadsIter(x))) for x in funcea], 1)
+    return len(list(GetFuncHeadsIter(funcea)))
 
 def CheckFuncSpDiffs(funcea=None, value=None):
     """
@@ -7684,8 +7708,12 @@ def modify_chunks(funcea, chunks, keep=None, remove=None):
             continue
             FixChunk(chunk.start, owner=funcea)
             continue
-        subs = _.remove(remove, lambda x, *a: x.issubset(chunk))
-        adds = _.remove(keep,   lambda x, *a: x.issubset(chunk))
+        subs = False
+        adds = False
+        if remove:
+            subs = _.remove(remove, lambda x, *a: x.issubset(chunk))
+        if keep:
+            adds = _.remove(keep,   lambda x, *a: x.issubset(chunk))
         if subs: #  or adds:
             printi("super: {}  subs: {}  adds: {}".format(hex(chunk), subs, adds))
 
@@ -9519,6 +9547,7 @@ def _EaseCode(ea=None, end=None, forceStart=False, check=False, verbose=False,
 
                 break
 
+
         if unpatch:
             UnPatch(ea, ea + 15)
 
@@ -9530,6 +9559,13 @@ def _EaseCode(ea=None, end=None, forceStart=False, check=False, verbose=False,
             if noExcept:
                 return AdvanceFailure("0x{:x} EaseCode couldn't advance past 0x{:x} ".format(start_ea, ea))
             raise AdvanceFailure("0x{:x} EaseCode couldn't advance past 0x{:x} ".format(start_ea, ea))
+
+        ida_disasm = idc.GetDisasm(ea)
+        if re.search(r'( ptr)? \w+_[0-9A-F]+[-+][0-9A-F]+h?', ida_disasm):
+            FixTargetLabels(ea)
+            # for Win32 HASP
+            # patch_byte(ea + MyGetInstructionLength(ea), 0xcc)
+
         _owners = GetChunkOwners(ea, includeOwner=1)
         if _owners:
             if _owners != owners:
@@ -12388,7 +12424,7 @@ network___network_has_game_been_altered_actual:
 """
 
 
-from collections import Sequence
+from collections.abc import Sequence
 import six
 from six.moves import builtins
 
@@ -12860,6 +12896,9 @@ def nop_unused_chunks(addrs=None, dryRun=False, put=False, nonfuncs=None):
             PatchNops(d0.start, len(d0), put=put, nop=0x00, comment="unused: {}".format(funcName or ean(funcea)))
     return kill
 
+def is64bit():
+    info = idaapi.get_inf_structure()
+    return info.is_64bit()
 
 def test12(ProcessAffinityMask):
     # gets num of bits set as long as ProcessAffinityMask is uint8_t

@@ -910,11 +910,27 @@ def get_patches(minea=0, maxea=idc.BADADDR):
     return ns.patchedBytes
     # return pickle.dumps( ns.patchedBytes ).hex()
 
+def get_patches_hex(minea=0, maxea=idc.BADADDR):
+    p = get_patches(minea, maxea)
+    h = dict()
+    for k in p.keys():
+        h[k] = bytes_as_hex(p[k])
+    return h
+
+
+
+
 def get_patches_idarest():
     return pickle.dumps(get_patches()).hex()
 
 def save_patches(fn):
-    pickle.dump(smart_path(fn), get_patches())
+    with open(smart_path(fn), 'wb') as handle:
+        pickle.dump(a, handle)
+
+def load_patches(fn):
+    with open(smart_path(fn), 'rb') as handle:
+        b = pickle.load(handle)
+
 
 def unpatch_all_count():
     patchedBytes=[]
@@ -1366,12 +1382,14 @@ def comment_version(ea=None):
     c.add("build timestamp: {}".format(build_date))
     c.add("=======================================/")
 
-def get_build_version():
+def get_build_version(full=False):
     r = get_version_mb()
     if r and not r.errored:
         g_build_dev_ng_live = r.add(0x3e).rip(4)
         g_build = r.add(0x64).rip(4)
         g_gtav_x64_final_build_dev_ng_live = r.add(0x1d4).rip(4)
+        if full:
+            return (g_build.str(), g_build_dev_ng_live.str(), g_gtav_x64_final_build_dev_ng_live.str())
         return g_build.str() # , g_gtav_x64_final_build_dev_ng_live.str(), g_build_dev_ng_live.str()]
         #  return asString(idc.get_strlit_contents(g_build, 32, idc.STRTYPE_C))
     #  ea = ProtectScan("24 08 57 48 81 ec b0 00 00 00 83").add(0x104 - 0x4e).rip(4).str() \
@@ -1478,7 +1496,7 @@ class SavePatches(object):
         #  self.e = collections.defaultdict(constant_factory(list))
         self.comments = dict()
         self.e = list() 
-        self.d = collections.defaultdict(constant_factory(0))
+        self.d = collections.defaultdict()
 
     def add(self, ea, replaceList, patternComment):
         return
@@ -1494,7 +1512,7 @@ class SavePatches(object):
             print("%i patches..." % length)
 
     def refresh(self):
-        self.d = collections.defaultdict(constant_factory(0))
+        self.d = collections.defaultdict()
         idaapi.visit_patched_bytes(0, idaapi.BADADDR, self.patch_callback)
         Wait()
 
@@ -1521,7 +1539,7 @@ def hex_string_as_list(string):
     return result
 
             """)
-            for i in self.c.items():
+            for i in self.d.items():
                 comment = ""
                 if i[0] in self.comments:
                     comment = ", \"%s\"" % self.comments[i[0]]
@@ -1657,6 +1675,22 @@ def me():
 
 def ml():
     return me() - ms()
+
+def insert_ints():
+    l = list(Heads(ms(), me()))
+    for i in range(len(l)):
+        # if is_byte(get_flags(l[i+1])) or is_unknown(get_flags(l[i+1])):
+        if is_code(get_flags(l[i])):
+            print(hex(l[i]))
+            n = l[i] + MyGetInstructionLength(l[i])
+            if is_unknown(get_flags(n)) or is_byte(get_flags(n)):
+                print("{}, {}".format(hex(l[i]), hex(n)))
+                if isConditionalJmp(l[i]):
+                    MakeJmpUnconditional(l[i])
+                elif isAnyJmpOrCall(l[i]):
+                    PatchByte(n, 0xCC)
+                    forceCode(n)
+
 
 
 def graph_results(results, links):

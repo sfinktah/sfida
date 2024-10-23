@@ -380,7 +380,7 @@ class WinPE(helper_mixin, object):
         self.size = self.nt.SizeOfImage;
 
 def winpe_test():
-    pe = WinPE(64)
+    pe = WinPE(32)
     print("-- DOS Header --")
     for k, s in pe.dos.items(): print("{:32} {}".format(k, hex(s)))
     print("-- NT Header --")

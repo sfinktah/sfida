@@ -10,6 +10,9 @@ from static_vars import static_vars
 #  _from('slowtrace_helpers import make_transpose_fn')
 #  _from('hex import asList')
 
+class Namespace(object):
+    pass
+
 @static_vars(last_width=getglobal('_progress_console_width', None))
 def _get_console_width():
     #  return screenwidth_process.width
@@ -25,7 +28,7 @@ def _get_console_width():
     if hasattr(ida_kernwin.PluginForm, 'TWidgetToPyQtWidget'):
         w = ida_kernwin.PluginForm.TWidgetToPyQtWidget(tw)
         scrollable = w.childAt(0, 0)
-        char_width = int(scrollable.width() / 7.06)
+        char_width = int(scrollable.width() / 7.26)
         if char_width != _get_console_width.last_width:
             _get_console_width.last_width = char_width
             try:
@@ -39,7 +42,7 @@ def _get_console_width():
 
 
 _block = "█▒▓░"
-_block_half = "▏▎▍▋▊█" # left-half-block: ▌  almost-full-block: ▉   right-half-block: ▐▌
+_block_half = "▏▎▍▋▊" # left-half-block: ▌  almost-full-block: ▉   right-half-block: ▐▌
 
 class ProgressBar:
     """Show a progress bar"""
@@ -142,7 +145,7 @@ class ProgressBar:
         empty = self.console_width - drawn
         message = ''
         if self.msg:
-            message = (" " * self.console_width).join(ascii_box(self.msg, render=False)) + " "
+            message = (" " * (self.console_width // 2)).join(ascii_box(self.msg, render=False) + ['']) + " "
         if six.PY3:
             if self.show_percentage:
                 pct = "{}%".format(int(sum(self.value) / (len(self.value) if not self.compound else 1)))
@@ -332,7 +335,7 @@ def splice(target, start, delete_count='', insert=''):
     return target[:start] + insert + target[delete_count:], target[start:delete_count]
 
 
-def ascii_box(lines, width=0, selected=None, render=True, shadow=False): 
+def ascii_box(lines, width=0, selected=None, render=True, center=True, shadow=False): 
     ns = Namespace()
     ns.x = 0
     ns.y = 0
@@ -340,17 +343,23 @@ def ascii_box(lines, width=0, selected=None, render=True, shadow=False):
     buffer = [] # ['' * width] * (nitems + 2)
     setglobal('buffer', buffer)
     width = max(width, max([len(line) for line in lines]))
+    if center:
+        ns.left_margin = _get_console_width() // 2 - width // 2
+    else:
+        ns.left_margin = 0
 
     def ensure(columns, rows):
+        columns += ns.left_margin
         rows += 1
         while len(buffer) < rows:
             buffer.append('')
         # buffer[:] = _.map(buffer, lambda v, *a: (v + ' ' * columns)[0:columns])
         for i in range(len(buffer)):
             if len(buffer[i]) < columns:
-                buffer[i] += ' ' * (columns - len(buffer[i]))
+                buffer[i] += chr(127) * (columns - len(buffer[i]))
 
     def gotoxy(x, y):
+        x += ns.left_margin
         ns.x, ns.y = x, y
 
     def _putch(s):
@@ -365,7 +374,7 @@ def ascii_box(lines, width=0, selected=None, render=True, shadow=False):
     def _write_buffer():
         if render:
             for row in buffer:
-                print(row.rstrip())
+                print(row.rstrip(chr(127)))
         else:
             return [row.rstrip() for row in buffer]
 

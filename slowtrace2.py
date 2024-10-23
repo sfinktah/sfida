@@ -1375,8 +1375,8 @@ def slowtrace2(ea=None,
         return 0
 
     def VimEdit(address, string, wait=0):
-        idb_subdir = GetIdbPath()
-        idb_subdir = idb_subdir[:idb_subdir.rfind(os.sep)] + os.sep + "lst_%s" % GetInputFile()
+        idb_subdir = idc.get_idb_path()
+        idb_subdir = idb_subdir[:idb_subdir.rfind(os.sep)] + os.sep + "lst_%s" % idc.get_root_filename()
         if not os.path.isdir(idb_subdir):
             os.mkdir(idb_subdir)
 
@@ -2878,7 +2878,7 @@ def slowtrace2(ea=None,
 
                                 spd = int(stack, 16)
                                 if m.default[1] == 'pop rsp':
-                                    spd += 8
+                                    spd += 8 if is64bit() else 4
                                     # slvars.rsp += 8
 
                                 idc.add_user_stkpnt(idc.next_head(ea), spd)
@@ -3483,8 +3483,12 @@ def slowtrace2(ea=None,
             # mov edx, dword ptr cs:loc_140A68C50+2
             # add rdx, cs:qword_140D6A430+0A0h
             ida_disasm = string_between(';', '', idc.GetDisasm(ea), inclusive=1, repl='').rstrip()
+            if re.search(r'( ptr)? \w+_[0-9A-F]+[-+][0-9A-F]+h?', ida_disasm):
+                FixTargetLabels(ea)
+                #  patch_byte(ea + MyGetInstructionLength(ea), 0xcc)
             # see also fix_loc_offset(badLabel)
             #  m = re.search(r'(\w*word ptr)? cs:([a-z]+_[A-F0-9]+\+[A-F0-9]+)h?', ida_disasm)
+            
             fix_location_plus_2(ea)
 
             insn = insn_get(ea)
@@ -4601,10 +4605,10 @@ def slowtrace2(ea=None,
                     sp_correct = None
 
                     if mnem in ("push", "pushfq", "pushfd", "pushf"):
-                        sp_correct = -8
+                        sp_correct = -8 if is64bit() else -4
                     elif mnem in ("pop", "popfq", "popfd", "popf"):
                         if idc.print_operand(ea, 0) != 'rsp':
-                            sp_correct = 8
+                            sp_correct = 8 if is64bit() else 4
                         else:
                             sp_correct = None
                     elif mnem == "lea":
@@ -4614,7 +4618,7 @@ def slowtrace2(ea=None,
                             sp_correct = _delta
                         else:
                             if debug: printi("[info] {:x} should instruction affect stack: {}? spdelta: 0x{:x}".format(ea, diida(ea), n))
-                            if diida(ea).startswith('lea esp'):
+                            if is64bit() and diida(ea).startswith('lea esp'):
                                 raise RelocationUnpatchRequest('lea esp', ea)
                             line = output("\t; [info] should instruction affect stack?")
                     elif mnem == "sub" or mnem == "add":
@@ -5150,7 +5154,7 @@ def slowtrace2(ea=None,
                 sprint("remove: {:x}-{:x}".format(ea1, ea2))
 
         if keep or remove:
-            modify_chunks(slvars.startLoc, chunks, keep, remove)
+            modify_chunks(slvars.startLoc, chunks, keep, False) # remove)
 
 
 

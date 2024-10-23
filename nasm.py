@@ -112,8 +112,13 @@ def nasm64(ea, string, quiet=False):
     for i in range(shift):
         input.insert(0, "nop")
 
+    info = idaapi.get_inf_structure()
+    if info.is_64bit():
+        bits = '64'
+    else:
+        bits = '32'
     input.insert(0, "[org 0x{:x}]".format(adjusted_ea))
-    input.insert(0, "[bits {}]".format(options.get('bits', '64')))
+    input.insert(0, "[bits {}]".format(options.get('bits', bits)))
 
     #  if isinstance(string, list):
         #  input.extend(string)

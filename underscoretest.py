@@ -61,8 +61,8 @@ def _oget(obj, key, default=None, call=False):
 
     See Also
     --------
-    dotted : creates `path` from dotted string
-    deep_get : uses `oget` to traverse deeply nested objects
+    _dotted : creates `path` from _dotted string
+    _deep_get : uses `oget` to traverse deeply nested objects
 
     Examples
     --------
@@ -74,7 +74,7 @@ def _oget(obj, key, default=None, call=False):
     r = None
 
     if isinstance(key, int) and _isListlike(obj):
-        return list(list(zip(obj))[key])
+        return list(list(zip(obj))[key])[0]
     if isinstance(obj, dict):
         return obj.get(key, default)
     try:
@@ -92,8 +92,93 @@ def _oget(obj, key, default=None, call=False):
 
     return r
 
+def _dotted(key):
+    """Convert _dotted heirachical notation into list of keys
+
+    Backslash may be used to prevent dots from being interpreted as separators
+
+    Parameters
+    ----------
+    key : str
+        key
+
+    Returns
+    -------
+    list
+        similar to `key.split('.')`
+
+    Examples
+    --------
+    >>> _dotted('a.b\.c.d')
+    ['a', 'b.c', 'd']
+    >>> _dotted('a')
+    ['a']
+    """
+    key = key.replace(r'\.', 'PSIOUFJRHPRIUENG')
+    pieces = key.split('.')
+    return [x.replace('PSIOUFJRHPRIUENG', '.') for x in pieces]
+
+def _deep_get(obj, path, default=AttributeError, call=False):
+    """Get nth-depth value from nested dict-like or object-like containers
+
+    Parameters
+    ----------
+    obj : object|dict
+        container with dict-like or object-like properties
+    path : list
+        heirachical path
+    default : any
+        value to return if path or key is invalid
+
+    Returns
+    -------
+    any
+        similar to obj[path[0]][path[1]] (etc)
+
+    Raises
+    ------
+    KeyError
+        if one of the keys is not found and no default is specified
+
+    See Also
+    --------
+    _dotted : creates `path` from _dotted string
+    oget : get attribute or dictionary key
+
+
+    Examples
+    --------
+    >>> _deep_get(sys, 'modules.__main__._deep_get')
+    <function _deep_get at 0x000001A9A57DA1E0>
+    """
+    # Put this first, incase path is just an integer
+    if _.isInt(path):
+        path = str(path)
+
+    if ',' in path:
+        path = [x.strip() for x in path.split(',')]
+
+    if _isIterable(path):
+        return [_deep_get(obj, x, default=default) for x in path]
+
+    name = getattr(obj, '__name__', 'object')
+    for piece in _dotted(path):
+        tmp = piece
+        if _.isNumeric(piece):
+            tmp = int(piece, 0)
+        obj = _oget(obj, tmp, AttributeError, callable)
+        if obj == AttributeError:
+            if default==AttributeError:
+                # AttributeError: module '__main__' has no attribute 'xax'
+                # KeyError: 'asdfg'
+                raise KeyError("object '{}' has no attribute or key '{}'".format(name, piece))
+            return default
+        name += '.'
+        name += piece
+    return obj
+
 def _pluck(obj, key):
-    return [_oget(x, key, call=1) for x in obj]
+    return [_deep_get(x, key, call=1) for x in obj]
 
 def _uniq(seq, iteratee=None):
     """
@@ -534,8 +619,8 @@ class underscore(object):
 
         See Also
         --------
-        dotted : creates `path` from dotted string
-        deep_get : uses `oget` to traverse deeply nested objects
+        _dotted : creates `path` from _dotted string
+        _deep_get : uses `oget` to traverse deeply nested objects
 
         Examples
         --------
@@ -879,6 +964,7 @@ class underscore(object):
         # allow pluck to operate on numeric indexes to quickly
         # grab items from tuples and lists
         keys = self._flatten(_asList(keys))
+        
         if not keys:
             return None
         if len(keys) > 1:
